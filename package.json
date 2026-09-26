@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "test": "elm-test"
+  },
+  "devDependencies": {
+    "elm-test": "^0.19.2-1",
+    "elm-format": "^0.8.7"
+  }
+}

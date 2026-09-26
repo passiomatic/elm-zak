@@ -1,0 +1,376 @@
+module Test.Zak.Thread exposing (suite)
+
+{-| Exercises the suspend/resume scheduler this session's redesign added:
+`Thread.start`/`Thread.start_global` (spawn, run
+synchronously to the first suspend point, never block the caller),
+`Thread.wait_for`/`Thread.join`
+(the two primitives that actually suspend — no frame-counted
+`yield_here` sibling: checked directly against the real DeloresDev
+`.dinky` source, where its own `breakhere` is used zero times across all
+49 files, versus `breaktime` at 166, so it was dropped rather than
+ported), and `Zak.Interpreter.tick` (the once-per-frame scheduler step
+that resumes them). Uses
+`initialWorld`/`runIncremental` directly (not the simpler `run`)
+specifically to get at the returned `State` afterward — inspecting
+`state.threads` and, for the "did the resumed code really run" checks,
+reading a Zak table's own field back out of `state.heap` directly, since
+a script's own return value only captures a snapshot at the moment it
+returns, before any later `tick` has run.
+-}
+
+import Dict
+import Expect
+import Test exposing (Test, describe, test)
+import Zak.Interpreter as I exposing (tick)
+import Zak.Runtime as Runtime exposing (RuntimeError(..), Value(..))
+
+
+{-| Runs `source` against a fresh world (no caller-supplied natives — the
+threading primitives are already unconditional in `initialWorld`, same
+tier as `Math`/`String`/`print`/`type`), returning both the top-level
+script's own return value and the resulting `State`, so tests can inspect
+`state.threads`/`state.heap` afterward.
+
+Strips any `AtPosition` a `RuntimeError` comes back wrapped in — this
+suite pins down *which* `RuntimeError` a case produces, the same as
+before position-tracking existed; *where* it happened is exercised by
+`Test.Zak.Interpreter`'s own dedicated position-tracking tests instead,
+not re-asserted here.
+-}
+runWithState : String -> Result I.Error ( Value, Runtime.State )
+runWithState source =
+    let
+        ( env, state ) =
+            I.initialWorld Dict.empty
+    in
+    I.runIncremental env state source |> Result.mapError dropRuntimePosition
+
+
+dropRuntimePosition : I.Error -> I.Error
+dropRuntimePosition error =
+    case error of
+        I.RuntimeError e ->
+            I.RuntimeError (Runtime.dropPosition e)
+
+        I.SyntaxError _ ->
+            error
+
+
+{-| Reads a `VTable`'s own `field` back out of `state.heap` directly —
+used to check what a `start`-spawned body actually did *after*
+being resumed by `tick`, since the top-level script's own return value
+only reflects a snapshot taken before any tick ever ran.
+-}
+readTableField : Runtime.State -> Value -> String -> Maybe Value
+readTableField state table field =
+    case table of
+        VTable id ->
+            Dict.get id state.heap |> Maybe.andThen (Dict.get field)
+
+        _ ->
+            Nothing
+
+
+suite : Test
+suite =
+    describe "Zak.Thread (Thread.start/start_global/wait_for/join/tick)"
+        [ test "start runs its closure synchronously up to its first suspend, without blocking the caller" <|
+            \_ ->
+                -- `log.value` tables execution order: the spawned thread's
+                -- body appends "A" then suspends on `wait_for`; only then
+                -- does the *caller* (the top-level script) get to run its
+                -- own next statement, appending "B" -- confirming
+                -- `start` itself never blocks, and that the spawned
+                -- body really did run immediately, not lazily.
+                case
+                    runWithState """let log = { value = "" }
+Thread.start(function():
+    log.value = log.value ++ "A"
+    Thread.wait_for(1.0)
+    log.value = log.value ++ "C"
+end)
+log.value = log.value ++ "B"
+return log"""
+                of
+                    Ok ( result, state ) ->
+                        Expect.equal (Just (VString "AB")) (readTableField state result "value")
+
+                    Err err ->
+                        Expect.fail ("expected success, got: " ++ Debug.toString err)
+        , test "start's own result is always the new thread id, never Suspended" <|
+            \_ ->
+                case runWithState "return Thread.start(function(): Thread.wait_for(1.0) end)" of
+                    Ok ( VNumber _, _ ) ->
+                        Expect.pass
+
+                    other ->
+                        Expect.fail ("expected a thread id (VNumber), got: " ++ Debug.toString other)
+        , test "a suspended thread is registered in state.threads until it finishes" <|
+            \_ ->
+                case runWithState "Thread.start(function(): Thread.wait_for(1.0) end)\nreturn nil" of
+                    Ok ( _, state ) ->
+                        Expect.equal 1 (Dict.size state.threads)
+
+                    Err err ->
+                        Expect.fail ("expected success, got: " ++ Debug.toString err)
+        , test "a thread with nothing left to suspend on isn't registered at all" <|
+            \_ ->
+                case runWithState "Thread.start(function(): 1 + 1 end)\nreturn nil" of
+                    Ok ( _, state ) ->
+                        Expect.equal 0 (Dict.size state.threads)
+
+                    Err err ->
+                        Expect.fail ("expected success, got: " ++ Debug.toString err)
+        , test "tick resumes a wait_for thread once enough seconds have elapsed, and not before" <|
+            \_ ->
+                case
+                    runWithState """let log = { value = "" }
+Thread.start(function():
+    Thread.wait_for(1.0)
+    log.value = log.value ++ "resumed"
+end)
+return log"""
+                of
+                    Err err ->
+                        Expect.fail ("expected success, got: " ++ Debug.toString err)
+
+                    Ok ( result, state0 ) ->
+                        let
+                            ( state1, _ ) =
+                                tick 0.5 state0
+
+                            stillWaiting =
+                                readTableField state1 result "value"
+
+                            ( state2, _ ) =
+                                tick 0.6 state1
+
+                            afterEnoughTime =
+                                readTableField state2 result "value"
+                        in
+                        Expect.all
+                            [ \_ -> Expect.equal (Just (VString "")) stillWaiting
+                            , \_ -> Expect.equal (Just (VString "resumed")) afterEnoughTime
+                            , \_ -> Expect.equal 0 (Dict.size state2.threads)
+                            ]
+                            ()
+        , test "join suspends one thread until a second, independent thread finishes" <|
+            \_ ->
+                case
+                    runWithState """let log = { value = "" }
+let slow_id = Thread.start(function(): Thread.wait_for(1.0) end)
+Thread.start(function():
+    Thread.join(slow_id)
+    log.value = log.value ++ "done"
+end)
+return log"""
+                of
+                    Err err ->
+                        Expect.fail ("expected success, got: " ++ Debug.toString err)
+
+                    Ok ( result, state0 ) ->
+                        let
+                            beforeSlowFinishes =
+                                readTableField state0 result "value"
+
+                            ( state1, _ ) =
+                                tick 2.0 state0
+
+                            afterSlowFinishes =
+                                readTableField state1 result "value"
+                        in
+                        Expect.all
+                            [ \_ -> Expect.equal (Just (VString "")) beforeSlowFinishes
+                            , \_ -> Expect.equal (Just (VString "done")) afterSlowFinishes
+                            , \_ -> Expect.equal 0 (Dict.size state1.threads)
+                            ]
+                            ()
+        , test "wait_for as a bare statement inside a while loop suspends and resumes mid-iteration on later ticks, not restarting the loop from the top" <|
+            \_ ->
+                -- Traces through `execWhile`/`andThenOutcome` the same way
+                -- a plain top-level `wait_for` does (see `tick`'s own doc),
+                -- but this is the shape `breakwhile*` would actually need
+                -- to be built from -- a poll loop, not a bare wait. Each
+                -- tick should advance exactly one iteration: if the loop
+                -- were wrongly restarting from n=0 on every resume, the
+                -- log would read "111" instead of "123".
+                case
+                    runWithState """let log = { value = "" }
+let counter = { n = 0 }
+Thread.start(function():
+    while counter.n < 3:
+        counter.n = counter.n + 1
+        log.value = log.value ++ String.from(counter.n)
+        Thread.wait_for(1.0)
+    end
+    log.value = log.value ++ "done"
+end)
+return log"""
+                of
+                    Err err ->
+                        Expect.fail ("expected success, got: " ++ Debug.toString err)
+
+                    Ok ( result, state0 ) ->
+                        let
+                            afterStart =
+                                readTableField state0 result "value"
+
+                            ( state1, _ ) =
+                                tick 1.0 state0
+
+                            afterFirstTick =
+                                readTableField state1 result "value"
+
+                            ( state2, _ ) =
+                                tick 1.0 state1
+
+                            afterSecondTick =
+                                readTableField state2 result "value"
+
+                            ( state3, _ ) =
+                                tick 1.0 state2
+
+                            afterThirdTick =
+                                readTableField state3 result "value"
+                        in
+                        Expect.all
+                            [ \_ -> Expect.equal (Just (VString "1")) afterStart
+                            , \_ -> Expect.equal (Just (VString "12")) afterFirstTick
+                            , \_ -> Expect.equal (Just (VString "123")) afterSecondTick
+                            , \_ -> Expect.equal (Just (VString "123done")) afterThirdTick
+                            , \_ -> Expect.equal 0 (Dict.size state3.threads)
+                            ]
+                            ()
+        , test "wait_for as a bare statement inside a for loop suspends and resumes mid-iteration the same way (not while-specific)" <|
+            \_ ->
+                case
+                    runWithState """let log = { value = "" }
+Thread.start(function():
+    for n in [1, 2, 3]:
+        log.value = log.value ++ String.from(n)
+        Thread.wait_for(1.0)
+    end
+    log.value = log.value ++ "done"
+end)
+return log"""
+                of
+                    Err err ->
+                        Expect.fail ("expected success, got: " ++ Debug.toString err)
+
+                    Ok ( result, state0 ) ->
+                        let
+                            afterStart =
+                                readTableField state0 result "value"
+
+                            ( state1, _ ) =
+                                tick 1.0 state0
+
+                            ( state2, _ ) =
+                                tick 1.0 state1
+
+                            ( state3, _ ) =
+                                tick 1.0 state2
+
+                            afterThirdTick =
+                                readTableField state3 result "value"
+                        in
+                        Expect.all
+                            [ \_ -> Expect.equal (Just (VString "1")) afterStart
+                            , \_ -> Expect.equal (Just (VString "123done")) afterThirdTick
+                            , \_ -> Expect.equal 0 (Dict.size state3.threads)
+                            ]
+                            ()
+        , test "wait_while(predicate) suspends inside its own separately-defined body (not inline in the spawned closure), resuming mid-loop each tick and only running the caller's own later statements once predicate finally returns false" <|
+            \_ ->
+                -- `wait_while` is itself a Zak-defined function, called as
+                -- a bare statement -- the suspend happens several
+                -- call-frames deep (inside `wait_while`'s own `while`
+                -- loop), not inline in this closure the way the `while`/
+                -- `for` tests above are. This is the shape that needed
+                -- tracing through `callFunction`/`mapOutcome` before
+                -- trusting it: log.value should read "123done" after
+                -- exactly 3 ticks, same as the inline `while` case, not
+                -- get stuck or skip iterations just because the loop now
+                -- lives one call deeper.
+                case
+                    runWithState """let log = { value = "" }
+let counter = { n = 0 }
+Thread.start(function():
+    Thread.wait_while(function():
+        counter.n = counter.n + 1
+        log.value = log.value ++ String.from(counter.n)
+        return counter.n < 3
+    end)
+    log.value = log.value ++ "done"
+end)
+return log"""
+                of
+                    Err err ->
+                        Expect.fail ("expected success, got: " ++ Debug.toString err)
+
+                    Ok ( result, state0 ) ->
+                        let
+                            afterStart =
+                                readTableField state0 result "value"
+
+                            ( state1, _ ) =
+                                tick 1.0 state0
+
+                            ( state2, _ ) =
+                                tick 1.0 state1
+
+                            ( state3, _ ) =
+                                tick 1.0 state2
+
+                            afterThirdTick =
+                                readTableField state3 result "value"
+                        in
+                        Expect.all
+                            [ \_ -> Expect.equal (Just (VString "1")) afterStart
+                            , \_ -> Expect.equal (Just (VString "123done")) afterThirdTick
+                            , \_ -> Expect.equal 0 (Dict.size state3.threads)
+                            ]
+                            ()
+        , test "wait_while's own argument-count/non-function checks come from ordinary Zak function-call handling, not a hand-written native check" <|
+            \_ ->
+                Expect.all
+                    [ \_ ->
+                        case runWithState "Thread.start(function(): Thread.wait_while(1) end)\nreturn nil" of
+                            Err (I.RuntimeError (NotAFunction (VNumber n))) ->
+                                Expect.within (Expect.Absolute 0.0001) 1 n
+
+                            other ->
+                                Expect.fail ("expected NotAFunction, got: " ++ Debug.toString other)
+                    , \_ ->
+                        case runWithState "Thread.start(function(): Thread.wait_while() end)\nreturn nil" of
+                            Err (I.RuntimeError (WrongArgCount { expected, got })) ->
+                                Expect.equal ( 1, 0 ) ( expected, got )
+
+                            other ->
+                                Expect.fail ("expected WrongArgCount, got: " ++ Debug.toString other)
+                    , \_ ->
+                        case runWithState "Thread.start(function(): Thread.wait_while(function(): return false end, 1) end)\nreturn nil" of
+                            Err (I.RuntimeError (WrongArgCount { expected, got })) ->
+                                Expect.equal ( 1, 2 ) ( expected, got )
+
+                            other ->
+                                Expect.fail ("expected WrongArgCount, got: " ++ Debug.toString other)
+                    ]
+                    ()
+        , test "wait_for called directly at the top level (not inside start) is a runtime error, not a silent suspend" <|
+            \_ ->
+                case runWithState "Thread.wait_for(1.0)\nreturn nil" of
+                    Err (I.RuntimeError SuspendedNotAllowed) ->
+                        Expect.pass
+
+                    other ->
+                        Expect.fail ("expected SuspendedNotAllowed, got: " ++ Debug.toString other)
+        , test "wait_for called from a plain expression position (not a bare statement) is also SuspendedNotAllowed" <|
+            \_ ->
+                case runWithState "Thread.start(function(): let x = Thread.wait_for(1.0) end)\nreturn nil" of
+                    Err (I.RuntimeError SuspendedNotAllowed) ->
+                        Expect.pass
+
+                    other ->
+                        Expect.fail ("expected SuspendedNotAllowed, got: " ++ Debug.toString other)
+        ]
