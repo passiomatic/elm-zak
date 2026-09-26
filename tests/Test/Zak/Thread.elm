@@ -1,14 +1,11 @@
 module Test.Zak.Thread exposing (suite)
 
-{-| Exercises the suspend/resume scheduler this session's redesign added:
+{-| Exercises the suspend/resume scheduler:
 `Thread.start`/`Thread.start_global` (spawn, run
 synchronously to the first suspend point, never block the caller),
 `Thread.wait_for`/`Thread.join`
-(the two primitives that actually suspend — no frame-counted
-`yield_here` sibling: checked directly against the real DeloresDev
-`.dinky` source, where its own `breakhere` is used zero times across all
-49 files, versus `breaktime` at 166, so it was dropped rather than
-ported), and `Zak.Interpreter.tick` (the once-per-frame scheduler step
+(the two primitives that actually suspend — there's no frame-counted
+yield), and `Zak.Interpreter.tick` (the once-per-frame scheduler step
 that resumes them). Uses
 `initialWorld`/`runIncremental` directly (not the simpler `run`)
 specifically to get at the returned `State` afterward — inspecting

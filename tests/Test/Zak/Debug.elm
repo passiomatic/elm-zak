@@ -156,7 +156,7 @@ suite =
                         Err error ->
                             Expect.fail ("expected success, got: " ++ Debug.toString error)
             ]
-        , describe "assert (expr, message — message optional, matching Squirrel's own assert exactly, confirmed by actually running it)" <|
+        , describe "assert (expr, message — message optional)" <|
             [ test "a true expr with a message does nothing, returns nil" <|
                 \_ -> runExpr "Debug.assert(true, \"should not fire\")" |> Expect.equal (Ok VNil)
             , test "a true expr with no message also does nothing, returns nil" <|

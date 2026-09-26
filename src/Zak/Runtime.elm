@@ -119,16 +119,12 @@ type RuntimeError
 
 {-| The underlying leaf error, discarding whatever `AtPosition` it's
 wrapped in (if any) — the inverse of what `Zak.Interpreter.execStatements`
-builds via `tagPosition`. Exists for exactly one legitimate reason: test
-suites that pin down a *specific* `RuntimeError` shape (`design/Zak Built-
-in Functions.md`'s own "exact RuntimeError returned" pattern, used
-throughout `tests/Test/Zak/*`) want to keep asserting on the leaf error
-alone, the same as before position-tracking existed, since *which*
-statement failed and *what* went wrong are two different things to test,
-not one — see the dedicated position-tracking tests in
-`Test.Zak.Interpreter` for the part that actually exercises `AtPosition`
-itself. Not needed anywhere in the interpreter's own evaluation, since
-nothing there ever wants to throw a captured position away.
+builds via `tagPosition`. Use it when matching on a *specific*
+`RuntimeError` shape (a test asserting on the exact error returned, say)
+and the position is beside the point, since *which* statement failed and
+*what* went wrong are two different things to check, not one. Not needed
+anywhere in the interpreter's own evaluation, since nothing there ever
+wants to throw a captured position away.
 -}
 dropPosition : RuntimeError -> RuntimeError
 dropPosition error =
@@ -184,8 +180,7 @@ Deliberately narrow in this first pass: only `Zak.Thread`'s
 `wait_for`/`join` (and, inside
 `Zak.Interpreter` itself, `start`/`start_global`'s own
 closure body, transitively) ever construct a `Suspended` value — see
-`design/Dinky Findings.md`'s coroutine findings and this module's
-`WaitCondition` doc for the full reasoning. A suspend attempted from
+`WaitCondition`'s doc for what a thread can wait on. A suspend attempted from
 inside a plain expression (`let x = wait_for(1.0)`, an `Array.map`
 callback, an `if` condition, ...) is deliberately *not* supported yet —
 `requireDone` is what every one of those contexts uses to turn an
@@ -202,17 +197,9 @@ type Outcome a
 {-| What a suspended thread is waiting on, checked once per scheduler
 `tick` (`Zak.Interpreter.tick`): a fixed number of elapsed seconds
 (`wait_for`), or another thread's own completion (`join`,
-the one generic "wait on something else" primitive kept in this pass —
-see `design/Dinky Findings.md`'s note on why game-specific conditions like
-"is this actor still walking" are deliberately deferred rather than
-folded in here as a `Custom` case).
-
-No frame-counted `Frames` case (the reference engine's `breakhere`'s own
-would-be counterpart) — checked directly against the real DeloresDev
-`.dinky` source before deciding to drop it: `breakhere` is used zero times
-across all 49 files there, versus `breaktime` at 166 uses, so a
-tick-counted wait never earned a place here as a separate primitive from
-`Seconds`.
+the one generic "wait on something else" primitive kept in this pass).
+Host-specific conditions are left to the embedder rather than folded in
+here as a `Custom` case.
 -}
 type WaitCondition
     = Seconds Float
@@ -397,16 +384,16 @@ entirely the embedder's — see `Zak.Debug`'s own doc for why this had to
 wait for something like this to exist at all.
 
 `pendingEffects` is the exact same shape of thing, generalized to any
-embedding game rather than logging specifically: a game-specific native
-(a hypothetical `walk_to`, defined entirely outside `src/Zak/*` by
+embedder rather than logging specifically: a host-specific native (a
+hypothetical `play_sound`, defined entirely outside this package by
 whatever embeds this interpreter — see `Effect`'s own doc for why it's a
-generic `{ name, args }` pair and not a closed type naming actual game
-verbs) has exactly the same "wants something only the embedder can
+generic `{ name, args }` pair and not a closed type naming actual host
+operations) has exactly the same "wants something only the embedder can
 produce" problem `print` does, and the same fix: append plain, inert data
 describing what was asked for, and let `Zak.Interpreter.drainEffects` +
-the embedder do the rest. Nothing under `src/Zak/*` ever inspects `name`
+the embedder do the rest. Nothing in the interpreter ever inspects `name`
 or interprets `args` — doing so would mean this module (still meant to
-work for *any* embedding game) knowing about one specific game's verbs.
+work for *any* embedder) knowing about one specific host's vocabulary.
 
 `constNames` tracks which names in which scope frame were declared with
 `const` rather than `let` — a separate, narrow side-structure rather
@@ -437,7 +424,7 @@ type alias State =
        in `initialWorld`, to the same id its own returned `Env` already
        carries. Exists so a plain `NativeFunction` (`State -> List Value ->
        ...`, no `Env` of its own) can still splice more top-level code into
-       the shared world -- `import`, `Engine.Boot`'s own native -- without
+       the shared world -- an embedder's own `import` native -- without
        needing `Env` threaded into every native's own signature just for
        this one case.
     -}
@@ -456,20 +443,11 @@ type alias State =
 
 {-| Binds `name -> value` directly into the shared world frame
 (`state.globalFrameId`, stamped once by `Zak.Interpreter.initialWorld`) --
-the one thing a handful of `Engine.*` natives (`define_actor`/
-`define_scene`/`Actor.select`) need that ordinary Zak `let` can't give
-them once their own call is nested inside another function (e.g.
-`Boot.zak`'s own `defineHero`, called from `main()`): `let` is properly,
-lexically scoped in Zak by design (unlike Squirrel's own `<-`
-root-table-always quirk `DEFINE_ACTOR`'s real macro expansion relies on)
--- a `let` inside a function body binds locally to that call, not
-globally. Lives here, not in `Engine.Natives` (its own original home),
-purely to break an import cycle: `Engine.Natives` already imports
-`Engine.Actor`, so `Engine.Actor`'s own natives (`Actor.select`, notably)
-couldn't reach back into `Engine.Natives` for this one helper without
-creating one. `Zak.Runtime` is the one module low enough that both
-already import it directly, and pure enough (just a `State`-heap write)
-that it belongs here regardless of the cycle.
+for embedder natives that need to define a global even when their own
+call is nested inside another function (e.g. a script helper called from
+`main()`), which ordinary Zak `let` can't give them: `let` is properly,
+lexically scoped in Zak by design -- a `let` inside a function body binds
+locally to that call, not globally.
 -}
 bindGlobal : String -> Value -> State -> State
 bindGlobal name value state =
@@ -480,8 +458,7 @@ bindGlobal name value state =
 handful of `console.*` methods a browser actually renders differently
 (`log`/`debug`/`info`/`warn`/`error`), not the much wider "everything
 `console` offers" (MDN's own reference lists `table`/`group`/`assert`/
-`trace`/`count`/`time`/... well beyond this) — see `Zak Built-in
-Functions.md`'s "Debug" section for the full reasoning.
+`trace`/`count`/`time`/... well beyond this).
 -}
 type LogLevel
     = LogPrint
@@ -502,21 +479,20 @@ type alias LogEntry =
     }
 
 
-{-| One game-specific effect a native asked for, queued in
+{-| One host-specific effect a native asked for, queued in
 `State.pendingEffects` until `Zak.Interpreter.drainEffects` hands it to
 the embedder. Deliberately a generic `{ name, args }` pair, not a closed
-type naming actual game verbs (`SayLine { actor, text } | WalkTo { ... }`
-and so on): a type like that would put one specific embedding game's
-vocabulary inside `Zak.Runtime`, which is meant to work for any game this
-interpreter gets embedded in — the exact mistake a `Zak.Actor` module
-would have made, just relocated to a different file rather than avoided.
-`name` is whatever string the native itself chooses (`"walk_to"`,
-`"say_line"`, ...) — this module never inspects it. `args` holds each
+type naming actual host operations (`PlaySound { name } | MoveTo { ... }`
+and so on): a type like that would put one specific embedder's
+vocabulary inside `Zak.Runtime`, which is meant to work for any host this
+interpreter gets embedded in. `name` is whatever string the native itself
+chooses (`"play_sound"`, `"move_to"`, ...) — this module never inspects
+it. `args` holds each
 argument's already-resolved `Value` — a plain `VString`/`VNumber`, never
 a `VArray`/`VTable` id kept around past the call that produced it, since
 those reference `state.heap`/`state.arrayHeap`, which may not look the
 same by the time this effect is actually drained. A native that wants to
-queue "walk to this table's `x`/`y` fields" reads `x`/`y` out *before*
+queue "move to this table's `x`/`y` fields" reads `x`/`y` out *before*
 appending, the same way `logNative` (`Zak.Debug`) already extracts the
 plain `String` out of a `VString` before appending to `pendingLogs`,
 rather than storing the `Value` itself.

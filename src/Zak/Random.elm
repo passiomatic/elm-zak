@@ -1,10 +1,7 @@
 module Zak.Random exposing (natives)
 
-{-| `random`/`randomfrom`/`randomodds` — DeloresDev's real random-function
-API (`design/Random Functions.md`, ranked against the full 49-file real
-game corpus: these three cover ~99% of actual use; `randomseed`'s
-introspection form and the `FLIPCOIN` macro are skipped as genuinely
-unused there) — under one `Random` namespace table, the same "family of
+{-| `Random.number`/`Random.pick`/`Random.odds` — the random functions,
+under one `Random` namespace table, the same "family of
 related built-ins gets its own file/namespace" shape `Zak.Math`/
 `Zak.String`/`Zak.Debug` already follow.
 
@@ -22,8 +19,8 @@ generator state.randomSeed`, storing the resulting seed back) — the same
 `nextId`/`nextThreadId` already establish, just for a `Random.Seed`
 instead of a counter. `Zak.Interpreter.seedState` seeds it with a fixed,
 deterministic default (`Random.initialSeed 0`), same as every other
-`State` field there; real entropy is the embedding game's own job to
-supply later (see `Engine`/`Main.elm`), not this module's.
+`State` field there; real entropy is the embedder's own job to
+supply, not this module's.
 
 Exposes `natives`, a single `"Random"` namespace entry — folded into
 `Zak.Interpreter.stdlibNatives`, the same tier `Math`/`String`/`Debug`
@@ -50,11 +47,9 @@ natives =
         )
 
 
-{-| `Random.number(start, end)` — DeloresDev's real `random(start,end)`.
-Its real int-vs-float-by-argument-type overload is dropped: Zak's
-`Value` only ever has `VNumber Float`, so this always returns a float,
-the same simplification-over-verbatim-port precedent this codebase
-already leans on elsewhere (no ternary, no `ONCE`-gating).
+{-| `Random.number(start, end)` — a uniform random number between `start`
+and `end`. There's no int-vs-float-by-argument-type overload: Zak's
+`Value` only ever has `VNumber Float`, so this always returns a float.
 -}
 number : State -> List Value -> Result RuntimeError ( Value, State )
 number state args =
@@ -76,9 +71,9 @@ number state args =
             Err (WrongArgCount { expected = 2, got = List.length args })
 
 
-{-| `Random.pick(array)` — DeloresDev's real `randomfrom`, array-only
-here (a caller can always pass a list; see `design/Random Functions.md`
-for why this sidesteps building Zak's first true variadic native).
+{-| `Random.pick(array)` — a uniformly random element, array-only (a
+caller can always pass a list, which sidesteps building Zak's first true
+variadic native).
 Built on `elm/random`'s own `Random.uniform : a -> List a -> Generator a`
 ("pick uniformly from a list"), which needs exactly this
 already-split-into-head/tail shape. Errors on an empty array
@@ -107,8 +102,7 @@ pick state args =
             Err (WrongArgCount { expected = 1, got = List.length args })
 
 
-{-| `Random.odds(p)` — DeloresDev's real `randomodds`, kept verbatim
-minus the redundant `random` prefix. `true` with probability `p`,
+{-| `Random.odds(p)` — `true` with probability `p`,
 `false` with probability `1 - p`. Built on `elm/random`'s own
 `Random.weighted : (Float, a) -> List (Float, a) -> Generator a` (picks
 from weighted pairs, probability proportional to weight) rather than

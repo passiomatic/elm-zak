@@ -50,17 +50,10 @@ toFloatOrFail chomped =
 
 {-| A Zak string literal: double-quoted, with `\` escaping either `"` or
 another backslash. Any other use of `\` is a parse error rather than a
-recognized escape (e.g. there is no `\n`). Single-quoted strings were
-dropped (`design/Zak Language Implementation.md`'s own "Strings"
-section) — checked directly against Zak's four reference languages first:
-Squirrel's `'a'` is a different type entirely (a character/integer
-literal, not a string, and a hard compile error past one character),
-Python's and Lua's `'...'`/`"..."` are fully interchangeable so nothing is
-lost matching them, and Ruby's real `'...'`/`"..."` split (no
-interpolation/escapes in the former) was never something Zak's own two
-forms encoded anyway — they were 100% equivalent already. `'` is now just
-an ordinary character, no different from any other symbol this grammar
-doesn't recognize.
+recognized escape (e.g. there is no `\n`). There is only one string form:
+a second, single-quoted one would have been 100% equivalent to this one,
+adding syntax without adding meaning. `'` is just an ordinary character,
+no different from any other symbol this grammar doesn't recognize.
 -}
 string : Parser String
 string =
@@ -92,11 +85,10 @@ escapedChar =
         ]
 
 
-{-| The structural keywords that are part of the grammar itself, per Zak's
-EBNF `reserved-word` rule. These are the only names special-cased at the
+{-| The structural keywords that are part of the grammar itself (the
+grammar's `reserved-word` rule). These are the only names special-cased at the
 tokenizer level. `true`, `false`, and `nil` are deliberately **not** here —
-they're ordinary pre-bound values, not reserved words (see the "Identifiers
-and reserved words" section of `design/Zak Language Implementation.md`).
+they're ordinary pre-bound values, not reserved words.
 -}
 reservedWords : Set String
 reservedWords =
@@ -108,8 +100,7 @@ reservedWords =
 
 {-| A Zak identifier: starts with a letter or underscore, continues with
 letters, digits, or underscores, optionally ending in a single `?` or `!`
-(see "Identifiers and reserved words" in `design/Zak Language
-Implementation.md` — `?` marks a predicate by convention (e.g. `ready?`),
+(`?` marks a predicate by convention (e.g. `ready?`),
 `!` marks a function that mutates its argument in place (e.g. `push!`); a
 leading `_` marks a "semi-private" name by convention (e.g. `_soundid`);
 nothing here checks or enforces any of these meanings). A bare `_` is a
@@ -233,11 +224,7 @@ separator (see `newline` above), left for `spaces`/`blankSpace` below to
 handle on their own terms. `#`, not `//`: `//` is already Zak's
 floor-division operator, and comments are lexer-level trivia recognized
 independently of grammar position, so the same two characters can't mean
-both without making comment-recognition context-sensitive. `#` isn't a
-departure from the actual porting target either — Squirrel's own
-reference manual documents `#` as an alternative to `//` for single-line
-comments, added for Unix shebang-line compatibility (see "Comments" in
-`design/Zak Language Implementation.md`).
+both without making comment-recognition context-sensitive.
 -}
 comment : Parser ()
 comment =

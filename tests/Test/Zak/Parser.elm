@@ -369,7 +369,7 @@ suite =
                 -- fourth and last of the "all four agree" positions
                 , ( "function(a, b,): return a + b end", Nothing )
                 ]
-        , describe "expr: function literal, default parameter values (Squirrel-style positional-fill, trailing-only)" <|
+        , describe "expr: function literal, default parameter values (positional-fill, trailing-only)" <|
             List.map (testValue normalizeExpr P.parseExpr)
                 [ ( "function(a=1): return a end"
                   , Just (FunctionLiteral [ ( "a", Just (NumberLiteral 1) ) ] (dummyBlock [ Return (Just (Name "a")) ]))
@@ -389,9 +389,7 @@ suite =
                   )
 
                 -- trailing-only: a plain parameter can never follow a
-                -- defaulted one, matching real Squirrel exactly (confirmed
-                -- directly: `function(a=1, b)` fails there with "expected
-                -- '='") -- both a single plain param right after one default,
+                -- defaulted one -- both a single plain param right after one default,
                 -- and two plain params after one, are rejected
                 , ( "function(a=1, b): return a end", Nothing )
                 , ( "function(a=1, b, c): return a end", Nothing )
@@ -409,9 +407,9 @@ suite =
                 , ( "a[\n    0\n]", Just (Index (Name "a") (NumberLiteral 0)) )
                 , ( "(\n    1 + 2\n)", Just (Binary Add (NumberLiteral 1) (NumberLiteral 2)) )
 
-                -- blank lines and a comment together, matching how a real
-                -- multi-line define_actor/define_object call is actually
-                -- written in design/Bank.zak
+                -- blank lines and a comment together, matching how a
+                -- realistic multi-line table-argument call is actually
+                -- written
                 , ( """define_actor("Taylor", {
     # a comment on its own line
     health = 100,
@@ -451,8 +449,8 @@ suite =
                 -- a multi-line call as a let's value doesn't leak its new
                 -- blank-space tolerance past its own closing bracket — the
                 -- very next line is still an ordinary, separate statement,
-                -- exactly the shape a real Bank.zak-style room/actor
-                -- definition needs (see the "array/table literals..."
+                -- exactly the shape a realistic multi-line table-argument
+                -- call needs (see the "array/table literals..."
                 -- describe block above for the expression-level version
                 -- of this same fix)
                 , ( """let a = define_actor("Taylor", {
@@ -480,7 +478,7 @@ let b = 2"""
                 , ( "const x = 1 + 2", Just [ Const "x" (Binary Add (NumberLiteral 1) (NumberLiteral 2)) ] )
 
                 -- accepts any expression, same as let -- deliberately not
-                -- restricted to literals the way Squirrel's own const is
+                -- restricted to literals
                 , ( "const t = { x = 1 }", Just [ Const "t" (TableLiteral [ ( "x", NumberLiteral 1 ) ]) ] )
 
                 -- "const" is now reserved, the same way "let" already is
@@ -520,7 +518,7 @@ let b = 2"""
 
                 -- the actual new capability: a call (or any other
                 -- non-Name expression) is now a valid assignment-target
-                -- base, exactly like real Squirrel/Lua, as long as there's
+                -- base, as long as there's
                 -- at least one field/index step to actually write through
                 , ( "Actor.current().health = 100"
                   , Just
@@ -659,9 +657,8 @@ let b = 2"""
                 , ( "if true:\n    break\nend", Nothing )
 
                 -- a function literal resets loop context even when the
-                -- literal itself is written inside a while — matches
-                -- Python/JS treating break/continue as not crossing into a
-                -- nested function body
+                -- literal itself is written inside a while — break/continue
+                -- don't cross into a nested function body
                 , ( "while true:\n    let f = function():\n        break\n    end\nend", Nothing )
 
                 -- for establishes loop context exactly the same way while does

@@ -147,7 +147,7 @@ suite =
                 , ( "123abc", Nothing )
                 , ( "", Nothing )
 
-                -- a leading "_" is legal too — Dinky's "semi-private"
+                -- a leading "_" is legal too — the "semi-private"
                 -- naming convention (e.g. `_soundid`), purely conventional
                 -- like the trailing "?"/"!" cases above
                 , ( "_private", Just "_private" )

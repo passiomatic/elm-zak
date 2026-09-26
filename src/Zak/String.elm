@@ -11,12 +11,11 @@ extended later" (the same philosophy `Zak.Array`'s own build-out already
 followed). More will likely land here the same way as further needs
 surface.
 
-`slice` landed the same way: deriving a name like `"verb_ok_dance"` from
-`"verb_dance"` (porting real DeloresDev's `VERB_OK` mechanism) needs a
-real substring primitive, not just the whole-string `++`/`replace`/
-`reverse` already here. See `slice`'s own doc for the specific,
-deliberate divergences from Lua's `string.sub`/Squirrel's `.slice()` (its
-two closest real precedents) that came out of designing it.
+`slice` landed the same way: deriving a name like `"logo"` from
+`"img_logo"` needs a real substring primitive, not just the whole-string
+`++`/`replace`/`reverse` already here. See `slice`'s own doc for the
+specific, deliberate divergences from typical slice APIs that came out of
+designing it.
 
 Every function in this namespace is pure, with no exception and no `!`
 twin for any of them — not a per-function naming choice, but because a
@@ -131,7 +130,7 @@ stringIsEmpty state args =
 always pure, since `String` has no identity to mutate in the first
 place, so there was never a mutating form to choose between here (see
 "Arrays" in the language reference for the rule this sidesteps).
-Confirmed straight from `Elm.Kernel.String`'s own implementation:
+Inherited straight from `Elm.Kernel.String`'s own implementation:
 surrogate-pair aware (an astral-plane character, most emoji included,
 reverses as one whole unit, not two swapped halves), but not
 grapheme-cluster aware — a base character followed by a separate
@@ -153,9 +152,8 @@ stringReverse state args =
 
 
 {-| `String.replace(string, needle, replacement)` — the subject first,
-matching `String.append`/`String.format`'s own argument order (and real
-precedent: Lua's `string.gsub(s, pattern, repl)` puts its subject first
-too, confirmed directly). Not the target-last order this used to have —
+matching `String.append`/`String.format`'s own argument order. Not the
+target-last order this used to have —
 that was borrowed from `Array.get_default`/`Table.get_default`, back
 when `Array`/`Table` themselves put their own target last; now that
 they've moved to target-first (see "Arrays"/"Tables" in the language
@@ -168,8 +166,8 @@ replacing every occurrence, not just the first.
 Deliberately reuses Elm's behavior verbatim on an empty `needle`, rather
 than special-casing it into an error: `String.replace("abc", "", "-")`
 returns `"a-b-c"`, inserting `replacement` between every character
-(Elm's own `join after (split before string)`, and JS's
-`"abc".split("")` underneath that, is where this comes from). Surprising
+(Elm's own `join after (split before string)` is where this comes
+from). Surprising
 on first read, but not corrupted or undefined the way a zero divisor or
 an empty-array `pop` are — `""` is a perfectly ordinary `String` value
 with a real, if unusual, meaning here. Stays in the same bucket as
@@ -198,19 +196,16 @@ stringReplace state args =
 
 {-| `String.slice(string, start, end)` — `string`, from `start` up to but
 not including `end` (a plain half-open range, 0-based). `end` is
-optional, defaulting to `string`'s own length — matching Lua's own
-`string.sub(s, i, j=-1)`, whose trailing bound is likewise optional and
-defaults to the end of the string, and precedented in this codebase by
-`Debug.assert` (`src/Zak/Debug.elm`), the first Zak native to accept a
-variable argument count. This is what makes deriving a name like
-`"verb_ok_dance"` from `"verb_dance"` read well: `String.slice(verb, 5)`,
-no separate `String.length(verb)` call needed just to mean "to the end."
+optional, defaulting to `string`'s own length — precedented in this
+codebase by `Debug.assert` (`Zak.Debug`), the first Zak native to accept
+a variable argument count. This is what makes deriving a name like
+`"logo"` from `"img_logo"` read well: `String.slice(name, 4)`, no
+separate `String.length(name)` call needed just to mean "to the end."
 
-Two deliberate divergences from Lua's `sub`/Squirrel's `.slice()`, both
-settled by design discussion rather than copied wholesale:
+Two deliberate divergences from most slice APIs:
 
-  - **No negative-index "count from the end" behavior.** Both reference
-    languages (and Elm's own `String.slice`, which this wraps) treat a
+  - **No negative-index "count from the end" behavior.** Many slice APIs
+    (Elm's own `String.slice`, which this wraps, included) treat a
     negative index as counting backward from the string's end. Zak
     doesn't — `start`/`end` are plain non-negative positions, matching
     `Array.get`'s own index philosophy (`0 <= index`, no wraparound) over
@@ -219,16 +214,14 @@ settled by design discussion rather than copied wholesale:
   - **A negative or non-whole-number `start`/`end` is a hard
     `RuntimeError`** (`NegativeIndex`/`NotAnInteger` respectively) —
     again matching `Array.get`'s "this input is wrong, don't silently do
-    something else" stance, not Lua's fully permissive clamp-everything
+    something else" stance, not a fully permissive clamp-everything
     behavior.
 
 Everything else about a bad range is ordinary, unremarkable clamping, the
-same universal convention Lua/Python/JS all already use for a plain
-out-of-range slice — not a `Math.sqrt`-style silently-wrong value worth
+usual out-of-range slice convention — not a `Math.sqrt`-style silently-wrong value worth
 guarding against: an `end` past `string`'s own length just clamps to the
-length, and `start >= end` (after clamping) yields `""`. Verified
-directly against Elm's own `String.slice` before relying on it here:
-`String.slice 2 1 "abc" == ""`, `String.slice 0 999 "abc" == "abc"` — by
+length, and `start >= end` (after clamping) yields `""`. Elm's own
+`String.slice` already behaves this way: `String.slice 2 1 "abc" == ""`, `String.slice 0 999 "abc" == "abc"` — by
 the time this function clamps both bounds into `[0, String.length
 string]`, Elm's own behavior for whatever's left to resolve is exactly
 what's wanted, not something to guard against.
@@ -364,18 +357,12 @@ stringAppend state args =
 
 {-| `String.format(format, args)` — substitutes each `%s`/`%d`/`%f`/`%x`/
 `%X`/`%%` in `format`, in order, with values from `args` (an `Array`).
-Checked directly against Lua's own manual, Squirrel's real
-`sqstdstring.cpp` source, and Python's own docs before deciding what to
-leave out, not just what to include — see `design/Zak Built-in
-Functions.md`'s own "String.format" section for the full rationale (all
-three references ship a much larger `printf`-derived mini-language; this
-is a deliberately small slice of it: no flags/width/precision, nothing
-beyond these five directives).
+A deliberately small printf-style subset: no flags/width/precision,
+nothing beyond these five directives.
 
 `%x`/`%X` (lowercase/uppercase hex) truncate toward zero like `%d`, then
-format via `Hex.toString` (`rtfeldman/elm-hex`). One deliberate divergence
-from Squirrel/Lua's own `%x`, confirmed directly (`format("%x", -1)` in
-real Squirrel prints the 64-bit two's-complement bit pattern, all `f`s):
+format via `Hex.toString` (`rtfeldman/elm-hex`). Negative values are not
+printed as a two's-complement bit pattern, as a fixed-width `%x` would:
 Zak's `Number` has no fixed integer width anywhere else in the language,
 so there's no principled width to wrap a negative value around — `%x`/`%X`
 sign-prefix instead (`String.format("%x", [-255]) == "-ff"`), exactly
@@ -386,25 +373,22 @@ matching `Hex.toString`'s own behavior, not inventing a new rule.
 `String.format("100%%")`) — this native's own arity is exact, matching
 every other `NativeFunction` in the language (Zak's real default-argument
 mechanism, `function(a, b=1): ... end`, only applies to `function(...)`
-closures, not natives — see `Engine.Actor.playAnimation`'s own doc for a
-native that opts into the same *calling convention* anyway, via Elm-side
-arity handling rather than Zak-level defaults).
+closures, not natives — though an embedder's own native may still opt
+into the same *calling convention*, via Elm-side arity handling rather
+than Zak-level defaults).
 
 Its own length must equal the number of `%s`/`%d`/`%f` placeholders in
 `format` **exactly** — checked once, up front, against `countPlaceholders`
 below, before any actual substitution happens, so a mismatch always
 reports the true placeholder count and the true argument count, not
 wherever the walk over `format` happened to run out first. Both too few
-and too many are `FormatArgMismatch`, never silently tolerated (Lua/
-Squirrel silently drop unused extra arguments; Python errors, and that's
-the one Zak follows here, matching every other arity/bounds mismatch in
-the language).
+and too many are `FormatArgMismatch`, never silently tolerated, like
+every other arity/bounds mismatch in the language.
 
 `%s` accepts any value at all (the same `displayString` `String.from`
 itself uses); `%d`/`%f` are hard `TypeError`s on anything but a `Number`.
 `%d` truncates a fractional value toward zero (Elm's own `truncate`
-already does exactly this — confirmed this is what Lua, Squirrel, *and*
-Python's real `%d` all do too, not assumed from C habit); `%f` keeps the
+already does exactly this); `%f` keeps the
 full value via the same `String.fromFloat`-based path `displayString`'s
 own `Number` case already uses (no fixed decimal-place count yet — that's
 what precision support would add, once it's ever needed).

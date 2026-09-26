@@ -57,7 +57,7 @@ suite =
                         ()
             , test "nil" <| \_ -> runExpr "type(nil)" |> Expect.equal (Ok (VString "nil"))
             , test "array" <| \_ -> runExpr "type([1, 2, 3])" |> Expect.equal (Ok (VString "array"))
-            , test "table — matching Lua/Squirrel's own naming, not the \"record\" this type used to be called (see Zak.Globals's own doc for why)" <|
+            , test "table — not \"record\" (see Zak.Globals's own doc for why)" <|
                 \_ -> runExpr "type({ x = 1 })" |> Expect.equal (Ok (VString "table"))
             , test "function" <|
                 \_ -> runExpr "type(function(): end)" |> Expect.equal (Ok (VString "function"))

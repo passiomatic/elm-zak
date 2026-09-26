@@ -146,7 +146,7 @@ suite =
                 , ( "nil < nil", Nothing )
                 , ( "1 < \"1\"", Nothing )
                 ]
-        , describe "runExpr: in (x in array/table — sugar for Array.contains/Table.contains, value-based on arrays like Python, not index-based like real Squirrel's own in)" <|
+        , describe "runExpr: in (x in array/table — sugar for Array.contains/Table.contains, value-based on arrays, not index-based)" <|
             List.map (testValue (I.runExpr noNatives))
                 [ ( "1 in [1, 2, 3]", Just (VBool True) )
                 , ( "4 in [1, 2, 3]", Just (VBool False) )
@@ -165,7 +165,7 @@ suite =
                 -- with it like any other expression
                 , ( "not (1 in [2, 3])", Just (VBool True) )
 
-                -- a hard error, not Squirrel's own silent false, for a
+                -- a hard error, not a silent false, for a
                 -- non-Array/Table right-hand side or a non-String table key
                 , ( "1 in 5", Nothing )
                 , ( "1 in { a = 1 }", Nothing )
@@ -231,7 +231,7 @@ suite =
                 -- calling a non-function
                 , ( "(1)(2)", Nothing )
                 ]
-        , describe "runExpr: default parameter values (Squirrel-style positional-fill, trailing-only)" <|
+        , describe "runExpr: default parameter values (positional-fill, trailing-only)" <|
             List.map (testValue (I.runExpr noNatives))
                 [ -- a 3-param function, 2 defaulted, called with 1/2/3 args
                   ( "function(a, b=10, c=20): return a + b + c end(1)", Just (VNumber 31) )
@@ -259,7 +259,7 @@ suite =
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
             ]
         , describe "runExpr: default parameter values -- evaluated fresh per call, in the enclosing scope, not once at definition time" <|
-            [ test "no shared-mutable-default bug: an array-literal default is an independent value on every call that falls back to it, not one instance mutated in place across all of them (the classic Python/Squirrel \"mutable default argument\" gotcha, confirmed to affect real Squirrel too and deliberately not carried over here)" <|
+            [ test "no shared-mutable-default bug: an array-literal default is an independent value on every call that falls back to it, not one instance mutated in place across all of them (the classic \"mutable default argument\" gotcha, deliberately avoided here)" <|
                 \_ ->
                     run noNatives
                         """
@@ -306,7 +306,7 @@ suite =
                         return result == 101 and counter.value == 0
                         """
                         |> Expect.equal (Ok (VBool True))
-            , test "a default cannot reference an earlier parameter -- matches real Squirrel (confirmed directly: function(a, b=a+1) fails there with \"the index 'a' does not exist\")" <|
+            , test "a default cannot reference an earlier parameter" <|
                 \_ ->
                     I.runExpr noNatives "function(a, b=a): return b end(1)"
                         |> Expect.equal (Err (RuntimeError (UndefinedName "a")))
@@ -381,7 +381,7 @@ r.a.b = 2"""
                   , Nothing
                   )
                 ]
-        , describe "run: an assignment target's base can be any expression, not just a name (e.g. a call) — matches real Squirrel/Lua, checked directly" <|
+        , describe "run: an assignment target's base can be any expression, not just a name (e.g. a call)" <|
             List.map (testValue (run noNatives))
                 [ ( """let r = { health = 100 }
 let get_actor = function():
@@ -525,8 +525,7 @@ end"""
                   , Just (VNumber 2)
                   )
 
-                -- scoped exactly like let, not Squirrel's own const (which
-                -- leaks past its enclosing function entirely) -- a const
+                -- scoped exactly like let -- a const
                 -- declared inside a function body is gone once it returns
                 , ( """let f = function():
     const x = 1
@@ -538,14 +537,13 @@ return x"""
                   )
 
                 -- const accepts any expression, not just a literal --
-                -- deliberately not carrying over Squirrel's own
-                -- literals-only restriction
+                -- deliberately not restricted to literals
                 , ( """const greet = function(name): return "hi " ++ name end
 return greet("Taylor")"""
                   , Just (VString "hi Taylor")
                   )
 
-                -- shallow, JS-style const: rebinding the name is blocked,
+                -- shallow const: rebinding the name is blocked,
                 -- but mutating a const-bound table's own field is not --
                 -- that's a field write, not a reassignment of `t` itself
                 , ( """const t = { x = 1 }
@@ -833,7 +831,7 @@ return Array.length(seen)"""
                         |> Result.map Tuple.first
                         |> Expect.equal (Ok (VNumber 42))
             ]
-        , describe "importSource -- Engine.Boot's `import(path)` native is a thin wrapper around this" <|
+        , describe "importSource -- an embedder's `import(path)` native can be a thin wrapper around this" <|
             [ test "a file's own top-level statements land in the shared world scope, visible to code that runs after it" <|
                 \_ ->
                     let
@@ -1131,7 +1129,7 @@ return function?(function?)"""
                 \_ ->
                     I.runExpr noNatives "\"1\" < 1"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
-            , test "in with a non-Array/Table right-hand side is a hard TypeError, not Squirrel's own silent false" <|
+            , test "in with a non-Array/Table right-hand side is a hard TypeError, not a silent false" <|
                 \_ ->
                     I.runExpr noNatives "1 in 5"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array or Table", got = VNumber 5 })))

@@ -107,7 +107,7 @@ suite =
                     runExpr "String.reverse(\"a\", \"b\")"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 2 })))
             ]
-        , describe "replace (string, needle, replacement — subject first, matching String.append/String.format and Lua's string.gsub)" <|
+        , describe "replace (string, needle, replacement — subject first, matching String.append/String.format)" <|
             [ test "replaces every occurrence, not just the first" <|
                 \_ -> runExpr "String.replace(\"banana\", \"a\", \"o\")" |> Expect.equal (Ok (VString "bonono"))
             , test "no occurrence at all leaves the string unchanged" <|

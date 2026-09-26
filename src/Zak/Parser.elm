@@ -12,8 +12,7 @@ module Zak.Parser exposing
 Interpreters" convention (<https://blog.tinyinterpreters.dev/posts/>):
 single-pass, directly over the raw string via `elm/parser` combinators, using
 `Zak.Lexer`'s lexeme primitives. Private functions mirror the grammar rules
-in `design/Zak Language Implementation.md`'s EBNF appendix one-to-one; the
-exceptions are noted where they diverge.
+one-to-one; the exceptions are noted where they diverge.
 -}
 
 import Parser as P exposing ((|.), (|=), Parser)
@@ -72,9 +71,7 @@ always parses its own body with `True` regardless of its caller's value
 (entering a loop); `functionLiteral` always parses its body with `False`
 regardless of its caller's value (a function body is a separate unit of
 execution — `break`/`continue` don't cross into or out of one, the same
-way `return` doesn't leak into an enclosing loop's control flow either,
-matching Python/JS's own treatment of `break`/`continue` inside a nested
-function).
+way `return` doesn't leak into an enclosing loop's control flow either).
 -}
 block : Bool -> Parser Block
 block insideLoop =
@@ -240,10 +237,7 @@ for a keyword to disambiguate against, the same reason a function's own
 parameters (`function(a, b): ... end`) never needed `let` either: a
 fresh per-call binding with no competing form isn't the thing `let`
 exists to mark. Zak's own function parameters already establish this
-precedent; Lua's `for i, v in ipairs(t) do` and Squirrel's `foreach (i, v
-in arr)` establish it externally too — neither needs a declaration
-keyword for their loop variables, confirmed by actually running both,
-not assumed.
+precedent.
 
 Like `whileStmt`, its own body always parses with `insideLoop = True`
 regardless of the caller's value, since entering a `for` starts a new loop
@@ -338,17 +332,17 @@ toAssignStatement targetExpr rhs =
             P.succeed (Assign target rhs)
 
         Nothing ->
-            P.problem "invalid assignment target: a bare name, or a field/index chain ending in one (e.g. Taylor.health, Taylor.items[0], Actor.current().health) can be assigned to"
+            P.problem "invalid assignment target: a bare name, or a field/index chain ending in one (e.g. player.health, items[0], get().health) can be assigned to"
 
 
 {-| Walks a `.field`/`[index]` chain back to its base, same as before —
 the one change is what counts as a valid *base*. A `Name` is always valid
 (segments or not — that's the ordinary `x = 1`/`Taylor.health = 1` cases).
 Anything else (a `Call`, a parenthesized expression, ...) is valid only
-once there's at least one segment to actually write through — matching
-real Squirrel/Lua, which allow a call as an assignment's base but still
-have nothing to assign *to* for a bare `f() = 1` (see `AssignTarget`'s own
-doc in `Zak.AST` for the full rationale).
+once there's at least one segment to actually write through — a call is
+allowed as an assignment's base, but there's still nothing to assign *to*
+for a bare `f() = 1` (see `AssignTarget`'s own doc in `Zak.AST` for the
+full rationale).
 -}
 exprToAssignTarget : Expr -> Maybe AssignTarget
 exprToAssignTarget =
@@ -377,8 +371,8 @@ exprToAssignTarget =
 
 -- EXPRESSIONS
 --
--- Follows the precedence table in `design/Zak Language Implementation.md`
--- directly, from loosest (`orExpr`) to tightest (`unaryExpr`). Each level
+-- One function per precedence level, from loosest (`orExpr`) to tightest
+-- (`unaryExpr`). Each level
 -- calls the next-tighter level for its operands.
 
 
@@ -650,9 +644,7 @@ parameter =
 
 
 {-| Once a parameter has a default, every parameter after it must too —
-`function(a=1, b)` is invalid, the same restriction real Squirrel enforces
-as a hard compile-time error (confirmed directly: `function(a=1, b)`
-fails there with "expected '='"). `commaSeparated` itself has no notion
+`function(a=1, b)` is invalid, a hard parse-time error. `commaSeparated` itself has no notion
 of ordering constraints between the items it collects, so this is
 checked as a separate pass afterward, the same structural,
 parse-time-not-runtime treatment `breakStmt`/`continueStmt`'s
@@ -687,12 +679,8 @@ isTrailingDefaultsOnly params =
 
 {-| Zero or more `item`s separated by commas — **no** trailing comma after
 the last one; used for array elements, table fields, call arguments, and
-function parameters alike, so all four agree on this. (An earlier version
-of the EBNF appendix in `design/Zak Language Implementation.md` allowed
-one for table fields only, then briefly allowed one everywhere for
-consistency — deliberately dropped again, everywhere, rather than settled
-either of those ways: not disliked for the inconsistency alone, just not
-worth carrying at all, in any position.)
+function parameters alike, so all four agree on this. (A trailing comma
+isn't worth carrying at all, in any position — not just in some of them.)
 
 Tolerant of blank lines/comments (via `L.blankSpace`) around every gap —
 before the first item, around each comma, and after the last item — so a

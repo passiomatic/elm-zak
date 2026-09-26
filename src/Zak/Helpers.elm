@@ -1,10 +1,9 @@
 module Zak.Helpers exposing (describeRuntimeError, describeRuntimeErrorAt, formatError, toConsoleEntry)
 
 {-| Cross-cutting Zak utilities that don't belong to any one type's own
-home module — the `Zak` namespace's counterpart to `Engine.Helpers`:
-error formatting (`formatError`, `describeRuntimeError`) and the
-`LogEntry` → browser-console mapping every embedder's log port shares
-(`toConsoleEntry`).
+home module: error formatting (`formatError`, `describeRuntimeError`)
+and the `LogEntry` → browser-console mapping every embedder's log port
+shares (`toConsoleEntry`).
 -}
 
 import Parser exposing (DeadEnd, Problem(..))
@@ -15,8 +14,8 @@ import Zak.Runtime exposing (LogEntry, LogLevel(..), RuntimeError(..), Value(..)
 
 {-| One drained `LogEntry` as the plain record an embedder's
 `logToConsole` port sends to JS, which then only has to call
-`console[entry.level](entry.message)` -- used by both `Main.elm` (the
-game) and `Tools/ZakRunner.elm`, so the level-name mapping exists once.
+`console[entry.level](entry.message)` -- so the level-name mapping
+lives here once, not in every embedder.
 -}
 toConsoleEntry : LogEntry -> { level : String, message : String }
 toConsoleEntry entry =
@@ -54,10 +53,9 @@ consoleMethod level =
 
 {-| A one-line, plain-English description of a `Zak.Interpreter.Error`,
 plus the exact source line it happened on with a `^` under the column it
-happened at — shared by `Tools.ZakRunner` (the dev tool's own result view)
-and `Main`'s boot-error path, in preference to `Debug.toString`, which only
-ever dumps the raw constructor tree (fine for a test's own `Expect.equal`,
-useless for a person actually looking at the error).
+happened at — readable, unlike `Debug.toString`, which only ever dumps
+the raw constructor tree (fine for a test's own `Expect.equal`, useless
+for a person actually looking at the error).
 -}
 formatError : String -> Error -> String
 formatError source error =
@@ -69,30 +67,18 @@ formatError source error =
             formatRuntimeError source runtimeError
 
 
-{-| A `RuntimeError` reaching here is always `AtPosition`-tagged in
-practice: `ClickedRun` runs `model.source` through `runIncremental`, then
-`"return main()"` through a second `runIncremental` call against the
-same accumulated state (a required `main`, same willingness to let a
-missing one surface as an ordinary `UndefinedName "main"` failure, not a
-bespoke case of its own, `Engine.Boot.callMain` already has for the real
-game — though that one calls bare `"main()"`, discarding its own return
-value on purpose, since only the `WorldChange`s it queues matter there;
-this tool's whole job is showing that return value, hence the explicit
-`return`), and every statement `execStatements` executes gets tagged on
-its way out either way (see that function's own doc in
-`Zak.Interpreter`) — `runExpr`, the one entry point that deliberately
-never tags a position, is never called from this tool at all. A missing-
-`main` error's own position is `{ row = 1, col = 1 }` relative to the
-synthesized `"return main()"` string, not `model.source` — `errorBlock`
-below still renders it against `source` regardless, so the line it
-points at is coincidental, not meaningful; harmless in practice since
-`UndefinedName "main"`'s own message is self-explanatory either way, and
-not special-cased for the same "let it be an ordinary error" reason
-`Engine.Boot.callMain` doesn't special-case it. The untagged branch below
-still exists because `RuntimeError` itself carries no such guarantee
-structurally — only degrading to a positionless message instead of
-refusing to compile
-or crashing outright, if that guarantee were ever weakened later.
+{-| A `RuntimeError` reaching here is usually `AtPosition`-tagged in
+practice: every statement `execStatements` executes (and so everything
+run through `runIncremental`) gets tagged on its way out (see that
+function's own doc in `Zak.Interpreter`) — only `runExpr` deliberately
+never tags a position. A caller that runs a second, synthesized snippet
+(say `"return main()"`) against the same state gets positions relative to
+that snippet, not to `source` — `errorBlock` below still renders them
+against `source` regardless, so the line it points at is coincidental,
+not meaningful. The untagged branch below still exists because
+`RuntimeError` itself carries no such guarantee structurally — only
+degrading to a positionless message instead of refusing to compile or
+crashing outright, if that guarantee were ever weakened later.
 -}
 formatRuntimeError : String -> RuntimeError -> String
 formatRuntimeError source runtimeError =
@@ -105,7 +91,7 @@ formatRuntimeError source runtimeError =
 
 
 {-| A one-line description for when there's no source text to show a
-snippet from (e.g. an error inside a thread or an engine-called Zak
+snippet from (e.g. an error inside a thread or an embedder-called Zak
 function, which carries no file identity): keeps the row/column an
 `AtPosition` wrapper carries, which `describeRuntimeError` alone drops.
 `"line 3, column 7: “x” is not defined"`, or just the message when there's
@@ -121,10 +107,7 @@ describeRuntimeErrorAt runtimeError =
             describeRuntimeError runtimeError
 
 
-{-| The leaf `RuntimeError` variants, one plain-English sentence each —
-mirrors `design/Zak Built-in Functions.md`'s own per-error phrasing where
-one already exists, rather than inventing new wording for the same
-condition.
+{-| The leaf `RuntimeError` variants, one plain-English sentence each.
 -}
 describeRuntimeError : RuntimeError -> String
 describeRuntimeError runtimeError =
@@ -204,7 +187,7 @@ describeRuntimeError runtimeError =
 
 {-| A value mentioned *inside* a `RuntimeError` (`NotATable`'s/
 `NotAFunction`'s/`TypeError`'s own payload) can't be rendered the same
-way a successful result is (`renderValue`, in `Tools.ZakRunner`): that
+way a successful result can be by an embedder's own full rendering: that
 needs a `State` to resolve a `VArray`/`VTable` id against its heap, and
 `runIncremental` returns no `State` at all on `Err` — evaluation stopped
 before producing one. So this stays deliberately shallow: enough to say

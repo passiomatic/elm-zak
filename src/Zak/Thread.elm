@@ -1,41 +1,19 @@
 module Zak.Thread exposing (natives)
 
 {-| `wait_for`/`join` — the two primitives that actually suspend the
-*calling* thread, kept in their own module (named after Python's own
-`threading` module) since, unlike `start`/`start_global`, neither needs
+*calling* thread, kept in their own module since, unlike `start`/`start_global`, neither needs
 to call back into `Zak.Interpreter` (no `callFunction`/`execBlock`
 involved) — they just construct a `Suspended` value directly and hand it
 back, so they're free of the circular-import constraint that keeps
 `start`/`start_global` living in `Zak.Interpreter` itself (see that
 module's own doc for the full reasoning).
 
-Named in Zak's own snake_case convention, not Dinky's original camelCase
-(`breakhere`/`breaktime`/`breakwhile*`) — see `design/Dinky Findings.md`'s
-own coroutine findings for why these exist at all. `wait_for`/`join` were
-themselves `yield_time`/`yield_while_running` earlier in this redesign —
-"yield" was chosen first, deliberately away from the reference engine's
-own "break" (Zak already uses `break`/`Break` for loop-exit, an unrelated,
-much more common meaning than the SCUMM-family "pause this script's
-time-slice" one the original name carries) — then renamed again, further
-still, once "wait for this many seconds"/"join this thread" turned out to
-read more directly than "yield" did for either one. See
-`design/Zak Built-in Functions.md`'s own naming notes for the full history
-of both renames.
+Deliberately doesn't have a frame-counted `wait_frames(n)`-style sibling:
+`wait_for(seconds)` covers waiting, so a whole-number, tick-counted wait
+isn't a first-class primitive.
 
-Deliberately doesn't have a frame-counted `yield_here(n)`-style sibling
-(`breakhere`'s own would-be port): checked directly against the real
-DeloresDev `.dinky` source (49 files) before deciding, and `breakhere` is
-used **zero** times anywhere in the actual game, versus `breaktime` at
-166 uses — real precedent didn't support keeping a whole-number,
-tick-counted wait primitive as a first-class citizen, so it was dropped
-rather than ported unexamined. `wait_for(seconds)` alone covers every
-real "wait" case this reference material actually shows.
-
-Module itself is named `Zak.Thread` (not the elder `Zak.Threading`, which
-this replaced) to match the Zak-visible namespace it feeds directly:
-`Thread.wait_for(...)`, `Thread.start(...)`, etc — see
-`design/Zak Built-in Functions.md`'s own "Decided: `Threading` renamed to
-`Thread`" note for why.
+Module itself is named `Zak.Thread` to match the Zak-visible namespace it
+feeds directly: `Thread.wait_for(...)`, `Thread.start(...)`, etc.
 
 `wait_while` (below) lives here too, even though it's a `NativeZakExpr`
 (pure Zak source, not Elm) with no circular-import constraint of its own
@@ -68,41 +46,29 @@ natives =
 
 
 {-| `Thread.wait_while(predicate)` — suspends the current thread, calling
-`predicate()` (with no arguments) once per tick, until it returns `false`.
-Real Dinky's own `breakwhile($a)` macro (`Dinky-Grammar.md:409`) expands
-to exactly this shape, `while($a) { breaktime(0.5) }` — a condition,
-re-evaluated every iteration, with a suspend in between. Zak has no
-macros, so `$a` (an arbitrary expression, re-inlined verbatim on every
-loop pass) becomes `predicate` (a zero-argument closure the caller
-supplies, called fresh each iteration) — the closest a callable-only
-language can get to the same idiom: `Thread.wait_while(function(): return
-Actor.walking?(delores) end)`, not `Thread.wait_while(Actor.walking?(delores))`
-(which would evaluate the condition once, up front, and wait on a frozen
-`Bool` forever).
+`predicate()` (with no arguments) once per tick, until it returns `false`
+— a condition, re-evaluated every iteration, with a suspend in between.
+Zak has no macros, so the condition has to be `predicate` (a
+zero-argument closure the caller supplies, called fresh each iteration)
+rather than a bare expression: `Thread.wait_while(function(): return
+is_busy(x) end)`, not `Thread.wait_while(is_busy(x))` (which would
+evaluate the condition once, up front, and wait on a frozen `Bool`
+forever).
 
-**Deliberately game-agnostic, unlike the two named siblings real Dinky
-also has (`breakwhilewalking`/`breakwhiletalking`).** This project's own
-`Actor.walking?`/`Actor.talking?` live in `Engine.Actor` (game-specific),
-not `Zak.Thread` (core language) — and the two modules can't both
-contribute to this same `"Thread"` namespace table (`Zak.Interpreter`'s
-own natives-merge is a shallow, first-argument-wins `Dict.union`; no two
-sources have ever shared a namespace key in this codebase). Rather than
-build new cross-module merge machinery just to get shorter names, this
-ships the one primitive that's genuinely core-language (a predicate is
-just a value, no `Actor` knowledge needed to call one), and leaves
-`Actor.wait_while_walking`-style convenience wrappers for whenever real
-ported content actually wants that exact shorter spelling repeatedly —
-see `design/Zak Built-in Functions.md`'s own "Thread" section for the
-fuller writeup of this decision.
+**Deliberately host-agnostic.** Host-specific waits (on whatever state
+an embedder's own natives expose) belong to the embedder, built on
+`wait_while`, not to `Zak.Thread` (core language) — and an embedder's
+natives can't contribute to this same `"Thread"` namespace table anyway
+(`Zak.Interpreter`'s own natives-merge is a shallow, first-argument-wins
+`Dict.union`). Rather than build cross-module merge machinery just to get
+shorter names, this ships the one primitive that's genuinely
+core-language (a predicate is just a value, no host knowledge needed to
+call one), and leaves shorter convenience wrappers to the embedder.
 
 **`Thread.wait_for(0)` inside the loop, not some smaller/larger interval**
-— confirmed this resumes on the very next tick (`Zak.Interpreter.tick`'s
-own `elapsed + dt >= seconds` check is immediately true once `seconds =
-0`), giving real per-tick polling, the same granularity the reference
-engine's own native `breakwhilewalking`/`breakwhiletalking` presumably
-have (unlike the generic `breakwhile($a)` macro's own coarser 0.5s
-poll — this project only has the one primitive, so it uses the tighter
-cadence rather than guessing at which real callers wanted which).
+— this resumes on the very next tick (`Zak.Interpreter.tick`'s own
+`elapsed + dt >= seconds` check is immediately true once `seconds = 0`),
+giving real per-tick polling, the tightest cadence available.
 
 Implemented as a `NativeZakExpr` (the same "don't implement what the
 language can already express" technique `Zak.Math.abs` already uses),
@@ -148,9 +114,8 @@ waitFor state args =
 {-| `Thread.join(thread_id)` — suspend the current thread until the thread
 named by `thread_id` (a value previously returned by `Thread.start`/
 `Thread.start_global`) is no longer running. The one generic "wait on
-something else" primitive kept in this pass — see `design/Dinky
-Findings.md`'s note on why game-specific wait conditions (is this actor
-still walking, still talking, ...) are deliberately deferred rather than
+something else" primitive kept in this pass — host-specific wait
+conditions are left to the embedder (see `wait_while`) rather than
 folded in here.
 
 `thread_id` must already be a whole number — the same `NotAnInteger`-style
@@ -161,13 +126,11 @@ wait condition that's already satisfied on the very next tick, rather
 than a hard failure) — matching the spirit of `Array.get_default`'s
 "soften a missing lookup, not a wrong type" split.
 
-Known, confirmed characteristic (bounded, not a bug that hangs anything):
+Known characteristic (bounded, not a bug that hangs anything):
 resolving this wait condition can lag the joined thread's own actual
 completion by one extra `tick` depending on thread-id ordering — see
-`Zak.Interpreter.tick`'s own doc for the full mechanism, why it's left as
-is, and the thin real-precedent question around `join` as a first-class
-suspend primitive at all (`threadrunning` in the real DeloresDev source
-is only ever a plain boolean check, never a blocking wait).
+`Zak.Interpreter.tick`'s own doc for the full mechanism and why it's left
+as is.
 -}
 join : State -> List Value -> Result RuntimeError ( Outcome Value, State )
 join state args =

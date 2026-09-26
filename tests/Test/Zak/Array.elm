@@ -264,7 +264,7 @@ suite =
                         return Array.length(b)
                         """
                         |> Expect.equal (Ok (VNumber 2))
-            , test "empty array is a hard error, not nil, matching Squirrel's own pop" <|
+            , test "empty array is a hard error, not nil" <|
                 \_ -> runExpr "Array.pop([])" |> Expect.equal (Err (RuntimeError EmptyArray))
             , test "wrong argument type" <|
                 \_ ->

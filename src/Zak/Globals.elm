@@ -14,10 +14,6 @@ ungrouped-globals module still earns its keep for it, the same way it
 would for any future addition that turns out not to fit an existing
 namespace either.
 
-Every language Zak already draws from that has an equivalent of `type`
-at all (Squirrel, Lua) exposes it as a bare global too — verified against
-both directly, not assumed.
-
 Exposes `natives`, merged in automatically by `Zak.Interpreter` (along
 with `Zak.Math`/`Zak.String`/`Zak.Debug`) for `run`/`initialWorld`/
 `runIncremental` — nothing needs to import or merge this by hand.
@@ -38,24 +34,15 @@ natives =
 {-| `type(value)` — the only way a script can inspect a value's runtime
 type at all, since Zak has no exception handling to probe for it
 indirectly. A pure function, unlike `print`: no state, no side-effect
-channel needed, just a plain classification. Returns a lowercase string,
-matching Lua's `type`/Squirrel's `type` exactly (both verified against
-their real source, not assumed) — `"nil"`, `"number"`, `"string"`,
-`"bool"`, `"array"`, `"function"`, `"table"`. `"table"` is a deliberate
-*re*-alignment with Lua/Squirrel's own naming, not the original choice:
-this type used to be called `"record"` specifically to read as Zak's own
-concept rather than borrowed table terminology, but that backfired in the
-other direction — a `record` reads as an invitation to expect Elm-record
-semantics (fixed fields, no `Table.set` mutation, no `contains` probing)
-that this type deliberately doesn't have, so `table` — genuinely
-unfamiliar to nobody, and carrying no such false promise — wins instead
-(see `design/Zak Language Implementation.md`'s "Tables"). Lowercase
-throughout, even though Zak's own
-`TypeError` messages capitalize these same names ("expected Array, got
+channel needed, just a plain classification. Returns a lowercase string
+— `"nil"`, `"number"`, `"string"`, `"bool"`, `"array"`, `"function"`,
+`"table"`. `"table"`, not `"record"`, because a `record` reads as an
+invitation to expect Elm-record semantics (fixed fields, no `Table.set`
+mutation, no `contains` probing) that this type deliberately doesn't
+have. Lowercase throughout, even though Zak's own `TypeError` messages capitalize these same names ("expected Array, got
 Number") — a deliberate difference in register, not an inconsistency:
 `TypeError` reads like a sentence fragment, `type(value)` returns a token
-meant for direct `==` comparison against a string literal, matching every
-precedent language's own convention for this specific function.
+meant for direct `==` comparison against a string literal.
 -}
 typeNative : State -> List Value -> Result RuntimeError ( Value, State )
 typeNative state args =

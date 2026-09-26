@@ -13,10 +13,8 @@ module Zak.Interpreter exposing
     )
 
 {-| Evaluates a `Zak.AST` tree produced by `Zak.Parser`, against the
-runtime value model `Zak.Runtime` defines. Per `design/Zak Language
-Implementation.md`'s own scope boundary, and `design/Zak Built-in
-Functions.md`, there are two tiers of unconditional built-ins, for two
-different reasons:
+runtime value model `Zak.Runtime` defines. There are two tiers of
+unconditional built-ins, for two different reasons:
 
 `Array`/`Table` are unconditional in *every* entry point below, including
 `runExpr` — a real technical necessity, not a preference: `.field`/`.field
@@ -33,7 +31,7 @@ unconditional only in `run`/`initialWorld`/`runIncremental`, deliberately
 is a design choice about what a "real program" should be able to assume
 rather than a technical constraint the way `Array`/`Table`'s is.
 
-Anything beyond those two tiers (any game-specific native like a
+Anything beyond those two tiers (any host-specific native like a
 hypothetical `walk_to`/`say_line`) is supplied by the caller as native
 functions passed into `run`, grouped under `NativeValue` so a whole group
 of related natives can be seeded as one namespace table (`Math.cos(1)`)
@@ -160,8 +158,7 @@ runExpr natives source =
 {-| Bootstraps a persistent world scope: allocates one frame chained under
 `globalEnv` — the "world" frame every loaded script's top-level `let`s
 will land in — and returns it alongside the seeded `State`. Used for
-loading several scripts incrementally (one room/actor file at a time —
-see `design/Engine Implementation.md`'s "World loading"), threading the
+loading several scripts incrementally (one file at a time), threading the
 returned `( Env, State )` through `runIncremental` once per loaded file —
 and also by `run` itself, which is just one `initialWorld` call followed
 by one `runIncremental` call.
@@ -201,8 +198,7 @@ extended to the whole loaded world.
 
 A top-level script suspending at all (e.g. calling `Thread.wait_for`
 directly, not from inside a `Thread.start`-spawned body) is
-`SuspendedNotAllowed` — mirrors the real engine's own
-root-VM-can't-suspend constraint (see `Zak.Runtime.Outcome`'s doc): only
+`SuspendedNotAllowed` — a root-VM-can't-suspend constraint (see `Zak.Runtime.Outcome`'s doc): only
 `Thread.start`/`Thread.start_global` ever let a
 script's own statements actually run as a suspend-capable thread, and
 those two natives fully absorb whatever their spawned body
@@ -244,16 +240,15 @@ runProgramInto env state program =
             )
 
 
-{-| `import(path)`'s own core (`Engine.Boot`'s `importNative` is the thin,
-game-specific wrapper around this: it resolves `path` to `source` against
-its own pre-fetched file map, a lookup this module deliberately knows
-nothing about — see that module's own doc). Splices `source`'s own
+{-| `import(path)`'s own core (the embedder's own `import` native is the
+thin, host-specific wrapper around this: it resolves `path` to `source`,
+a lookup this module deliberately knows nothing about). Splices `source`'s own
 top-level statements into the shared *world* frame, not `env`'s (whatever
 that happens to be at the call site) — `state.globalFrameId`, stamped
 once by `initialWorld`, is what every top-level `let` across every
 `import`ed file needs to land in, matching `runIncremental`'s own
 existing "every file sees every other file's globals" behavior, just
-triggered from inside a running script instead of `Engine.Boot`'s own
+triggered from inside a running script instead of the embedder's own
 external loop.
 
 Idempotent: importing the same `path` twice is a silent no-op (`state.
@@ -280,13 +275,13 @@ importSource path source state =
                     program
 
 
-{-| Calls an already-resolved `Value` (e.g. a field read off some Zak
-table via `Engine.Load.readField`, not something evaluated from source
+{-| Calls an already-resolved `Value` (e.g. a function field the
+embedder read off some Zak table, not something evaluated from source
 here) as a function — the embedder-facing entry point around the
 otherwise-internal `callFunction`, for exactly the case `run`/
 `runIncremental` don't cover: invoking a Zak closure the embedder already
 has a handle on, outside of running a whole program. Named `call`, not
-something game-specific like `callVerb` — this module stays game-agnostic
+something host-specific like `callVerb` — this module stays host-agnostic
 regardless of *why* an embedder wants to call a value.
 
 Same `Outcome`-collapsing `runIncremental` itself already does: a bare
@@ -325,7 +320,7 @@ globalEnv =
 {-| Seeds the global frame with `builtinNatives` merged with `natives`
 (resolving each `NativeNamespace` into a real heap-allocated `VTable`, and
 each `NativeZakExpr` by parsing and evaluating it, along the way), plus
-`true`/`false`/`nil`. `natives` is whatever the embedding game chooses to
+`true`/`false`/`nil`. `natives` is whatever the embedder chooses to
 wire up — merged in *after* `builtinNatives` so a caller can never shadow
 `Array`/`Table` this way (`Dict.union` prefers its first argument's
 keys), the same protection `true`/`false`/`nil` already get below. A
@@ -343,8 +338,8 @@ initialState natives =
 
 
 {-| Same as `initialState`, but also seeds `stdlibNatives`
-(`Math`/`String`/`Debug`/`type`) — everything `design/Zak Built-in
-Functions.md` documents, not just `Array`/`Table`. Used by `run` and
+(`Math`/`String`/`Debug`/`type`) — the full standard library, not just
+`Array`/`Table`. Used by `run` and
 `initialWorld` (and, through it, `runIncremental` — see that pair's own
 docs), which are meant to run a complete, real program rather than a
 single already-scoped expression. Precedence is `builtinNatives` over
@@ -366,8 +361,7 @@ stay out of `constNames` for now, not because they're any less
 "built-in" than `true`/`false`/`nil`, just a smaller, more conservative
 first step. This only blocks *reassignment*: a script's own
 `let true = ...` in a nested scope still shadows the built-in exactly as
-before (see "Names, bindings, and scope" in `design/Zak Language
-Implementation.md`) — that's a new binding in a child frame, `defineVar`
+before — that's a new binding in a child frame, `defineVar`
 never even looks at frame 0's `constNames`.
 -}
 seedState : Dict String NativeValue -> State
@@ -406,10 +400,8 @@ seedState natives =
     }
 
 
-{-| `Math`/`String`/`Debug`/`Random`/the bare global (`type`) — everything
-`design/Zak Built-in Functions.md` documents beyond `Array`/`Table`
-(`Random` is documented in `design/Random Functions.md` instead, its own
-usage-ranked page). Unlike `builtinNatives` below, nothing about these
+{-| `Math`/`String`/`Debug`/`Random`/the bare global (`type`) — the rest
+of the standard library beyond `Array`/`Table`. Unlike `builtinNatives` below, nothing about these
 needs to share implementation with any dedicated syntax, so there's no
 *technical* reason they couldn't live in a caller-supplied `natives` dict
 instead — they're unconditional here purely as a design choice about
@@ -427,9 +419,7 @@ stdlibNatives =
         |> Dict.union ZakRandom.natives
 
 
-{-| One `Thread` namespace table (named `Threading` prior to this
-session's rename — see `design/Zak Built-in Functions.md`'s own naming
-note) holding all four threading primitives: `wait_for`/`join`
+{-| One `Thread` namespace table holding all four threading primitives: `wait_for`/`join`
 (`Zak.Thread`, neither of which needs to call back
 into this module) plus `start`/`start_global` (defined
 directly below, since spawning a thread means running its closure
@@ -465,9 +455,7 @@ threadNatives =
 {-| `Thread.start(closure)` / `Thread.start_global(closure)` — spawns
 `closure` (called with zero arguments) as an independent, suspend-capable
 thread: its body runs *immediately*, synchronously, right here, up to its
-own first suspend point or completion — matching the real engine's own
-`Thread::call()` behavior (confirmed against `engines/twp`'s C++ source) —
-*before* this call itself returns anything. If the body suspends partway
+own first suspend point or completion — *before* this call itself returns anything. If the body suspends partway
 through, the resulting `Thread` (see `Zak.Runtime`'s own doc) is
 registered under a freshly-allocated id in `state.threads`, to be resumed
 later by `tick`; if the body runs to completion without ever suspending,
@@ -517,10 +505,8 @@ start isGlobal state args =
 
 {-| The once-per-frame scheduler step: advances every currently-suspended
 thread's own wait condition by `dt` (seconds since the last `tick`),
-resuming any whose condition is now satisfied. Mirrors
-`TwpEngine::update`'s per-frame loop over `_threads` (confirmed against
-`engines/twp`'s C++ source) almost exactly — each thread gets at most one
-`resume` call per `tick`, never more, so a thread that resumes and
+resuming any whose condition is now satisfied. Each thread gets at most
+one `resume` call per `tick`, never more, so a thread that resumes and
 immediately suspends again on a condition that's *already* satisfied
 still only advances one step this frame, picking up the rest on the next
 `tick` instead of looping here.
@@ -545,36 +531,16 @@ later in this same pass, and only notices the target is gone on the
 *next* `tick` -- one extra frame of latency (~16ms at 60fps), never a
 permanent stall. The opposite ordering (joiner id > target id) resolves
 the same tick, since the target gets removed from `stateAcc` earlier in
-the pass. Reproduced directly via a scratch test (`Thread.start` a
-target, `Thread.start` a joiner with a *lower* id that later joins a
-*higher*-id target created after it -- `threadsAfterTick2` still showed
-the joiner registered and waiting, one tick after the target had already
-been removed).
+the pass.
 
-Checked whether this is a faithful port of a shared real-engine quirk
-before treating it as this port's own mistake: `engines/twp`'s own
-`TwpEngine::update` iterates `_threads` in the same single-pass,
-creation-order way, but has no `threadrunning`/join-style primitive in
-its own Squirrel API at all (checked `genlib.cpp`/`syslib.cpp` directly,
-no hits) -- so it can't be compared apples-to-apples. More tellingly,
-the real DeloresDev `.dinky` corpus's own `threadrunning(tid)` (2 real
-uses -- `ActorHelpers.dinky:76`, `SheriffsOffice.dinky:107`) is *only*
-ever a plain, non-blocking boolean check inside an `if`, never wrapped in
-a `breakwhile`-style "block until it's no longer running" idiom -- there
-is no real precedent anywhere in the 49-file corpus for `Thread.join`'s
-actual premise (a first-class, blocking "suspend until that other thread
-finishes" native) at all, independent of this ordering question.
-
-Left as-is deliberately (bounded, one-tick latency, real game use is very
+Left as-is deliberately (bounded, one-tick latency, real use is very
 unlikely to notice it) -- if this ever needs fixing, resolve time-based
 waits first in one pass, then re-check every `ThreadRunning` condition
 against the now-settled `threads`, looping until stable within the same
-`tick` call; alternatively, given the thin real precedent above,
-reconsider whether `join` should be a first-class suspend primitive at
-all, versus exposing `threadrunning`/`is_running`-style boolean query and
-letting scripts build blocking on it the same `wait_for` + poll way
-`breakwhilewalking`/`breakwhiletalking` already do (see `Engine.Actor
-.runScript`'s own doc for that same pattern, ported for verb dispatch).
+`tick` call; alternatively, reconsider whether `join` should be a
+first-class suspend primitive at all, versus exposing an
+`is_running`-style boolean query and letting scripts build blocking on
+it with a `wait_for` + poll loop.
 -}
 tick : Float -> State -> ( State, List RuntimeError )
 tick dt state =
@@ -615,7 +581,7 @@ tick dt state =
 repeatedly, threading `State` through" contract `tick` already has for
 `threads`, not something that drains on its own. Unlike `tick`, this
 never fails and never needs a `dt`: it's a plain read-and-clear, not a
-scheduler step. The embedder (e.g. `Tools/ZakRunner.elm`) is expected to
+scheduler step. The embedder is expected to
 call this after every `run`/`runIncremental`/`tick` call that could have
 run a logging native, and turn each returned `LogEntry` into a real
 `console.log`/`console.debug`/`console.info`/`console.warn`/
@@ -628,13 +594,13 @@ drainLogs state =
     ( state.pendingLogs, { state | pendingLogs = [] } )
 
 
-{-| Hands back every `Effect` a game-specific native (defined outside
-`src/Zak/*` entirely, passed in as one of `initialWorld`/`runIncremental`'s
+{-| Hands back every `Effect` a host-specific native (defined by the
+embedder, outside this package entirely, passed in as one of `initialWorld`/`runIncremental`'s
 own `natives`) has queued in `state.pendingEffects` since the last
 `drainEffects` call, and clears the queue — the exact same "plain
 read-and-clear, call it yourself after every run/tick" contract
 `drainLogs` already has, generalized from "turn this into a console call"
-to "turn this into whatever the embedding game's own effect is." This
+to "turn this into whatever the embedder's own effect is." This
 module never inspects an `Effect`'s `name`/`args` itself, and never will —
 see `Zak.Runtime`'s own `Effect`/`pendingEffects` doc for why.
 -}
@@ -672,19 +638,16 @@ above, this one's unconditional-everywhere status is a real technical
 necessity, not a design choice: see this module's own top-of-file doc for
 why.
 
-Per `design/Zak Built-in Functions.md`'s "Array"/"Table" sections:
-`Array` is a small, evidence-backed set sourced from Elm's own real
-`Array` module (not Squirrel's larger, duplicate-name-heavy one, and not
-Elm's `List`) — `length`, `is_empty`, `get`, `get_default`, `set`, `push`,
+`Array` is a small set sourced from Elm's own `Array` module (not Elm's
+`List`) — `length`, `is_empty`, `get`, `get_default`, `set`, `push`,
 `append`, `pop`, `contains`, `clone`, `each`, `map`, `indexed_map`,
 `filter`, `foldl`, `foldr`.
 Every function that mutates (`set`, `push`, `append`) always mutates — no
 separate copy-returning sibling, no `!` suffix (see "Arrays" and "Identifiers and
-reserved words" in the language reference for the full rule and its Ruby
-precedent). `Array.remove`/`remove_value` was considered and deliberately
-deferred: real precedent disagrees on whether it should remove one
-matching value (Squirrel/Dinky's `arrayfindremove`) or every matching
-value (Ruby's `delete`). `Table` covers what dot syntax structurally
+reserved words" in the language reference for the full rule).
+`Array.remove`/`remove_value` was considered and deliberately deferred:
+it's unclear whether it should remove the first matching value or every
+matching value. `Table` covers what dot syntax structurally
 can't (a field name that's a runtime value rather than a literal
 identifier, `get`/`set`) plus a way to test/soften the hard error a
 missing field raises (`contains`/`get_default`) — kept in lockstep with
@@ -1014,7 +977,7 @@ execWhile env state condExpr body =
 
 {-| `for loopVar in collectionExpr: ... end` — `collectionExpr` is evaluated
 once, up front, to fix *which* array is being iterated (re-evaluating it
-every pass isn't something any precedent language does either); iteration
+every pass isn't something most dynamic languages do either); iteration
 itself is live, per `execForLoop` below.
 -}
 execFor : Env -> State -> String -> Expr -> Block -> Result RuntimeError ( Outcome Signal, State )
@@ -1033,13 +996,9 @@ execFor env state loopVar collectionExpr body =
 
 {-| Live iteration: re-reads the array's *current* contents from `arrayHeap`
 on every pass (rather than a snapshot taken once at loop start), so a
-`push`/`set` from within the body is visible to later iterations — matching
-Squirrel (verified against `sqvm.cpp`'s `FOREACH_OP`, which indexes live),
-Ruby (`Array#each`'s own docs: "Allows the array to be modified during
-iteration"), Lua (`next`'s docs allow modifying/nil-ing existing slots
-mid-traversal), and Python's own list iterator. A deliberately revisitable
-choice, not a permanent one — see `design/Zak Language Implementation.md`'s
-"for" section.
+`push`/`set` from within the body is visible to later iterations, as in
+most dynamic languages. A deliberately revisitable choice, not a
+permanent one.
 
 Each pass gets a *fresh* frame holding just `loopVar` (mirroring how
 `callFunction` binds parameters in their own frame before running the
@@ -1105,9 +1064,9 @@ be in-bounds, though, since arrays don't grow via assignment (only via
 
 `base` is resolved via `evalExpr`, not a bare `lookupVar`, so a path
 assignment's own base can be *any* expression, not just a name —
-`Actor.current().health = 100` resolves `Actor.current()` like any other
-call before writing through it, matching real Squirrel/Lua (see
-`AssignTarget`'s own doc in `Zak.AST`). For the plain `Name` case this is
+`current_player().health = 100` resolves `current_player()` like any
+other call before writing through it (see `AssignTarget`'s own doc in
+`Zak.AST`). For the plain `Name` case this is
 no behavior change at all: `evalExpr`'s own `Name` branch is exactly
 `lookupVar` plus the same `UndefinedName` wrapping this used to do by
 hand.
@@ -1161,10 +1120,7 @@ it already has no fractional part. Zak has no separate Integer type, so
 is a `NotAnInteger` error rather than being silently rounded or truncated
 to a neighboring slot: a stray fractional value reaching an index is far
 more likely to be an arithmetic mistake (`/` where `//` was meant) than a
-deliberate choice, and neither of Zak's own two reference precedents
-papers over it either, once checked — Squirrel truncates and Lua refuses
-the conversion outright, but neither silently *rounds*, which was this
-function's old, never-actually-checked-against-precedent behavior.
+deliberate choice.
 -}
 wholeNumberIndex : Float -> Result RuntimeError Int
 wholeNumberIndex indexFloat =
@@ -1455,23 +1411,16 @@ call actually supplied (`callFunction`'s `VFunction` branch passes only
 the trailing slice here, once positional binding has already claimed the
 rest) — evaluated against `env`, the function's own captured *enclosing*
 scope, never the call frame being built for this call. Two consequences,
-both deliberate and both verified against real Squirrel rather than
-assumed:
+both deliberate:
 
   - A default can't reference an earlier parameter (`function(a, b=a):
     ...`) — there's no call frame in scope yet at this point, only the
-    enclosing one, the same restriction real Squirrel enforces
-    (`function(a, b=a+1)` fails there with "the index 'a' does not
-    exist").
+    enclosing one.
   - Evaluating fresh here, on every call that needs it, rather than once
     when the `VFunction` was first created, is what keeps a mutable
     default (`baz=[]`) an independent value per call rather than one
-    shared instance mutated in place across all of them — the classic
-    Python "mutable default argument" gotcha, confirmed to affect real
-    Squirrel too (a default array literal, pushed to across three calls
-    that each omit it, grows 1/2/3 there instead of staying independently
-    empty) rather than assumed away, and deliberately not carried over
-    here.
+    shared instance mutated in place across all of them — avoiding the
+    classic mutable-default-argument gotcha.
 
 The `Nothing` branch is unreachable in practice: `Zak.Parser`'s
 trailing-only-defaults rule guarantees every parameter past a supplied
@@ -1655,10 +1604,8 @@ whichever container `y` actually is; reuses their exact logic via
 ("not just the same error, the literal same function," the same relationship
 `getArrayIndex`/`getTableField` already have with `Array.get`/`Table.get`).
 A right-hand side that's neither an `Array` nor a `Table` is a hard
-`TypeError` — deliberately not Squirrel's own `in`, which silently
-returns `false` for a non-container right-hand side (confirmed directly);
-every other operator/native in Zak already refuses that kind of silent
-tolerance.
+`TypeError` rather than silently `false`; every other operator/native in
+Zak already refuses that kind of silent tolerance.
 -}
 evalIn : State -> Value -> Value -> Result RuntimeError Value
 evalIn state left right =
@@ -1730,11 +1677,8 @@ now that it covers two types.
 Ordering is defined for exactly these two — see "Comparison operators" in
 the language reference for why `Bool`/`Nil`/every cross-type pairing
 (`Number` vs `String` included) stays a hard `TypeError` rather than being
-given invented semantics: checked against Python, Lua, and Squirrel, only
-string ordering is universal and deterministic (Lua's is locale-dependent,
-Squirrel's `Bool`/`Nil` support turned out to be an accidental byproduct of
-an unrelated internal fallback, not a designed feature either language
-actually committed to on purpose).
+given invented semantics: only numeric and string ordering are
+well-defined and deterministic.
 -}
 orderedCompare :
     (Float -> Float -> Bool)
@@ -1796,8 +1740,7 @@ contents") — two separately-built arrays with identical elements are *not*
 through two different names, say) is, the same rule tables already
 follow. Two function values (`VFunction`/`VNative`) are never considered
 equal to one another, even to themselves — Zak doesn't give functions an
-identity to compare, the same limitation JS/Lua have for
-structurally-identical-but-separately-created closures.
+identity to compare.
 -}
 valuesEqual : Value -> Value -> Bool
 valuesEqual a b =
@@ -1828,13 +1771,11 @@ valuesEqual a b =
 -- ENVIRONMENT / HEAP
 
 
-{-| Exposed (unlike most of this module's own internals) so an embedding
-game's own natives can build an ad-hoc nested `VTable` from Elm data --
-`Engine.Actor.stampActor` is the first real caller, constructing a
-`{x=,y=}` position table to stamp onto an actor's own `zakBehavior`
+{-| Exposed (unlike most of this module's own internals) so an
+embedder's own natives can build an ad-hoc nested `VTable` from Elm data
+-- e.g. constructing a `{x=,y=}` table to stamp onto some existing
 table. Every other `NativeFunction` that needs a fresh table cell
-(`NativeNamespace`'s own resolution, `define_actor`-adjacent natives)
-already reaches this same function from inside this module; this just
+(`NativeNamespace`'s own resolution, for one) already reaches this same function from inside this module; this just
 widens who else can.
 -}
 allocCell : State -> ( Int, State )
@@ -2050,8 +1991,7 @@ out of range. Only the bounds check is softened: a non-integer `index`
 (`wholeNumberIndex`) or a non-`Array` `array` is still a hard error, the
 same split `Table.get_default` draws between a missing *field* (softened)
 and a wrong-typed target (still an error). The `Array` counterpart to
-`Table.get_default`, kept symmetric per `design/Zak Built-in
-Functions.md`'s own Array/Table parity rule.
+`Table.get_default`, kept symmetric with it.
 -}
 arrayGetDefault : State -> List Value -> Result RuntimeError ( Value, State )
 arrayGetDefault state args =
@@ -2116,12 +2056,9 @@ the end of `array`, in order, mutating `array` directly and returning it
 — `Array.push` generalized from one element to many rather than a new
 category: it's still a targeted edit (the tail grows by exactly `other`'s
 elements, nothing ambiguous about what's changing), so it follows
-`push`'s own contract exactly rather than `map`/`filter`'s pure one.
-Verified directly against precedent first: Squirrel's own array analog,
-`extend`, mutates the same way (its `+` isn't even defined for arrays at
-all — a hard error); Ruby actually offers both under different names
-(`+` pure, `concat` mutating) — matching `push`'s own name and shape
-here, not `String.append`'s purity, since `array`/`other` are containers
+`push`'s own contract exactly rather than `map`/`filter`'s pure one —
+matching `push`'s own name and shape here, not `String.append`'s purity,
+since `array`/`other` are containers
 with identity, not plain values the way strings are (see "Arrays" in the
 language reference for why `String`/`Array` diverge on this).
 
@@ -2157,14 +2094,11 @@ arrayAppend state args =
 
 {-| `Array.pop(array)` — a targeted edit like `Array.push`/`Array.set`
 (there's no ambiguity about *what* it removes, only ever the last
-element), but it returns the *removed value*, not the array — matching
-every precedent checked (JS, Python, Ruby, Lua, Squirrel all return the
-popped element from their equivalent), and the return-value split
-`design/Dinky Findings.md` already drew: bulk mutators return the array
-itself, removal returns what was removed. Errors on an empty array rather
-than returning `nil` — verified against Squirrel's own `sq_arraypop`,
-which throws `"empty array"` rather than returning null — matching Zak's
-own established preference for a hard error over a silently-forgiving
+element), but it returns the *removed value*, not the array, as `pop`
+does almost everywhere — the return-value split being: bulk mutators
+return the array itself, removal returns what was removed. Errors on an
+empty array rather than returning `nil` — matching Zak's own
+established preference for a hard error over a silently-forgiving
 result on a degenerate input (division by zero, an out-of-bounds index,
 a non-integer index all already work this way).
 -}
@@ -2220,8 +2154,7 @@ arrayHasValue state id value =
 
 
 {-| `Array.clone(array)` — a new array with the same elements as `array`.
-Shallow, matching Squirrel's `clone`/Ruby's `dup`/`clone` and Lua's own
-manual-copy idiom, all verified directly: top-level elements are
+Shallow: top-level elements are
 independent afterward, but a `VArray`/`VTable` element is just a heap
 id, so a nested array/table inside is still the *same* one, shared by
 reference — cloning never walks into it.
@@ -2421,8 +2354,8 @@ filterValues state predicate values =
 {-| `Array.foldl(array, fn, initial)` — left-to-right reduction to a single
 value; never mutates `array`, and its result isn't necessarily an array at
 all (e.g. summing to a `Number`). `fn` takes `(element, accumulator)`,
-matching Elm's own `foldl`/`foldr` argument order, not Squirrel's reversed
-`(accumulator, element)`.
+matching Elm's own `foldl`/`foldr` argument order, not the reversed
+`(accumulator, element)` order some languages use.
 -}
 arrayFoldl : State -> List Value -> Result RuntimeError ( Value, State )
 arrayFoldl state args =
@@ -2470,8 +2403,7 @@ foldValues state fn acc values =
 whole-collection derivation (there's no existing array to mutate or
 derive from at all), so it doesn't fit either half of the mutation rule;
 it just always allocates and returns a new array. Matches Elm's real
-`List.range` exactly (verified against elm/core's own source, not
-memory): inclusive of both `lo` and `hi`, and simply empty — not an
+`List.range` exactly: inclusive of both `lo` and `hi`, and simply empty — not an
 error — when `lo > hi` (`Array.range(6, 3) == []`).
 -}
 arrayRange : State -> List Value -> Result RuntimeError ( Value, State )
@@ -2544,10 +2476,9 @@ tableSet state args =
 
 {-| `Table.get_default(table, name, default)` — like `Table.get`, but
 returns `default` instead of raising `UndefinedField` when `name` isn't
-present on `table`. The callable equivalent of Squirrel's `?.`/`??`
-combined (see "No null-safe/optional field access" in `design/Zak
-Language Implementation.md`), reached via a built-in function rather than
-new operator syntax, per Zak's own design goal of preferring the former.
+present on `table`. A callable alternative to null-safe field access
+and null-coalescing operators (Zak has neither), reached via a built-in
+function rather than new operator syntax, per Zak's own design goal of preferring the former.
 Still raises `NotATable` if `table` isn't a `VTable` at all — only a
 missing *field* gets the default, not a wrong-typed target.
 -}
@@ -2636,8 +2567,7 @@ tableClone state args =
 `Dict.toList`'s natural (key-sorted, not insertion) order, discarding
 whatever `fn` returns; never mutates `table`. An empty `table` is a
 no-op, same as `Array.each` on an empty array. Field order is a known,
-deliberately deferred gap here — see the open point in `design/Zak
-Language Implementation.md`.
+deliberately deferred gap here.
 -}
 tableEach : State -> List Value -> Result RuntimeError ( Value, State )
 tableEach state args =

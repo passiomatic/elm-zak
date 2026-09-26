@@ -10,8 +10,8 @@ module Zak.AST exposing
     , BinaryOp(..)
     )
 
-{-| The abstract syntax tree for Zak, mirroring the EBNF grammar in
-`design/Zak Language Implementation.md`. These are pure type definitions, no
+{-| The abstract syntax tree for Zak, mirroring the grammar rules
+one-to-one. These are pure type definitions, no
 parsing or evaluation logic — that's `Zak.Parser`'s and (eventually)
 `Zak.Interpreter`'s job.
 -}
@@ -22,14 +22,11 @@ source. This is `block ::= { statement }` from the grammar — it's used
 both as the top-level program and as the body of an `if`/`while`/`for`/
 function, since those are all the same grammar rule.
 
-`Statement`/`Expr` themselves carry no position at all, deliberately —
-see `design/Zak Language Implementation.md`'s notes on runtime error
-positions for the full reasoning. Attaching one to every node (would
-mean every one of `Statement`'s 9 and `Expr`'s 11 constructors changing
-shape) buys precision no reference language's own runtime-error format
-actually uses (Lua, Squirrel, and Python's own baseline tracebacks all
-report a *line*, never a sub-expression range, confirmed by actually
-triggering an error in each, not assumed). Tagging only here, at the
+`Statement`/`Expr` themselves carry no position at all, deliberately.
+Attaching one to every node (would mean every one of `Statement`'s 9 and
+`Expr`'s 11 constructors changing shape) buys precision a runtime error
+doesn't need: reporting the *line* is enough, a sub-expression range adds
+little. Tagging only here, at the
 list `Block` already is, gets every statement — including ones nested
 inside a loop/conditional/function body, since `If`/`While`/`For`/
 `FunctionLiteral` all embed a `Block` — a real position with the
@@ -81,13 +78,11 @@ type Statement
 `Taylor.items[0].name` is `AssignTarget (Name "Taylor") [ FieldSegment
 "items", IndexSegment (NumberLiteral 0), FieldSegment "name" ]`.
 
-`base` is a full `Expr`, not just a bare name — matching real Squirrel and
-Lua (verified directly: `getTable().x = 99`/Lua's own formal grammar,
-`prefixexp ::= var | functioncall | '(' exp ')'`, explicitly allows a
-function call, or any parenthesized expression, as an assignment target's
-base) and Zak's own *read*-side `postfix-expr` grammar, which already lets
-`.field`/`[index]`/`(args)` chain onto any primary expression — only the
-write side used to disagree. `Zak.Parser.exprToAssignTarget` is what
+`base` is a full `Expr`, not just a bare name — so a function call
+(`getTable().x = 99`) or any parenthesized expression can be an assignment
+target's base, matching Zak's own *read*-side `postfix-expr` grammar, which
+already lets `.field`/`[index]`/`(args)` chain onto any primary expression
+— only the write side used to disagree. `Zak.Parser.exprToAssignTarget` is what
 actually enforces the one remaining restriction this type can't express on
 its own: a bare, segment-less target (`x = 1`, `AssignTarget base []`) is
 only ever valid when `base` is a `Name` — there's no slot to rebind
