@@ -1,0 +1,34 @@
+{
+  "name": "zak-language",
+  "displayName": "Zak Language",
+  "description": "Syntax highlighting for Zak (.zak) game scripting files",
+  "version": "0.2.0",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "zak",
+        "aliases": [
+          "Zak",
+          "zak"
+        ],
+        "extensions": [
+          ".zak"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "zak",
+        "scopeName": "source.zak",
+        "path": "./syntaxes/zak.tmLanguage.json"
+      }
+    ]
+  }
+}
