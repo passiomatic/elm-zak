@@ -131,7 +131,7 @@ suite =
                 [ ( "1 == 1", Just (VBool True) )
                 , ( "1 == 1.0", Just (VBool True) )
                 , ( "1 == \"1\"", Just (VBool False) )
-                , ( "1 /= 2", Just (VBool True) )
+                , ( "1 != 2", Just (VBool True) )
                 , ( "\"a\" == \"a\"", Just (VBool True) )
                 , ( "nil == nil", Just (VBool True) )
                 , ( "1 < 2", Just (VBool True) )

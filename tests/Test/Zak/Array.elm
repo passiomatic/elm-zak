@@ -110,7 +110,7 @@ suite =
                     runExpr "Array.get_default([10, 20, 30], 2.5, 0)"
                         |> Expect.equal (Err (RuntimeError (NotAnInteger { index = 2.5 })))
             ]
-        , describe "set (mutating, in place — no pure sibling, no ! suffix)" <|
+        , describe "set (mutating, in place — no pure sibling)" <|
             [ test "mutates in place, visible through an alias — the whole point of Array having heap identity" <|
                 \_ ->
                     run

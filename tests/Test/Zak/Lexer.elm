@@ -110,22 +110,18 @@ suite =
                 -- "let", so it's a valid identifier in its own right
                 , ( "let?", Just "let?" )
 
-                -- a trailing "!" is legal too, same rules as "?" — single,
-                -- final, doesn't collide with anything (inequality is "/=",
-                -- not "!=", and negation is the word "not" — see the
-                -- reference manual)
-                , ( "push!", Just "push!" )
-                , ( "set!", Just "set!" )
-                , ( "push! ", Just "push!" )
-                , ( "push!.bar", Just "push!" )
+                -- "!" is not an identifier character at all, trailing or
+                -- otherwise — it's reserved for the "!=" inequality
+                -- operator, so "done!=x" must lex as "done" followed by
+                -- "!=", never as a name "done!" followed by "=". Leftover
+                -- input is fine here (same as "foo??" above): the parsed
+                -- value proves identifier stops right before the "!"
+                , ( "push!", Just "push" )
+                , ( "done!=x", Just "done" )
+                , ( "push!.bar", Just "push" )
                 , ( "!foo", Nothing )
-                , ( "push!!", Just "push!" )
-                , ( "let!", Just "let!" )
-
-                -- "?" and "!" don't mix — at most one trailing character,
-                -- whichever comes first
+                , ( "let!", Nothing )
                 , ( "foo?!", Just "foo?" )
-                , ( "foo!?", Just "foo!" )
 
                 -- reserved words are not valid identifiers
                 , ( "let", Nothing )
@@ -149,7 +145,7 @@ suite =
 
                 -- a leading "_" is legal too — the "semi-private"
                 -- naming convention (e.g. `_soundid`), purely conventional
-                -- like the trailing "?"/"!" cases above
+                -- like the trailing "?" case above
                 , ( "_private", Just "_private" )
                 , ( "_valid", Just "_valid" )
                 , ( "_AlsoValid", Just "_AlsoValid" )
@@ -169,11 +165,14 @@ suite =
                 , ( "endif", Nothing )
                 , ( "", Nothing )
 
-                -- a trailing "?"/"!" is also not the "if" keyword, same
+                -- a trailing "?" is also not the "if" keyword, same
                 -- reasoning as "ifx" above -- identifier's own trailing
-                -- "?"/"!" rule applies at the keyword boundary too
+                -- "?" rule applies at the keyword boundary too
                 , ( "if?", Nothing )
-                , ( "if!", Nothing )
+
+                -- "!" is not an identifier character, so it's a clean
+                -- boundary, like a space or "("
+                , ( "if!", Just () )
                 ]
         , describe "keyword \"function\" against a name that collides with it (the real motivating bug)" <|
             List.map (testValue Expect.equal (P.run (L.keyword "function")))
@@ -181,14 +180,14 @@ suite =
                 , ( "function ", Just () )
                 , ( "function(x)", Just () )
 
-                -- "function?"/"function!" are identifiers (e.g. the
+                -- "function?" is an identifier (e.g. the
                 -- "callable?" predicate could have been named this),
                 -- not the "function" keyword -- previously "function"
                 -- matched here regardless, leaving a stray "?(1)"/"!(1)"
                 -- behind for whatever came next to choke on
                 , ( "function?", Nothing )
                 , ( "function?(1)", Nothing )
-                , ( "function!", Nothing )
+                , ( "function!", Just () )
                 ]
         , describe "symbol \"==\"" <|
             List.map (testValue Expect.equal (P.run (L.symbol "==")))

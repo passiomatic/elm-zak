@@ -287,18 +287,13 @@ suite =
                 , ( "true", Just (Name "true") )
                 , ( "foo?", Just (Name "foo?") )
                 , ( "empty?", Just (Name "empty?") )
-                , ( "push!", Just (Name "push!") )
                 ]
         , describe "expr: field access and calls" <|
             List.map (testValue identity P.parseExpr)
                 [ ( "Taylor.health", Just (FieldAccess (Name "Taylor") "health") )
                 , ( "Taylor.a.b.c", Just (FieldAccess (FieldAccess (FieldAccess (Name "Taylor") "a") "b") "c") )
                 , ( "Taylor.empty?", Just (FieldAccess (Name "Taylor") "empty?") )
-                , ( "Array.set!", Just (FieldAccess (Name "Array") "set!") )
                 , ( "is_valid?(Taylor)", Just (Call (Name "is_valid?") [ Name "Taylor" ]) )
-                , ( "Array.set!(0, 99, a)"
-                  , Just (Call (FieldAccess (Name "Array") "set!") [ NumberLiteral 0, NumberLiteral 99, Name "a" ])
-                  )
                 , ( "walk_to()", Just (Call (Name "walk_to") []) )
                 , ( "walk_to(Taylor, 100, 200)"
                   , Just (Call (Name "walk_to") [ Name "Taylor", NumberLiteral 100, NumberLiteral 200 ])
@@ -355,7 +350,15 @@ suite =
                 [ ( "1 // 2", Just (Binary FloorDiv (NumberLiteral 1) (NumberLiteral 2)) )
                 , ( "1 / 2", Just (Binary Div (NumberLiteral 1) (NumberLiteral 2)) )
                 , ( "\"a\" ++ \"b\"", Just (Binary Concat (StringLiteral "a") (StringLiteral "b")) )
-                , ( "a /= b", Just (Binary NotEq (Name "a") (Name "b")) )
+                , ( "a != b", Just (Binary NotEq (Name "a") (Name "b")) )
+
+                -- no space needed: "!" can't end an identifier, so this is
+                -- "done" "!=" "x", not a name "done!" followed by "= x"
+                , ( "done!=x", Just (Binary NotEq (Name "done") (Name "x")) )
+
+                -- "/=" is no longer inequality; it's reserved for a future
+                -- compound divide-assign, so as an expression it's an error
+                , ( "a /= b", Nothing )
                 , ( "a >= b", Just (Binary GtEq (Name "a") (Name "b")) )
                 ]
         , describe "expr: function literal" <|
@@ -467,7 +470,7 @@ let b = 2"""
                 -- including the suffix, so "let?" is not the "let" keyword
                 , ( "let let? = 5", Just [ Let "let?" (NumberLiteral 5) ] )
 
-                -- the same "?"/"!" boundary rule applies to a *call*, not
+                -- the same "?" boundary rule applies to a *call*, not
                 -- just a definition: "function?" parses as an ordinary
                 -- Name, not the "function" keyword plus a stray "?"
                 , ( "let f = function?(1)", Just [ Let "f" (Call (Name "function?") [ NumberLiteral 1 ]) ] )

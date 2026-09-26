@@ -643,8 +643,8 @@ why.
 `append`, `pop`, `contains`, `clone`, `each`, `map`, `indexed_map`,
 `filter`, `foldl`, `foldr`.
 Every function that mutates (`set`, `push`, `append`) always mutates — no
-separate copy-returning sibling, no `!` suffix (see "Arrays" and "Identifiers and
-reserved words" in the language reference for the full rule).
+separate copy-returning sibling (see "Arrays" in the language reference
+for the full rule).
 `Array.remove`/`remove_value` was considered and deliberately deferred:
 it's unclear whether it should remove the first matching value or every
 matching value. `Table` covers what dot syntax structurally

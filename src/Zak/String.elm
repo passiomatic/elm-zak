@@ -17,8 +17,8 @@ surface.
 specific, deliberate divergences from typical slice APIs that came out of
 designing it.
 
-Every function in this namespace is pure, with no exception and no `!`
-twin for any of them — not a per-function naming choice, but because a
+Every function in this namespace is pure, with no exception and no
+mutating twin for any of them — not a per-function naming choice, but because a
 `VString` wraps a plain Elm `String` directly, with no heap id and so no
 identity to mutate in the first place (unlike `VArray`/`VTable`, which
 are heap cells precisely so they *can* be mutated in place and shared —

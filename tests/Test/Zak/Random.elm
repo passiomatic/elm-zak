@@ -74,7 +74,7 @@ suite =
                         let ok = true
                         for i in Array.range(0, 200):
                             let picked = Random.pick(choices)
-                            if picked /= "a" and picked /= "b" and picked /= "c":
+                            if picked != "a" and picked != "b" and picked != "c":
                                 ok = false
                             end
                         end

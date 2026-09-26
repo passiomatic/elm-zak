@@ -99,14 +99,15 @@ reservedWords =
 
 
 {-| A Zak identifier: starts with a letter or underscore, continues with
-letters, digits, or underscores, optionally ending in a single `?` or `!`
-(`?` marks a predicate by convention (e.g. `ready?`),
-`!` marks a function that mutates its argument in place (e.g. `push!`); a
-leading `_` marks a "semi-private" name by convention (e.g. `_soundid`);
-nothing here checks or enforces any of these meanings). A bare `_` is a
-valid identifier in its own right, same as `a` or `A` — there's no
-pattern-matching "throwaway" binding for it to collide with. Cannot be one
-of the `reservedWords`.
+letters, digits, or underscores, optionally ending in a single `?` (`?`
+marks a predicate by convention (e.g. `ready?`); a leading `_` marks a
+"semi-private" name by convention (e.g. `_soundid`); nothing here checks
+or enforces either meaning). `!` is never part of an identifier: it's
+reserved for the `!=` operator, so `done!=x` lexes as `done` then `!=`,
+never as a name `done!` followed by `=`. A bare `_` is a valid identifier
+in its own right, same as `a` or `A` — there's no pattern-matching
+"throwaway" binding for it to collide with. Cannot be one of the
+`reservedWords`.
 
 Built by hand rather than with `P.variable` (unlike most of this module):
 `P.variable`'s reserved-word check runs on the chomped string *before* a
@@ -131,7 +132,7 @@ identifier =
             |. P.chompIf (\c -> Char.isAlpha c || c == '_')
             |. P.chompWhile (\c -> Char.isAlphaNum c || c == '_')
             |. P.oneOf
-                [ P.chompIf (\c -> c == '?' || c == '!')
+                [ P.chompIf ((==) '?')
                 , P.succeed ()
                 ]
             |> P.getChompedString
@@ -151,15 +152,15 @@ rejectReservedWord name =
 
 {-| Matches one of the structural keywords exactly — e.g. `keyword "if"` —
 failing if it's immediately followed by another identifier character (so
-`"ifx"` does not match `keyword "if"`). That includes a trailing `?`/`!`,
+`"ifx"` does not match `keyword "if"`). That includes a trailing `?`,
 not just a letter/digit/`_`: `P.keyword` alone only knows about the
 latter (its own boundary check is fixed, not configurable), so it happily
 treats `"function"` as a complete match against `"function?(1)"`, leaving
 `"?(1)"` behind — the real bug this extra check exists to close (see
-`identifier` above, which already chomps an optional trailing `?`/`!` as
+`identifier` above, which already chomps an optional trailing `?` as
 part of *its* own definition, for the same reason). Wrapped in
 `P.backtrackable` for the same reason `identifier` is: chomping that
-trailing `?`/`!` before rejecting it still counts as "made progress" to
+trailing `?` before rejecting it still counts as "made progress" to
 `elm/parser`, and without backtracking a surrounding `P.oneOf` (e.g.
 trying a function-literal keyword before falling through to `identifier`)
 would treat that as a committed failure instead of trying its next
@@ -170,8 +171,8 @@ keyword kwd =
     P.backtrackable
         (P.keyword kwd
             |. P.oneOf
-                [ P.chompIf (\c -> c == '?' || c == '!')
-                    |> P.andThen (\_ -> P.problem ("\"" ++ kwd ++ "\" followed by ? or ! is not the keyword"))
+                [ P.chompIf ((==) '?')
+                    |> P.andThen (\_ -> P.problem ("\"" ++ kwd ++ "\" followed by ? is not the keyword"))
                 , P.succeed ()
                 ]
         )

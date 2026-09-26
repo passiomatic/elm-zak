@@ -448,7 +448,7 @@ comparisonOp : Parser BinaryOp
 comparisonOp =
     P.oneOf
         [ P.map (\_ -> Eq) (L.symbol "==")
-        , P.map (\_ -> NotEq) (L.symbol "/=")
+        , P.map (\_ -> NotEq) (L.symbol "!=")
         , P.map (\_ -> GtEq) (L.symbol ">=")
         , P.map (\_ -> LtEq) (L.symbol "<=")
         , P.map (\_ -> Gt) (L.symbol ">")
@@ -502,36 +502,15 @@ multiplicativeExprHelp left =
 
 
 {-| `//` is tried before `/` for the same maximal-munch reason as `++`/`+`
-(same `oneOf`, so ordering alone resolves it). `/` needs one more thing: `/=`
-belongs to `comparisonOp`, a *different* grammar level entirely — there's no
-shared `oneOf` to order against. Left alone, plain `/` would greedily
-swallow the first character of `/=` before `comparisonExpr` ever got a
-chance to see the whole operator, corrupting the parse (confirmed by a
-failing test before this fix). `divide` explicitly refuses to match when
-it's actually looking at `/=`, so control falls back out through
-`multiplicativeExpr` → `additiveExpr` → `comparisonExpr`, which then matches
-`/=` correctly.
+(same `oneOf`, so ordering alone resolves it).
 -}
 multiplicativeOp : Parser BinaryOp
 multiplicativeOp =
     P.oneOf
         [ P.map (\_ -> FloorDiv) (L.symbol "//")
         , P.map (\_ -> Mul) (L.symbol "*")
-        , P.map (\_ -> Div) divide
+        , P.map (\_ -> Div) (L.symbol "/")
         ]
-
-
-divide : Parser ()
-divide =
-    P.backtrackable
-        (P.succeed ()
-            |. P.chompIf ((==) '/')
-            |. P.oneOf
-                [ P.chompIf ((==) '=') |> P.andThen (\_ -> P.problem "this is /=, not /")
-                , P.succeed ()
-                ]
-        )
-        |. L.spaces
 
 
 {-| Unary `-` is right-recursive on itself (e.g. `- - x`) and binds tighter
