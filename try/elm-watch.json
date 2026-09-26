@@ -1,0 +1,11 @@
+{
+    "targets": {
+        "TryZak": {
+            "inputs": [
+                "src/Main.elm"
+            ],
+            "output": "build/try-zak.js"
+        }
+    },
+    "serve": "."
+}
