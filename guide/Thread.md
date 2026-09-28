@@ -1,0 +1,74 @@
+# Thread
+
+Cooperative background threads. Everything else in the language runs to completion the moment it's called — `Thread` is how a script spawns an independent thread that can pause itself (for a fixed amount of time, or until another thread finishes) and resume later, exactly where it left off.
+
+Only a thread can suspend — a plain script, or a call anywhere other than a bare top-level statement inside a spawned thread's own body, cannot.
+
+## Thread.start(closure)
+
+Spawns `closure` (called with no arguments) as an independent thread. Returns the new thread's id (a `Number`) immediately — never blocks the caller, no matter what `closure` goes on to do. `closure`'s own body runs immediately, synchronously, up to its own first suspend point (or all the way to completion, if it never suspends).
+
+```
+let log = { value = "" }
+
+let worker_id = Thread.start(function():
+    log.value = log.value ++ "A"   # runs immediately, as part of start's own call
+    Thread.wait_for(1.0)           # suspends this thread for 1 second
+    log.value = log.value ++ "B"   # runs once a later tick resumes it
+end)
+
+log.value = log.value ++ "C"       # runs right away — start never blocks its caller
+```
+
+## Thread.start_global(closure)
+
+Same as `start`. Marks the resulting thread as "global" — reserved for a future distinction between per-scene and persistent background threads.
+
+```
+Thread.start_global(function():
+    Thread.wait_for(1.0)
+end)
+```
+
+## Thread.wait_for(seconds)
+
+Suspends the calling thread until at least `seconds` of elapsed tick time have passed. `seconds` may be fractional.
+
+```
+Thread.start(function():
+    Thread.wait_for(0.5)
+end)
+```
+
+## Thread.join(thread_id)
+
+Suspends the calling thread until the thread named by `thread_id` (an id previously returned by `start`/`start_global`) is no longer running. An unknown or already-finished `thread_id` isn't an error — the call resolves immediately.
+
+```
+let worker_id = Thread.start(function():
+    Thread.wait_for(1.0)
+end)
+
+Thread.start(function():
+    Thread.join(worker_id)
+    # runs only once worker_id has finished
+end)
+```
+
+## Thread.wait_while(predicate)
+
+Suspends the calling thread, calling `predicate()` (no arguments) once per tick, until it returns `false`. Use it to wait on any condition, not just elapsed time or another thread — pass a function, not the condition's current value, so it's re-checked fresh each tick rather than frozen at whatever it was when `wait_while` was called.
+
+```
+let door = { open = false }
+
+Thread.start(function():
+    Thread.wait_while(function(): return not door.open end)
+    Debug.log("Finally!")   # only once door.open becomes true
+end)
+
+Thread.start(function():
+    Thread.wait_for(3.0)
+    door.open = true
+end)
+```

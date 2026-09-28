@@ -1,0 +1,16 @@
+site_name: Zak Language Reference
+docs_dir: .
+site_dir: ../build/guide
+use_directory_urls: false
+theme:
+  name: readthedocs
+nav:
+  - Home: Index.md
+  - Array: Array.md
+  - Debug: Debug.md
+  - Global functions: Global.md
+  - Math: Math.md
+  - Random: Random.md
+  - String: String.md
+  - Table: Table.md
+  - Thread: Thread.md

@@ -1,4 +1,15 @@
+# Elm
 elm-stuff/
-node_modules/
-.DS_Store
 try/build/
+
+# Node (elm, elm-test, elm-watch, elm-format)
+node_modules/
+
+# Python virtualenv for mkdocs
+.venv/
+
+# Build output (mkdocs writes the guide to build/guide)
+build/
+
+# macOS
+.DS_Store
