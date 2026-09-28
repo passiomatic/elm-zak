@@ -55,6 +55,26 @@ Thread.start(function():
 end)
 ```
 
+## Thread.stop(thread_id)
+
+Ends the thread named by `thread_id` while it's waiting. It never resumes, even once its wait would have been over, and it can't be restarted; any thread `join`ing on it carries on. Returns `nil`. An unknown, already-finished, or already-stopped `thread_id` isn't an error — the call does nothing.
+
+Only a waiting thread can be stopped: calling `stop` on the thread that's currently running (the caller itself, or the thread that started it) has no effect. To end itself, a thread returns from its function.
+
+```
+let blink_id = Thread.start(function():
+    while true:
+        Debug.log("blink")
+        Thread.wait_for(0.5)
+    end
+end)
+
+Thread.start(function():
+    Thread.wait_for(3.0)
+    Thread.stop(blink_id)   # no more blinks after this
+end)
+```
+
 ## Thread.wait_while(predicate)
 
 Suspends the calling thread, calling `predicate()` (no arguments) once per tick, until it returns `false`. Use it to wait on any condition, not just elapsed time or another thread — pass a function, not the condition's current value, so it's re-checked fresh each tick rather than frozen at whatever it was when `wait_while` was called.

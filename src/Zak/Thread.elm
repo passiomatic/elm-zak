@@ -1,7 +1,7 @@
 module Zak.Thread exposing (natives)
 
 {-| `wait_for`/`join` — the two primitives that actually suspend the
-*calling* thread, kept in their own module since, unlike `start`/`start_global`, neither needs
+*calling* thread — plus `stop`, kept in their own module since, unlike `start`/`start_global`, none needs
 to call back into `Zak.Interpreter` (no `callFunction`/`execBlock`
 involved) — they just construct a `Suspended` value directly and hand it
 back, so they're free of the circular-import constraint that keeps
@@ -42,6 +42,7 @@ natives =
         [ ( "wait_for", NativeThreadFunction waitFor )
         , ( "join", NativeThreadFunction join )
         , ( "wait_while", NativeZakExpr waitWhileSource )
+        , ( "stop", NativeFunction stop )
         ]
 
 
@@ -142,6 +143,48 @@ join state args =
             in
             if toFloat rounded == idFloat then
                 Ok ( Suspended (ThreadRunning rounded) (\s -> Ok ( Done VNil, s )), state )
+
+            else
+                Err (NotAnInteger { index = idFloat })
+
+        [ other ] ->
+            Err (TypeError { expected = "Number", got = other })
+
+        _ ->
+            Err (WrongArgCount { expected = 1, got = List.length args })
+
+
+{-| `Thread.stop(thread_id)` — ends the suspended thread named by
+`thread_id`: it's dropped from `state.threads`, so it never resumes, even
+once its wait condition would have been satisfied, and a stopped thread
+can't be restarted. Anything `join`ing on it is released on its next
+check, since `join` only waits for the id to leave `state.threads`.
+Returns `nil`, and never suspends the caller.
+
+The same `thread_id` checks as `join`, and the same softening: an unknown
+id (already finished, already stopped, or never valid) is a no-op, not an
+error.
+
+**Only a *suspended* thread can be stopped.** A thread that's currently
+running — the caller itself, or a thread further up the call chain, like
+the one whose body just called `Thread.start` — isn't affected: to end
+itself, a thread returns from its own closure. There's no special case
+for this; it falls out of the scheduler. During a thread's first,
+synchronous run inside `Thread.start` it isn't in `state.threads` yet, so
+there's nothing to remove; while `Zak.Interpreter.tick` is resuming it,
+the removal is overwritten when `tick` re-registers the thread at its next
+suspend (or removes it anyway once it's done).
+-}
+stop : State -> List Value -> Result RuntimeError ( Value, State )
+stop state args =
+    case args of
+        [ VNumber idFloat ] ->
+            let
+                rounded =
+                    round idFloat
+            in
+            if toFloat rounded == idFloat then
+                Ok ( VNil, { state | threads = Dict.remove rounded state.threads } )
 
             else
                 Err (NotAnInteger { index = idFloat })

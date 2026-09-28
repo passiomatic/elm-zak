@@ -70,7 +70,7 @@ readTableField state table field =
 
 suite : Test
 suite =
-    describe "Zak.Thread (Thread.start/start_global/wait_for/join/tick)"
+    describe "Zak.Thread (Thread.start/start_global/wait_for/join/stop/tick)"
         [ test "start runs its closure synchronously up to its first suspend, without blocking the caller" <|
             \_ ->
                 -- `log.value` tables execution order: the spawned thread's
@@ -370,4 +370,200 @@ return log"""
 
                     other ->
                         Expect.fail ("expected SuspendedNotAllowed, got: " ++ Debug.toString other)
+        , test "stop drops a suspended thread, which never resumes even once its wait is over" <|
+            \_ ->
+                case
+                    runWithState """let log = { value = "" }
+let id = Thread.start(function():
+    Thread.wait_for(1.0)
+    log.value = "resumed"
+end)
+Thread.stop(id)
+return log"""
+                of
+                    Err err ->
+                        Expect.fail ("expected success, got: " ++ Debug.toString err)
+
+                    Ok ( result, state0 ) ->
+                        let
+                            ( state1, _ ) =
+                                tick 2.0 state0
+                        in
+                        Expect.all
+                            [ \_ -> Expect.equal 0 (Dict.size state0.threads)
+                            , \_ -> Expect.equal (Just (VString "")) (readTableField state1 result "value")
+                            ]
+                            ()
+        , test "stop on a finished, already-stopped, or never-valid id is a no-op returning nil" <|
+            \_ ->
+                case
+                    runWithState """let finished = Thread.start(function(): return nil end)
+let waiting = Thread.start(function(): Thread.wait_for(1.0) end)
+Thread.stop(waiting)
+return Thread.stop(finished) == nil and Thread.stop(waiting) == nil and Thread.stop(999) == nil"""
+                of
+                    Ok ( result, state ) ->
+                        Expect.all
+                            [ \_ -> Expect.equal (VBool True) result
+                            , \_ -> Expect.equal 0 (Dict.size state.threads)
+                            ]
+                            ()
+
+                    Err err ->
+                        Expect.fail ("expected success, got: " ++ Debug.toString err)
+        , test "stop releases a thread joining on the stopped one" <|
+            \_ ->
+                case
+                    runWithState """let log = { value = "" }
+let slow = Thread.start(function(): Thread.wait_for(100.0) end)
+Thread.start(function():
+    Thread.join(slow)
+    log.value = "released"
+end)
+Thread.stop(slow)
+return log"""
+                of
+                    Err err ->
+                        Expect.fail ("expected success, got: " ++ Debug.toString err)
+
+                    Ok ( result, state0 ) ->
+                        let
+                            ( state1, _ ) =
+                                tick 0.1 state0
+                        in
+                        Expect.all
+                            [ \_ -> Expect.equal (Just (VString "released")) (readTableField state1 result "value")
+                            , \_ -> Expect.equal 0 (Dict.size state1.threads)
+                            ]
+                            ()
+        , test "a thread stopped by a lower-id thread in the same tick is neither resumed nor written back" <|
+            \_ ->
+                -- `tick` folds over the threads it started with, so both
+                -- victims (ids above the stopper's) are still visited
+                -- after the stopper removes them: `ready`'s wait is over
+                -- (it would be resumed), `waiting`'s isn't (it would be
+                -- re-inserted with its elapsed time bumped).
+                case
+                    runWithState """let log = { value = "" }
+let victims = { ready = nil, waiting = nil }
+Thread.start(function():
+    Thread.wait_for(1.0)
+    Thread.stop(victims.ready)
+    Thread.stop(victims.waiting)
+end)
+victims.ready = Thread.start(function():
+    Thread.wait_for(1.0)
+    log.value = log.value ++ "ready ran"
+end)
+victims.waiting = Thread.start(function():
+    Thread.wait_for(5.0)
+    log.value = log.value ++ "waiting ran"
+end)
+return log"""
+                of
+                    Err err ->
+                        Expect.fail ("expected success, got: " ++ Debug.toString err)
+
+                    Ok ( result, state0 ) ->
+                        let
+                            ( state1, _ ) =
+                                tick 1.0 state0
+
+                            ( state2, _ ) =
+                                tick 10.0 state1
+                        in
+                        Expect.all
+                            [ \_ -> Expect.equal 0 (Dict.size state1.threads)
+                            , \_ -> Expect.equal (Just (VString "")) (readTableField state2 result "value")
+                            ]
+                            ()
+        , test "stop on the running thread itself is a no-op: it carries on and is re-registered at its next wait" <|
+            \_ ->
+                case
+                    runWithState """let log = { value = "" }
+let me = { id = nil }
+me.id = Thread.start(function():
+    Thread.wait_for(1.0)
+    Thread.stop(me.id)
+    log.value = log.value ++ "a"
+    Thread.wait_for(1.0)
+    log.value = log.value ++ "b"
+end)
+return log"""
+                of
+                    Err err ->
+                        Expect.fail ("expected success, got: " ++ Debug.toString err)
+
+                    Ok ( result, state0 ) ->
+                        let
+                            ( state1, _ ) =
+                                tick 1.0 state0
+
+                            ( state2, _ ) =
+                                tick 1.0 state1
+                        in
+                        Expect.all
+                            [ \_ -> Expect.equal (Just (VString "a")) (readTableField state1 result "value")
+                            , \_ -> Expect.equal 1 (Dict.size state1.threads)
+                            , \_ -> Expect.equal (Just (VString "ab")) (readTableField state2 result "value")
+                            , \_ -> Expect.equal 0 (Dict.size state2.threads)
+                            ]
+                            ()
+        , test "a child stopping the running thread that just started it is a no-op too" <|
+            \_ ->
+                case
+                    runWithState """let log = { value = "" }
+let parent = { id = nil }
+parent.id = Thread.start(function():
+    Thread.wait_for(1.0)
+    Thread.start(function(): Thread.stop(parent.id) end)
+    log.value = log.value ++ "a"
+    Thread.wait_for(1.0)
+    log.value = log.value ++ "b"
+end)
+return log"""
+                of
+                    Err err ->
+                        Expect.fail ("expected success, got: " ++ Debug.toString err)
+
+                    Ok ( result, state0 ) ->
+                        let
+                            ( state1, _ ) =
+                                tick 1.0 state0
+
+                            ( state2, _ ) =
+                                tick 1.0 state1
+                        in
+                        Expect.all
+                            [ \_ -> Expect.equal (Just (VString "a")) (readTableField state1 result "value")
+                            , \_ -> Expect.equal (Just (VString "ab")) (readTableField state2 result "value")
+                            , \_ -> Expect.equal 0 (Dict.size state2.threads)
+                            ]
+                            ()
+        , test "stop's thread_id checks match join's" <|
+            \_ ->
+                Expect.all
+                    [ \_ ->
+                        case runWithState "Thread.stop(\"x\")\nreturn nil" of
+                            Err (I.RuntimeError (TypeError { expected })) ->
+                                Expect.equal "Number" expected
+
+                            other ->
+                                Expect.fail ("expected TypeError, got: " ++ Debug.toString other)
+                    , \_ ->
+                        case runWithState "Thread.stop(1.5)\nreturn nil" of
+                            Err (I.RuntimeError (NotAnInteger _)) ->
+                                Expect.pass
+
+                            other ->
+                                Expect.fail ("expected NotAnInteger, got: " ++ Debug.toString other)
+                    , \_ ->
+                        case runWithState "Thread.stop()\nreturn nil" of
+                            Err (I.RuntimeError (WrongArgCount { expected, got })) ->
+                                Expect.equal ( 1, 0 ) ( expected, got )
+
+                            other ->
+                                Expect.fail ("expected WrongArgCount, got: " ++ Debug.toString other)
+                    ]
+                    ()
         ]

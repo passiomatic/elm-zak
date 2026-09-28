@@ -517,6 +517,16 @@ error) and its error is collected in the returned list, rather than
 silently discarded or allowed to stop every *other* thread this frame
 from being ticked too.
 
+**The fold walks the `threads` snapshot taken when this `tick` started,
+but a thread can be removed mid-pass** — `Thread.stop`, called by a
+thread resumed earlier in the same pass. So each thread is first checked
+against `stateAcc`'s own `threads`, and skipped if it's gone; otherwise
+the `StillWaiting` branch would write a stopped thread straight back in,
+or `ReadyToResume` would run it. The opposite case is deliberate: a
+thread that stops *itself* (or its caller) while being resumed here is
+re-registered at its next suspend, which is exactly what makes
+`Thread.stop` a no-op on a running thread (see `Zak.Thread.stop`).
+
 **Known, confirmed latency: `Thread.join` can resolve one full tick later
 than the thread it's joining actually finishes, depending on thread-id
 ordering.** `Dict.foldl` visits `threads` in ascending key order (=
@@ -546,29 +556,33 @@ tick : Float -> State -> ( State, List RuntimeError )
 tick dt state =
     Dict.foldl
         (\threadId (Thread thread) ( stateAcc, errorsAcc ) ->
-            case checkWaitCondition dt thread.elapsed thread.waitCondition stateAcc of
-                StillWaiting newElapsed ->
-                    ( { stateAcc | threads = Dict.insert threadId (Thread { thread | elapsed = newElapsed }) stateAcc.threads }
-                    , errorsAcc
-                    )
+            if not (Dict.member threadId stateAcc.threads) then
+                ( stateAcc, errorsAcc )
 
-                ReadyToResume ->
-                    case thread.resume stateAcc of
-                        Ok ( Done _, state1 ) ->
-                            ( { state1 | threads = Dict.remove threadId state1.threads }, errorsAcc )
+            else
+                case checkWaitCondition dt thread.elapsed thread.waitCondition stateAcc of
+                    StillWaiting newElapsed ->
+                        ( { stateAcc | threads = Dict.insert threadId (Thread { thread | elapsed = newElapsed }) stateAcc.threads }
+                        , errorsAcc
+                        )
 
-                        Ok ( Suspended waitCondition resume, state1 ) ->
-                            ( { state1
-                                | threads =
-                                    Dict.insert threadId
-                                        (Thread { waitCondition = waitCondition, elapsed = 0, resume = resume, isGlobal = thread.isGlobal })
-                                        state1.threads
-                              }
-                            , errorsAcc
-                            )
+                    ReadyToResume ->
+                        case thread.resume stateAcc of
+                            Ok ( Done _, state1 ) ->
+                                ( { state1 | threads = Dict.remove threadId state1.threads }, errorsAcc )
 
-                        Err error ->
-                            ( { stateAcc | threads = Dict.remove threadId stateAcc.threads }, error :: errorsAcc )
+                            Ok ( Suspended waitCondition resume, state1 ) ->
+                                ( { state1
+                                    | threads =
+                                        Dict.insert threadId
+                                            (Thread { waitCondition = waitCondition, elapsed = 0, resume = resume, isGlobal = thread.isGlobal })
+                                            state1.threads
+                                  }
+                                , errorsAcc
+                                )
+
+                            Err error ->
+                                ( { stateAcc | threads = Dict.remove threadId stateAcc.threads }, error :: errorsAcc )
         )
         ( state, [] )
         state.threads
