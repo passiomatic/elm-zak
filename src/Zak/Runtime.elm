@@ -17,6 +17,7 @@ module Zak.Runtime exposing
     , bindGlobal
     , dropPosition
     , mapOutcome
+    , mapOutcomeResult
     , requireDone
     )
 
@@ -114,6 +115,7 @@ type RuntimeError
     | UnknownFormatDirective String
     | ImportNotFound String
     | ImportParseError String Parser.Error
+    | InternalError String
     | AtPosition Position RuntimeError
 
 
@@ -261,6 +263,27 @@ mapOutcome f outcome =
 
         Suspended cond resume ->
             Suspended cond (\s -> resume s |> Result.map (\( inner, s1 ) -> ( mapOutcome f inner, s1 )))
+
+
+{-| `mapOutcome` for a mapping that can fail: the error surfaces right
+away for a `Done` outcome, or when a `Suspended` one eventually resumes.
+Used by `Zak.Interpreter.callFunction`, whose `signalValue` rejects a
+`break`/`continue` signal that escaped its loop.
+-}
+mapOutcomeResult : (a -> Result RuntimeError b) -> Outcome a -> Result RuntimeError (Outcome b)
+mapOutcomeResult f outcome =
+    case outcome of
+        Done value ->
+            Result.map Done (f value)
+
+        Suspended cond resume ->
+            Ok
+                (Suspended cond
+                    (\s ->
+                        resume s
+                            |> Result.andThen (\( inner, s1 ) -> mapOutcomeResult f inner |> Result.map (\mapped -> ( mapped, s1 )))
+                    )
+                )
 
 
 {-| Collapses an `Outcome` that isn't allowed to suspend here into a plain

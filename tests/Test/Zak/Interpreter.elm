@@ -4,6 +4,7 @@ import Dict exposing (Dict)
 import Expect
 import Test exposing (Test, describe, test)
 import Zak.Interpreter as I exposing (Error(..))
+import Zak.Helpers
 import Zak.Runtime as Runtime exposing (LogLevel(..), NativeValue(..), RuntimeError(..), Value(..))
 
 
@@ -830,6 +831,65 @@ return Array.length(seen)"""
                     I.runIncremental env state1 "return walk_to()"
                         |> Result.map Tuple.first
                         |> Expect.equal (Ok (VNumber 42))
+            , test "a NativeZakExpr whose source doesn't parse is left undefined, instead of crashing" <|
+                \_ ->
+                    run (Dict.singleton "broken" (NativeZakExpr "function(:")) "return broken"
+                        |> Expect.equal (Err (RuntimeError (UndefinedName "broken")))
+            , test "a NativeZakExpr whose source fails to evaluate is left undefined too" <|
+                \_ ->
+                    run (Dict.singleton "broken" (NativeZakExpr "not_defined_anywhere")) "return broken"
+                        |> Expect.equal (Err (RuntimeError (UndefinedName "broken")))
+            , test "a broken NativeZakExpr doesn't take the other natives down with it" <|
+                \_ ->
+                    run
+                        (Dict.fromList
+                            [ ( "broken", NativeZakExpr "function(:" )
+                            , ( "one", NativeZakExpr "function(): return 1 end" )
+                            ]
+                        )
+                        "return one()"
+                        |> Expect.equal (Ok (VNumber 1))
+            ]
+        , describe "Runtime.mapOutcomeResult (mapOutcome for a mapping that can fail)" <|
+            let
+                positive n =
+                    if n > 0 then
+                        Ok (n * 2)
+
+                    else
+                        Err (InternalError "not positive")
+
+                ( _, state ) =
+                    I.initialWorld noNatives
+
+                resumed outcome =
+                    case outcome of
+                        Ok (Runtime.Suspended _ resume) ->
+                            resume state |> Result.map Tuple.first
+
+                        other ->
+                            other
+            in
+            [ test "a Done outcome is mapped right away" <|
+                \_ ->
+                    Runtime.mapOutcomeResult positive (Runtime.Done 2)
+                        |> Expect.equal (Ok (Runtime.Done 4))
+            , test "a failing mapping on a Done outcome is an error right away" <|
+                \_ ->
+                    Runtime.mapOutcomeResult positive (Runtime.Done 0)
+                        |> Expect.equal (Err (InternalError "not positive"))
+            , test "a Suspended outcome is mapped once it resumes, and a failure surfaces then" <|
+                \_ ->
+                    ( Runtime.mapOutcomeResult positive (Runtime.Suspended (Runtime.Seconds 1) (\s -> Ok ( Runtime.Done 3, s )))
+                        |> resumed
+                    , Runtime.mapOutcomeResult positive (Runtime.Suspended (Runtime.Seconds 1) (\s -> Ok ( Runtime.Done -1, s )))
+                        |> resumed
+                    )
+                        |> Expect.equal ( Ok (Runtime.Done 6), Err (InternalError "not positive") )
+            , test "an InternalError reads as an interpreter bug, not a script problem" <|
+                \_ ->
+                    Zak.Helpers.describeRuntimeError (InternalError "a break signal escaped its enclosing loop")
+                        |> Expect.equal "internal interpreter error: a break signal escaped its enclosing loop"
             ]
         , describe "importSource -- an embedder's `import(path)` native can be a thin wrapper around this" <|
             [ test "a file's own top-level statements land in the shared world scope, visible to code that runs after it" <|

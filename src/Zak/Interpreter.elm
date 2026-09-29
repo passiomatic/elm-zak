@@ -65,6 +65,7 @@ import Zak.Runtime
         , Value(..)
         , WaitCondition(..)
         , mapOutcome
+        , mapOutcomeResult
         , requireDone
         )
 import Zak.String as ZakString
@@ -233,7 +234,7 @@ runProgramInto env state program =
             (\( outcome, state1 ) ->
                 case outcome of
                     Done signal ->
-                        Ok ( signalValue signal, state1 )
+                        signalValue signal |> Result.map (\value -> ( value, state1 ))
 
                     Suspended _ _ ->
                         Err SuspendedNotAllowed
@@ -720,24 +721,25 @@ resolveNatives : State -> Dict String NativeValue -> ( Dict String Value, State 
 resolveNatives state natives =
     Dict.foldl
         (\name native ( acc, st ) ->
-            let
-                ( value, st1 ) =
-                    resolveNative st native
-            in
-            ( Dict.insert name value acc, st1 )
+            case resolveNative st native of
+                ( Just value, st1 ) ->
+                    ( Dict.insert name value acc, st1 )
+
+                ( Nothing, st1 ) ->
+                    ( acc, st1 )
         )
         ( Dict.empty, state )
         natives
 
 
-resolveNative : State -> NativeValue -> ( Value, State )
+resolveNative : State -> NativeValue -> ( Maybe Value, State )
 resolveNative state native =
     case native of
         NativeFunction fn ->
-            ( VNative fn, state )
+            ( Just (VNative fn), state )
 
         NativeThreadFunction fn ->
-            ( VNativeThread fn, state )
+            ( Just (VNativeThread fn), state )
 
         NativeNamespace fields ->
             let
@@ -747,49 +749,55 @@ resolveNative state native =
                 ( id, state2 ) =
                     allocCell state1
             in
-            ( VTable id, { state2 | heap = Dict.insert id resolvedFields state2.heap } )
+            ( Just (VTable id), { state2 | heap = Dict.insert id resolvedFields state2.heap } )
 
         NativeZakExpr source ->
-            -- `source` is a fixed, hardcoded constant, not user input — if
-            -- it ever fails to parse/evaluate, that's a bug in the native
-            -- module that wrote it (e.g. Zak.Math) to fix, not a runtime
-            -- condition to recover from, hence the crash rather than
-            -- threading another error case through every caller of
-            -- `run`/`runExpr`. Evaluating a self-contained function
+            -- `source` is fixed Zak source written alongside a native
+            -- (e.g. in Zak.Math, or by the host), not script input. If it
+            -- fails to parse or evaluate, that native is simply left
+            -- undefined (`Nothing`): a script calling it gets the usual
+            -- `UndefinedName`, rather than threading another error case
+            -- through every caller of `run`/`runExpr` for a bug in the
+            -- native's own source. Evaluating a self-contained function
             -- literal here (before frame 0 is fully populated) is safe:
             -- it only captures `globalEnv`, it doesn't look anything up
             -- in it until the function is actually called later.
             case Parser.parseExpr source of
                 Err _ ->
-                    Debug.todo ("a NativeZakExpr failed to parse: " ++ source)
+                    ( Nothing, state )
 
                 Ok expr ->
                     case evalExpr globalEnv state expr of
                         Ok ( value, state1 ) ->
-                            ( value, state1 )
+                            ( Just value, state1 )
 
                         Err _ ->
-                            Debug.todo ("a NativeZakExpr failed to evaluate: " ++ source)
+                            ( Nothing, state )
 
         NativeConstant value ->
-            ( value, state )
+            ( Just value, state )
 
 
 
-signalValue : Signal -> Value
+{-| The value a block's final signal stands for. A `break`/`continue` can
+never get this far (the parser only accepts them inside a `while`/`for`
+body, and the loop absorbs them), so those two are an `InternalError`,
+an interpreter bug, rather than a made-up value.
+-}
+signalValue : Signal -> Result RuntimeError Value
 signalValue signal =
     case signal of
         Returning value ->
-            value
+            Ok value
 
         Normal ->
-            VNil
+            Ok VNil
 
         Breaking ->
-            Debug.todo "a break signal escaped its enclosing loop — interpreter bug, not a valid script: the parser guarantees break only appears inside a while/for body"
+            Err (InternalError "a break signal escaped its enclosing loop: the parser only accepts break inside a while/for body")
 
         Continuing ->
-            Debug.todo "a continue signal escaped its enclosing loop — interpreter bug, not a valid script: the parser guarantees continue only appears inside a while/for body"
+            Err (InternalError "a continue signal escaped its enclosing loop: the parser only accepts continue inside a while/for body")
 
 
 
@@ -1533,7 +1541,7 @@ callFunction state callee args =
                                     { state2 | heap = Dict.insert frameId (Dict.fromList (suppliedArgs ++ defaultedArgs)) state2.heap }
                             in
                             execBlock callEnv state3 body
-                                |> Result.map (\( outcome, state4 ) -> ( mapOutcome signalValue outcome, state4 ))
+                                |> Result.andThen (\( outcome, state4 ) -> mapOutcomeResult signalValue outcome |> Result.map (\mapped -> ( mapped, state4 )))
                         )
 
         _ ->
@@ -1609,7 +1617,7 @@ evalBinary op left right =
             -- reach them this way), `in` genuinely can't be: resolving
             -- its right operand's contents needs `State`, which this
             -- function's own signature has no room for. See `evalIn`.
-            Debug.todo "Binary In is handled directly in evalExpr (needs State) -- see evalIn"
+            Err (InternalError "Binary In is handled directly in evalExpr (needs State) -- see evalIn")
 
 
 {-| `x in y` — sugar for `Array.contains`/`Table.contains`, matching

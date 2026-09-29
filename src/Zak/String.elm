@@ -465,10 +465,9 @@ countPlaceholders chars =
 order each appears. Only ever called after `stringFormat` has already
 confirmed `args`' length matches `countPlaceholders format` exactly, so
 every `[]` branch below (a placeholder found with no argument left to
-consume) is structurally unreachable — `Debug.todo`, not a fabricated
-`RuntimeError`, the same "assert, don't invent a fake recoverable value"
-convention `Zak.Interpreter`'s own `signalValue` already uses for its
-equally-impossible cases.
+consume) is structurally unreachable — an `InternalError`, not a made-up
+value, the same convention `Zak.Interpreter`'s own `signalValue` uses for
+its equally impossible cases.
 -}
 substituteFormat : List Char -> List Value -> Result RuntimeError String
 substituteFormat chars args =
@@ -485,7 +484,7 @@ substituteFormat chars args =
                     substituteFormat rest restArgs |> Result.map (\s -> displayString value ++ s)
 
                 [] ->
-                    Debug.todo "String.format: %s with no argument left -- arg count was already checked"
+                    Err (InternalError "String.format ran out of arguments at %s")
 
         '%' :: 'd' :: rest ->
             case args of
@@ -496,7 +495,7 @@ substituteFormat chars args =
                     Err (TypeError { expected = "Number", got = other })
 
                 [] ->
-                    Debug.todo "String.format: %d with no argument left -- arg count was already checked"
+                    Err (InternalError "String.format ran out of arguments at %d")
 
         '%' :: 'f' :: rest ->
             case args of
@@ -507,7 +506,7 @@ substituteFormat chars args =
                     Err (TypeError { expected = "Number", got = other })
 
                 [] ->
-                    Debug.todo "String.format: %f with no argument left -- arg count was already checked"
+                    Err (InternalError "String.format ran out of arguments at %f")
 
         '%' :: 'x' :: rest ->
             case args of
@@ -518,7 +517,7 @@ substituteFormat chars args =
                     Err (TypeError { expected = "Number", got = other })
 
                 [] ->
-                    Debug.todo "String.format: %x with no argument left -- arg count was already checked"
+                    Err (InternalError "String.format ran out of arguments at %x")
 
         '%' :: 'X' :: rest ->
             case args of
@@ -529,7 +528,7 @@ substituteFormat chars args =
                     Err (TypeError { expected = "Number", got = other })
 
                 [] ->
-                    Debug.todo "String.format: %X with no argument left -- arg count was already checked"
+                    Err (InternalError "String.format ran out of arguments at %X")
 
         '%' :: directive :: _ ->
             Err (UnknownFormatDirective ("%" ++ String.fromChar directive))

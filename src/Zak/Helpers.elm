@@ -145,6 +145,9 @@ describeRuntimeError runtimeError =
         AssertionFailed message ->
             message
 
+        InternalError message ->
+            "internal interpreter error: " ++ message
+
         IndexOutOfBounds { index, length } ->
             "index " ++ formatNumber index ++ " is out of bounds — the array has " ++ pluralize length "element"
 
