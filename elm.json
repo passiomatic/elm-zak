@@ -2,7 +2,7 @@
     "type": "package",
     "name": "passiomatic/elm-zak",
     "summary": "Zak, a small embeddable scripting language interpreter",
-    "license": "MIT",
+    "license": "BSD-3-Clause",
     "version": "1.0.0",
     "exposed-modules": [
         "Zak.Helpers",
