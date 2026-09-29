@@ -19,6 +19,12 @@ let main = function():
 end
 ```
 
+## Try Zak
+
+```
+make reactor
+```
+
 ## Build the documentation
 
 The project uses [mkdocs][m] to convert the Markdown files into browsable HTML pages.
