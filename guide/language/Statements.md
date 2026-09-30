@@ -66,7 +66,7 @@ A condition must be a `Bool` — see [Bool](Values.md#bool).
 ```
 let countdown = 3
 while countdown > 0:
-    Debug.log(String.from(countdown))
+    Debug.log(countdown)
     countdown = countdown - 1
 end
 ```
@@ -87,7 +87,7 @@ To loop over a range of numbers, build one with [`Array.range`](../stdlib/Array.
 
 ```
 for i in Array.range(1, 3):
-    Debug.log(String.from(i))   # 1, then 2, then 3
+    Debug.log(i)   # 1, then 2, then 3
 end
 ```
 

@@ -1,4 +1,4 @@
-module Zak.String exposing (natives)
+module Zak.String exposing (displayString, natives)
 
 {-| String-related functions under one `String` namespace table
 (`String.from(value)`, `String.length(string)`, ...), following the exact

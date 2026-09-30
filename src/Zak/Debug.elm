@@ -32,6 +32,7 @@ point that deliberately does *not* include it.
 
 import Dict exposing (Dict)
 import Zak.Runtime exposing (LogLevel(..), NativeValue(..), RuntimeError(..), State, Value(..))
+import Zak.String
 
 
 natives : Dict String NativeValue
@@ -53,12 +54,15 @@ natives =
 {-| `Debug.log(value)`/`Debug.log_debug(value)`/`Debug.log_info(value)`/
 `Debug.log_warning(value)`/`Debug.log_error(value)` — one native,
 parameterized over which `LogLevel` it tags its message with, since the
-five differ in nothing else: String-only, `TypeError` on anything else
-(the same no-coercion strictness `++` already has — rather than
-inventing a "stringify any value" mechanism as a side effect of adding
-this, see `Zak.String`'s `from` for that), and `VNil` back (there's
-nothing meaningful to hand back, the same convention a bare `return`
-already uses).
+five differ in nothing else: any value is accepted and turned into its
+message through `Zak.String.displayString` — the exact rendering
+`String.from` and `%s` already use, so a logged value always reads the
+same as it would once converted by hand (`Array`/`Table`/function values
+included, as the same fixed `<array>`/`<table>`/`<function>`
+placeholders) — and `VNil` back (there's nothing meaningful to hand back,
+the same convention a bare `return` already uses). Deliberately looser
+than `++`: logging is a debugging aid, not program logic, so there's no
+typo for strictness to catch here.
 
 **No `Debug.log` anymore** — this used to be `Debug.log`'s (then still
 bare `print`'s) whole implementation, and it was a real, temporary
@@ -83,11 +87,8 @@ matter what it stashed in `State` (see `pendingLogs`'s own doc in
 logNative : LogLevel -> State -> List Value -> Result RuntimeError ( Value, State )
 logNative level state args =
     case args of
-        [ VString s ] ->
-            Ok ( VNil, { state | pendingLogs = state.pendingLogs ++ [ { level = level, message = s } ] } )
-
-        [ other ] ->
-            Err (TypeError { expected = "String", got = other })
+        [ value ] ->
+            Ok ( VNil, { state | pendingLogs = state.pendingLogs ++ [ { level = level, message = Zak.String.displayString value } ] } )
 
         _ ->
             Err (WrongArgCount { expected = 1, got = List.length args })

@@ -112,7 +112,7 @@ c   # [[99]] — the nested array was shared, not copied
 Calls `fn(element)` once per element, in order, for the side effect alone — discards whatever `fn` returns and never mutates `array`. An empty `array` is a no-op. For a transform, see `Array.map`.
 
 ```
-Array.each([1, 2, 3], function(x): Debug.log(String.from(x)) end)   # logs 1, then 2, then 3
+Array.each([1, 2, 3], function(x): Debug.log(x) end)   # logs 1, then 2, then 3
 
 let doubled = []
 Array.each([1, 2, 3], function(x): Array.push(doubled, x * 2) end)

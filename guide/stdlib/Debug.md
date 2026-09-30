@@ -4,10 +4,15 @@ Logging and assertions — things a script does purely to help whoever's writing
 
 ## Debug.log(value)
 
-Logs `value` (a `String`) at the ordinary level. Where the log appears is up to the host.
+Logs `value` at the ordinary level. Where the log appears is up to the host.
+
+`value` can be of any type, and is shown the same way [`String.from`](String.md) would show it: a string as-is, a number or bool as its usual text, and an array, table, or function as a fixed placeholder (`<array>`, `<table>`, `<function>`), not its contents.
 
 ```
-Debug.log("Hi there!")
+Debug.log("Hi there!")   # Hi there!
+Debug.log(42)            # 42
+Debug.log(nil)           # nil
+Debug.log([1, 2])        # <array>
 ```
 
 ## Debug.log_debug(value)

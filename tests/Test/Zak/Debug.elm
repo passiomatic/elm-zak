@@ -62,10 +62,8 @@ suite =
         [ describe "log" <|
             [ test "logging a string returns nil" <|
                 \_ -> run "return Debug.log(\"Hi there!\")" |> Expect.equal (Ok VNil)
-            , test "wrong argument type" <|
-                \_ ->
-                    run "return Debug.log(1)"
-                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
+            , test "logging a non-string returns nil too" <|
+                \_ -> run "return Debug.log(1)" |> Expect.equal (Ok VNil)
             , test "wrong argument count" <|
                 \_ ->
                     run "return Debug.log(\"a\", \"b\")"
@@ -76,10 +74,8 @@ suite =
             , test "log_info returns nil" <| \_ -> run "return Debug.log_info(\"x\")" |> Expect.equal (Ok VNil)
             , test "log_warning returns nil" <| \_ -> run "return Debug.log_warning(\"x\")" |> Expect.equal (Ok VNil)
             , test "log_error returns nil" <| \_ -> run "return Debug.log_error(\"x\")" |> Expect.equal (Ok VNil)
-            , test "wrong argument type, using log_debug as the representative case" <|
-                \_ ->
-                    run "return Debug.log_debug(1)"
-                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
+            , test "any value is accepted, using log_debug as the representative case" <|
+                \_ -> run "return Debug.log_debug(1)" |> Expect.equal (Ok VNil)
             , test "wrong argument count, using log_warning as the representative case" <|
                 \_ ->
                     run "return Debug.log_warning(\"a\", \"b\")"
@@ -105,6 +101,15 @@ suite =
                                     , { level = LogWarning, message = "c" }
                                     , { level = LogError, message = "d" }
                                     ]
+
+                        Err error ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString error)
+            , test "any value is logged as its String.from rendering" <|
+                \_ ->
+                    case runWithState "Debug.log(\"hi\")\nDebug.log(99)\nDebug.log(1.5)\nDebug.log(true)\nDebug.log(nil)\nDebug.log([1, 2])\nDebug.log({ x = 1 })\nDebug.log(function(): end)\nDebug.log(Math.cos)\nreturn nil" of
+                        Ok ( _, state ) ->
+                            List.map .message state.pendingLogs
+                                |> Expect.equal [ "hi", "99", "1.5", "true", "nil", "<array>", "<table>", "<function>", "<function>" ]
 
                         Err error ->
                             Expect.fail ("expected success, got: " ++ Debug.toString error)
