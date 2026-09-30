@@ -23,6 +23,4 @@ Things to ponder to improve usability of the language.
 * Array.range rounds value and doesn't error
 
 # Guide findings 
-* ~~Debug.* only allows strings: no good~~
 * Unbounded recursion crashes the host. Do you want that limit added to the interpreter?
-* ~~Duplicate parameter names are accepted~~
