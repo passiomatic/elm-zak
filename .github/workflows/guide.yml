@@ -1,7 +1,11 @@
-# Builds the Zak guide with mkdocs and publishes it to GitHub Pages
-# (https://passiomatic.github.io/elm-zak/) on every push to main that
-# touches it. Requires Settings → Pages → Source: "GitHub Actions".
-name: Publish guide
+# Builds the Zak guide (mkdocs) and the Try Zak app (Elm), and publishes
+# both to GitHub Pages on every push to main that touches either:
+#
+#   https://passiomatic.github.io/elm-zak/       the guide
+#   https://passiomatic.github.io/elm-zak/try/   the Try Zak app
+#
+# Requires Settings → Pages → Source: "GitHub Actions".
+name: Publish site
 
 on:
   push:
@@ -9,6 +13,11 @@ on:
     paths:
       - "guide/**"
       - "requirements.txt"
+      # the Try Zak app compiles the interpreter straight from src/
+      - "try/**"
+      - "src/**"
+      - "package.json"
+      - "package-lock.json"
       - ".github/workflows/guide.yml"
   workflow_dispatch:
 
@@ -28,6 +37,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # --- Guide ---
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -37,6 +48,38 @@ jobs:
 
       # --strict fails the build on any warning, e.g. a broken link or anchor.
       - run: mkdocs build --strict -f guide/mkdocs.yml
+
+      # --- Try Zak app ---
+      # Built after the guide: mkdocs empties build/guide at the start of
+      # every build, so anything written there earlier would be wiped.
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      # Installs the Elm compiler pinned in package-lock.json.
+      - run: npm ci
+
+      # Elm packages, so they aren't fetched from package.elm-lang.org on every run.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.elm
+          key: elm-${{ hashFiles('try/elm.json') }}
+
+      - name: Build Try Zak
+        working-directory: try
+        run: |
+          npx elm make src/Main.elm --optimize --output=../build/guide/try/build/try-zak.js
+          cp index.html app.css ../build/guide/try/
+
+      # --strict above only checks the guide's own links, so make sure the
+      # app actually came out before publishing.
+      - name: Check Try Zak output
+        run: |
+          test -s build/guide/try/index.html
+          test -s build/guide/try/app.css
+          test -s build/guide/try/build/try-zak.js
 
       - uses: actions/upload-pages-artifact@v3
         with:

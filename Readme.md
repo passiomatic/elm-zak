@@ -21,13 +21,18 @@ end
 
 ## Try Zak
 
+Try Zak is a browser playground for Zak scripts, available online at <https://passiomatic.github.io/elm-zak/try/>. To run it locally, with live reload as you edit, install the Node dependencies once, then start it:
+
 ```
-make reactor
+npm install
+npm run try
 ```
+
+and open the address it prints.
 
 ## Documentation
 
-The Zak guide — the language reference and the standard library — is published at <https://passiomatic.github.io/elm-zak/>. It's rebuilt automatically on every push to `main` that changes it.
+The Zak guide — the language reference and the standard library — is published at <https://passiomatic.github.io/elm-zak/>. The guide and the Try Zak playground are rebuilt automatically on every push to `main` that changes them.
 
 ## Build the documentation
 

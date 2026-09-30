@@ -4,6 +4,8 @@ Zak is a small, dynamically-typed scripting language meant to be embedded in a h
 
 This reference has two parts: the language itself — its syntax, values, statements, and expressions — and the standard library, everything a Zak script can call without the host wiring anything up itself.
 
+To run the examples as you read, paste them into [Try Zak](https://passiomatic.github.io/elm-zak/try/), a playground that runs Zak scripts right in the browser.
+
 ## The language
 
 - [Lexical structure](language/Lexical.md) — identifiers, keywords, operators, literals, comments, and how lines and blocks are laid out

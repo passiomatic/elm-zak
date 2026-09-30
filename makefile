@@ -1,9 +1,9 @@
-.PHONY: guide
+.PHONY: clean reactor guide
 
 clean:
 	rm -rf build/
 
-rector:
+reactor:
 	elm reactor
 
 guide:
