@@ -16,6 +16,7 @@ one-to-one; the exceptions are noted where they diverge.
 -}
 
 import Parser as P exposing ((|.), (|=), Parser)
+import Set exposing (Set)
 import Zak.AST exposing (AssignTarget(..), BinaryOp(..), Block, Expr(..), PathSegment(..), Position, PositionedStatement, Statement(..), UnaryOp(..))
 import Zak.Lexer as L
 
@@ -584,8 +585,23 @@ tableLiteral : Parser Expr
 tableLiteral =
     P.succeed TableLiteral
         |. L.symbol "{"
-        |= commaSeparated tableField
+        |= (commaSeparated tableField |> P.andThen validateUniqueFields)
         |. L.symbol "}"
+
+
+{-| `{ x = 1, x = 2 }` is a hard parse-time error rather than "last one
+wins": a repeated field name in a single literal is almost always a typo,
+and nothing about it depends on runtime state, so it's rejected here the
+same way `validateUniqueParams` rejects a repeated parameter name.
+-}
+validateUniqueFields : List ( String, Expr ) -> Parser (List ( String, Expr ))
+validateUniqueFields fields =
+    case firstDuplicate (List.map Tuple.first fields) of
+        Just name ->
+            P.problem ("field “" ++ name ++ "” appears more than once in this table")
+
+        Nothing ->
+            P.succeed fields
 
 
 tableField : Parser ( String, Expr )
@@ -601,7 +617,7 @@ functionLiteral =
     P.succeed FunctionLiteral
         |. L.keyword "function"
         |. L.symbol "("
-        |= (commaSeparated parameter |> P.andThen validateTrailingDefaults)
+        |= (commaSeparated parameter |> P.andThen validateTrailingDefaults |> P.andThen validateUniqueParams)
         |. L.symbol ")"
         |. L.symbol ":"
         |= P.lazy (\_ -> block False)
@@ -650,6 +666,44 @@ isTrailingDefaultsOnly params =
 
         ( _, Just _ ) :: rest ->
             List.all (\( _, default ) -> default /= Nothing) rest
+
+
+{-| `function(a, a)` is a hard parse-time error — otherwise the later
+argument silently wins, which is almost always a typo. `_` gets no special
+treatment: it's an ordinary identifier (see `Zak.Lexer.identifier`), so
+`function(_, _)` is rejected too. Same separate-pass-after-`commaSeparated`
+shape as `validateTrailingDefaults` above.
+-}
+validateUniqueParams : List ( String, Maybe Expr ) -> Parser (List ( String, Maybe Expr ))
+validateUniqueParams params =
+    case firstDuplicate (List.map Tuple.first params) of
+        Just name ->
+            P.problem ("parameter “" ++ name ++ "” appears more than once")
+
+        Nothing ->
+            P.succeed params
+
+
+{-| The first name in `names` that already appeared earlier in the list,
+if any. Shared by `validateUniqueParams` and `validateUniqueFields`.
+-}
+firstDuplicate : List String -> Maybe String
+firstDuplicate names =
+    firstDuplicateHelp Set.empty names
+
+
+firstDuplicateHelp : Set String -> List String -> Maybe String
+firstDuplicateHelp seen names =
+    case names of
+        [] ->
+            Nothing
+
+        name :: rest ->
+            if Set.member name seen then
+                Just name
+
+            else
+                firstDuplicateHelp (Set.insert name seen) rest
 
 
 

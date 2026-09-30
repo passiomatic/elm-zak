@@ -21,6 +21,6 @@ Things to ponder to improve usability of the language.
 * Add Math.power() function
 
 # Guide findings 
-* Debug.é only allows strings: no good
+* Debug.* only allows strings: no good
 * Unbounded recursion crashes the host. Do you want that limit added to the interpreter?
-* Duplicate parameter names are accepted
+* ~~Duplicate parameter names are accepted~~

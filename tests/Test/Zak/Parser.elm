@@ -283,6 +283,11 @@ suite =
                 , ( "{ x = 1 }", Just (TableLiteral [ ( "x", NumberLiteral 1 ) ]) )
                 , ( "{ x = 1, y = 2 }", Just (TableLiteral [ ( "x", NumberLiteral 1 ), ( "y", NumberLiteral 2 ) ]) )
                 , ( "{ x = 1, y = 2, }", Nothing )
+
+                -- field names must be unique within one literal, adjacent or not
+                , ( "{ x = 1, x = 2 }", Nothing )
+                , ( "{ x = 1, y = 2, x = 3 }", Nothing )
+                , ( "{ x = 1, x? = 2 }", Just (TableLiteral [ ( "x", NumberLiteral 1 ), ( "x?", NumberLiteral 2 ) ]) )
                 , ( "nil", Just (Name "nil") )
                 , ( "true", Just (Name "true") )
                 , ( "foo?", Just (Name "foo?") )
@@ -396,6 +401,27 @@ suite =
                 -- and two plain params after one, are rejected
                 , ( "function(a=1, b): return a end", Nothing )
                 , ( "function(a=1, b, c): return a end", Nothing )
+                ]
+        , describe "expr: function literal, parameter names must be unique" <|
+            List.map (testValue normalizeExpr P.parseExpr)
+                [ ( "function(a, a): return a end", Nothing )
+
+                -- not just adjacent repeats
+                , ( "function(a, b, a): return a end", Nothing )
+
+                -- a default doesn't make a repeated name any less repeated
+                , ( "function(a, a=1): return a end", Nothing )
+
+                -- `_` is an ordinary identifier, not a throwaway
+                , ( "function(_, _): return 1 end", Nothing )
+                , ( "function(a, b): return a end"
+                  , Just (FunctionLiteral [ ( "a", Nothing ), ( "b", Nothing ) ] (dummyBlock [ Return (Just (Name "a")) ]))
+                  )
+
+                -- `a` and `a?` are two different identifiers
+                , ( "function(a, a?): return a end"
+                  , Just (FunctionLiteral [ ( "a", Nothing ), ( "a?", Nothing ) ] (dummyBlock [ Return (Just (Name "a")) ]))
+                  )
                 ]
         , describe "expr: array/table literals, call arguments, and grouping tolerate blank lines and comments inside brackets — a newline is only the significant statement separator outside one" <|
             List.map (testValue normalizeExpr P.parseExpr)

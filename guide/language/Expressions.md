@@ -175,7 +175,7 @@ let player = {
 }
 ```
 
-A field name is an identifier, written bare: `{ x = 1 }`, not `{ "x" = 1 }`. If the same name appears twice, the last value wins.
+A field name is an identifier, written bare: `{ x = 1 }`, not `{ "x" = 1 }`. Each name can appear only once: `{ x = 1, x = 2 }` is a syntax error.
 
 Both constructors build a new, separate array or table every time they're evaluated, so two identical-looking constructors never produce equal values.
 
