@@ -2,7 +2,7 @@
 
 Cooperative background threads. Everything else in the language runs to completion the moment it's called — `Thread` is how a script spawns an independent thread that can pause itself (for a fixed amount of time, or until another thread finishes) and resume later, exactly where it left off.
 
-Only a thread can suspend — a plain script, or a call anywhere other than a bare top-level statement inside a spawned thread's own body, cannot.
+The waiting functions — `wait_for`, `join`, and `wait_while` — only work inside a thread, called as a statement on its own. See [Where a thread can wait](../language/Threads.md#where-a-thread-can-wait).
 
 ## Thread.start(closure)
 

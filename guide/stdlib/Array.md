@@ -1,8 +1,8 @@
 # Array
 
-Fixed-shape, ordered collections. An array is a reference, not a plain value — passing one to a function, or storing one in a `let`, never copies it.
+Ordered, mutable collections that can grow and shrink. An array is a reference, not a plain value — passing one to a function, or storing one in a `let`, never copies it.
 
-`array` comes first in every function below, matching real precedent (Lua's own `table.insert(t, pos, value)`, Squirrel's dot-method-call style) rather than Elm's own argument order, which only makes sense there because of currying and `|>` — neither of which Zak has.
+`array` is always the first argument of every function below: `Array.push(items, "key")`, not `Array.push("key", items)`.
 
 Every function below follows one rule for whether it mutates: a function that edits one specific part of the array (a slot, an appended value, the last element) mutates it directly, so every other reference to the same array sees the change. A function that derives a whole new array from the existing one (`map`, `filter`, `foldl`, `foldr`) never mutates — it always returns a new value instead.
 
@@ -44,7 +44,7 @@ Array.get_default([1, 2, 3], 9, 0)   # 0 (index 9 is out of range, so the defaul
 
 ## Array.set(array, index, value)
 
-Sets `index` to `value`.
+Sets `index` to `value`. Returns `array` itself — the same array, not a copy.
 
 ```
 let a = [1, 2, 3]
@@ -53,16 +53,19 @@ Array.set(a, 0, 99)   # a is now [99, 2, 3]
 
 ## Array.push(array, value)
 
-Appends `value` to the end of `array`.
+Appends `value` to the end of `array`. Returns `array` itself — the same array, not a copy — so calls can be nested.
 
 ```
 let a = [1, 2, 3]
 Array.push(a, 4)   # a is now [1, 2, 3, 4]
+
+let b = Array.push([], "key")   # ["key"]
+Array.push(Array.push(b, "lamp"), "map")   # b is now ["key", "lamp", "map"]
 ```
 
 ## Array.append(array, other)
 
-Appends every element of `other` to the end of `array`, in order, mutating `array`. `other` itself is left untouched.
+Appends every element of `other` to the end of `array`, in order, mutating `array`. `other` itself is left untouched. Returns `array` itself — the same array, not a copy.
 
 ```
 let a = [1, 2]
@@ -109,7 +112,7 @@ c   # [[99]] — the nested array was shared, not copied
 Calls `fn(element)` once per element, in order, for the side effect alone — discards whatever `fn` returns and never mutates `array`. An empty `array` is a no-op. For a transform, see `Array.map`.
 
 ```
-Array.each([1, 2, 3], function(x): Debug.log(x) end)   # logs 1, then 2, then 3
+Array.each([1, 2, 3], function(x): Debug.log(String.from(x)) end)   # logs 1, then 2, then 3
 
 let doubled = []
 Array.each([1, 2, 3], function(x): Array.push(doubled, x * 2) end)

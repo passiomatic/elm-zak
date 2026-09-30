@@ -6,11 +6,22 @@ theme:
   name: readthedocs
 nav:
   - Home: Index.md
-  - Array: Array.md
-  - Debug: Debug.md
-  - Global functions: Global.md
-  - Math: Math.md
-  - Random: Random.md
-  - String: String.md
-  - Table: Table.md
-  - Thread: Thread.md
+  - The language:
+      - Lexical structure: language/Lexical.md
+      - Values and data types: language/Values.md
+      - Execution context: language/Execution.md
+      - Statements: language/Statements.md
+      - Expressions: language/Expressions.md
+      - Tables: language/Tables.md
+      - Arrays: language/Arrays.md
+      - Functions: language/Functions.md
+      - Threads: language/Threads.md
+  - Standard library:
+      - Array: stdlib/Array.md
+      - Debug: stdlib/Debug.md
+      - Global functions: stdlib/Global.md
+      - Math: stdlib/Math.md
+      - Random: stdlib/Random.md
+      - String: stdlib/String.md
+      - Table: stdlib/Table.md
+      - Thread: stdlib/Thread.md

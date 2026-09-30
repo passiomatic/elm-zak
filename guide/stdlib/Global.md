@@ -1,6 +1,6 @@
 # Global functions
 
-Functions that aren't grouped into a namespace — called directly, e.g. `type(value)`, not `Something.type(value)`.
+Functions that aren't fields of a table like `Math` or `Array` — called directly, e.g. `type(value)`, not `Something.type(value)`.
 
 ## type(value)
 

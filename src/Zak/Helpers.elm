@@ -161,7 +161,7 @@ describeRuntimeError runtimeError =
             "the array is empty"
 
         SuspendedNotAllowed ->
-            "this call can only suspend from inside a Thread.start body"
+            "a waiting call must be a statement on its own, inside a thread"
 
         FormatArgMismatch { expected, got } ->
             "String.format expected " ++ pluralize expected "argument" ++ ", got " ++ String.fromInt got
