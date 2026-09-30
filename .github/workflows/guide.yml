@@ -1,0 +1,53 @@
+# Builds the Zak guide with mkdocs and publishes it to GitHub Pages
+# (https://passiomatic.github.io/elm-zak/) on every push to main that
+# touches it. Requires Settings → Pages → Source: "GitHub Actions".
+name: Publish guide
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "guide/**"
+      - "requirements.txt"
+      - ".github/workflows/guide.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push doesn't cancel one already publishing.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # --strict fails the build on any warning, e.g. a broken link or anchor.
+      - run: mkdocs build --strict -f guide/mkdocs.yml
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/guide
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

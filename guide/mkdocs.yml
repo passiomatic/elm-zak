@@ -1,11 +1,14 @@
 site_name: Zak Language Reference
+site_url: https://passiomatic.github.io/elm-zak/
+repo_url: https://github.com/passiomatic/elm-zak
+edit_uri: edit/main/guide/
 docs_dir: .
 site_dir: ../build/guide
 use_directory_urls: false
 theme:
   name: readthedocs
 nav:
-  - Home: Index.md
+  - Home: index.md
   - The language:
       - Lexical structure: language/Lexical.md
       - Values and data types: language/Values.md
