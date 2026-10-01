@@ -24,3 +24,21 @@ Things to ponder to improve usability of the language.
 
 # Guide findings 
 * Unbounded recursion crashes the host. Do you want that limit added to the interpreter?
+
+# New ideas
+
+Allow specify a numeric index like Squirrel, with a array-like syntax: 
+
+```
+local tbl  = {
+    some_slot = "foo"
+    [99] = "Ninetynine"
+}
+```
+
+This is more flexbile than that: https://developer.electricimp.com/squirrel/squirrel-guide/variables-collections#tables you can use various  types as keys. 
+
+I think we need to implement this only if there's a real usage need. 
+
+
+

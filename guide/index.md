@@ -1,6 +1,6 @@
 # Zak language reference
 
-Zak is a small, dynamically-typed scripting language meant to be embedded in a host application, which exposes its own functions to scripts and drives them over time. Its main inspirations are Squirrel and Lua.
+Zak is a small, imperative, dynamically-typed scripting language meant to be embedded in a host application, which exposes its own functions to scripts and drives them over time. Its main inspirations are Squirrel and Lua.
 
 This reference has two parts: the language itself — its syntax, values, statements, and expressions — and the standard library, everything a Zak script can call without the host wiring anything up itself.
 
