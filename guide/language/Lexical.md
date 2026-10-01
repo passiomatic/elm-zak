@@ -18,7 +18,7 @@ Two naming conventions are common, but nothing in the language checks or enforce
 - a trailing `?` marks a name that holds, or a function that returns, a `Bool` — `ready?`, `is_open?`
 - a leading `_` marks a "semi-private" name, meant for internal use only — `_sound_id`
 
-`?` is only allowed as the very last character, so `a?b` is not one identifier. `!` is never part of an identifier: `done!=x` reads as `done != x`.
+`?` is only allowed as the very last character, so `a?b` is not one identifier.
 
 ## Keywords
 
