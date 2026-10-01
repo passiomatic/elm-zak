@@ -34,7 +34,7 @@ and open the address it prints.
 
 The Zak guide — the language reference and the standard library — is published at <https://passiomatic.github.io/elm-zak/>. The guide and the Try Zak playground are rebuilt automatically on every push to `main` that changes them.
 
-## Build the documentation
+### Locally build the documentation
 
 The project uses [mkdocs][m] to convert the Markdown files into browsable HTML pages.
 
