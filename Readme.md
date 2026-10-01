@@ -1,6 +1,6 @@
 # Zak
 
-Zak (after [Zak McKracken][z]) is a small, dynamically-typed scripting language meant to be embedded in an Elm host application, which exposes its own functions to scripts and drives them over time.
+Zak (after [Zak McKracken][z]) is a small, imperative, dynamically-typed scripting language meant to be embedded in an Elm host application, which exposes its own functions to scripts and drives them over time.
 
 ```
 let main = function():
