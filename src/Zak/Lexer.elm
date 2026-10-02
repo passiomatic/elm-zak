@@ -104,10 +104,10 @@ marks a predicate by convention (e.g. `ready?`); a leading `_` marks a
 "semi-private" name by convention (e.g. `_soundid`); nothing here checks
 or enforces either meaning). `!` is never part of an identifier: it's
 reserved for the `!=` operator, so `done!=x` lexes as `done` then `!=`,
-never as a name `done!` followed by `=`. A bare `_` is a valid identifier
-in its own right, same as `a` or `A` — there's no pattern-matching
-"throwaway" binding for it to collide with. Cannot be one of the
-`reservedWords`.
+never as a name `done!` followed by `=`. A bare `_` lexes as an ordinary
+identifier too; its "throwaway" meaning (bindable, never readable) is
+given to it by the parser (`Zak.Parser.rejectThrowaway`) and the interpreter,
+not here. Cannot be one of the `reservedWords`.
 
 Built by hand rather than with `P.variable` (unlike most of this module):
 `P.variable`'s reserved-word check runs on the chomped string *before* a

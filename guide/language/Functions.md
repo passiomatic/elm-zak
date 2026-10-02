@@ -62,7 +62,14 @@ add(1)         # error: expected 2 arguments, got 1
 add(1, 2, 3)   # error: expected 2 arguments, got 3
 ```
 
-Every parameter must have a different name: `function(a, a)` is a syntax error. That includes `_`, which is an ordinary name like any other.
+Every parameter must have a different name: `function(a, a)` is a syntax error. The one exception is the throwaway name `_` (see [Lexical structure](Lexical.md#the-throwaway-name-_)), which marks an argument the function ignores and can appear any number of times:
+
+```
+Table.each(scores, function(_, value):
+    print(value)
+    return nil
+end)
+```
 
 There's no way to accept a variable number of arguments. To pass any number of values, pass an array.
 

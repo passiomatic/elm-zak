@@ -506,6 +506,46 @@ return count"""
                   , Just (VNumber 5)
                   )
                 ]
+        , describe "run: throwaway name `_` — evaluated, never bound" <|
+            List.map (testValue (run noNatives))
+                [ -- repeated in one scope, by let and const alike, and
+                  -- the value is still evaluated for its effects
+                  ( """let t = { n = 0 }
+let bump = function():
+    t.n = t.n + 1
+    return t.n
+end
+let _ = bump()
+let _ = bump()
+const _ = bump()
+return t.n"""
+                  , Just (VNumber 3)
+                  )
+                , ( "let f = function(_, b): return b end\nreturn f(1, 2)", Just (VNumber 2) )
+                , ( "let f = function(_, _): return 3 end\nreturn f(1, 2)", Just (VNumber 3) )
+
+                -- a defaulted `_` still evaluates its default
+                , ( "let f = function(a, _ = 1): return a end\nreturn f(5)", Just (VNumber 5) )
+
+                -- nothing is stored, so an outer `let _` and a `_`
+                -- parameter or loop variable never collide
+                , ( """let _ = 1
+let f = function(_):
+    let _ = 2
+    return 4
+end
+return f(3)"""
+                  , Just (VNumber 4)
+                  )
+                , ( """let n = 0
+for _ in [1, 2, 3]:
+    let _ = n
+    n = n + 1
+end
+return n"""
+                  , Just (VNumber 3)
+                  )
+                ]
         , describe "run: const — exactly like let, except a bare reassignment is a hard error" <|
             List.map (testValue (run noNatives))
                 [ ( "const x = 1\nreturn x", Just (VNumber 1) )

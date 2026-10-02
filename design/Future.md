@@ -22,14 +22,14 @@ let _, b = [1,2]
 print(b)
  --> 2
 
-let x, y = {x: 1, y: 2}
+let x, y = {x=1, y=2}
 print(y)
  --> 2
 
 # Or...
 
 let [_, b] = [1,2]
-let { x, y } = {x: 1, y: 2}
+let { x, y } = {x=1, y=2}
 ```
 
 Notes:

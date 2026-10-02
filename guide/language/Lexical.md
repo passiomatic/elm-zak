@@ -20,6 +20,21 @@ Two naming conventions are common, but nothing in the language checks or enforce
 
 `?` is only allowed as the very last character, so `a?b` is not one identifier.
 
+### The throwaway name `_`
+
+A bare `_` is special: it names a value you don't need. `let`, `const`, a function parameter, or a `for` loop variable can be `_` any number of times, even in the same scope, and nothing is ever stored under it:
+
+```
+let _ = Array.pop(queue)   # remove the last item, drop it
+let _ = Array.pop(queue)   # no "already defined" error
+
+let second = function(_, b): return b end
+```
+
+Because nothing is stored, using `_` as a value is a syntax error: `print(_)`, `_ = 1`, and `_.x` are all rejected.
+
+Only a bare `_` works this way. Names that merely start with `_`, like `_sound_id`, are ordinary identifiers, and so is a table field named `_` (`t._`, `{ _ = 1 }`).
+
 ## Keywords
 
 These words are reserved by the language and can't be used as identifiers:

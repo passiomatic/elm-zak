@@ -887,6 +887,12 @@ wrong behavior).
 execStatement : Env -> State -> Statement -> Result RuntimeError ( Outcome Signal, State )
 execStatement env state statement =
     case statement of
+        Let "_" valueExpr ->
+            discard env state valueExpr
+
+        Const "_" valueExpr ->
+            discard env state valueExpr
+
         Let name valueExpr ->
             evalExpr env state valueExpr
                 |> Result.andThen (\( value, state1 ) -> defineVar env state1 name value)
@@ -997,6 +1003,25 @@ execWhile env state condExpr body =
             )
 
 
+{-| `let _ = expr` / `const _ = expr`: evaluates `expr` for its effects
+and throws the value away. Nothing is bound, so repeating it in the same
+scope is never `AlreadyDefined`, and the parser already rejects any read
+of `_` (`Zak.Parser.rejectThrowaway`).
+-}
+discard : Env -> State -> Expr -> Result RuntimeError ( Outcome Signal, State )
+discard env state valueExpr =
+    evalExpr env state valueExpr
+        |> Result.map (\( _, state1 ) -> ( Done Normal, state1 ))
+
+
+{-| Drops the throwaway name `_` from a list of fresh bindings (a call's
+parameters), so it's never stored in a frame.
+-}
+withoutThrowaway : List ( String, Value ) -> List ( String, Value )
+withoutThrowaway =
+    List.filter (\( name, _ ) -> name /= "_")
+
+
 {-| `for loopVar in collectionExpr: ... end` — `collectionExpr` is evaluated
 once, up front, to fix *which* array is being iterated (re-evaluating it
 every pass isn't something most dynamic languages do either); iteration
@@ -1052,7 +1077,7 @@ execForLoop env state loopVar id body index =
                         Env frameId (Just env)
 
                     state2 =
-                        { state1 | heap = Dict.insert frameId (Dict.singleton loopVar element) state1.heap }
+                        { state1 | heap = Dict.insert frameId (Dict.fromList (withoutThrowaway [ ( loopVar, element ) ])) state1.heap }
                 in
                 execBlock loopVarEnv state2 body
                     |> andThenOutcome
@@ -1538,7 +1563,7 @@ callFunction state callee args =
                                     Env frameId (Just closureEnv)
 
                                 state3 =
-                                    { state2 | heap = Dict.insert frameId (Dict.fromList (suppliedArgs ++ defaultedArgs)) state2.heap }
+                                    { state2 | heap = Dict.insert frameId (Dict.fromList (withoutThrowaway (suppliedArgs ++ defaultedArgs))) state2.heap }
                             in
                             execBlock callEnv state3 body
                                 |> Result.andThen (\( outcome, state4 ) -> mapOutcomeResult signalValue outcome |> Result.map (\mapped -> ( mapped, state4 )))

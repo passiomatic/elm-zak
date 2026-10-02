@@ -563,7 +563,9 @@ primaryExpr =
         , functionLiteral
         , tableLiteral
         , arrayLiteral
-        , P.map Name L.identifier
+        , P.succeed Name
+            |. rejectThrowaway
+            |= L.identifier
         , P.succeed identity
             |. L.symbol "("
             |. L.blankSpace
@@ -571,6 +573,52 @@ primaryExpr =
             |. L.blankSpace
             |. L.symbol ")"
         ]
+
+
+{-| A bare `_` is the throwaway name: `let`, `const`, a parameter or a
+`for` loop variable can bind it any number of times, but nothing is ever
+stored under it, so reading it is a hard parse-time error. Assignment
+targets are parsed as expressions first (`assignOrExprStmt`), so this
+single check also rejects `_ = 1`, `_.x = 1` and `_[0] = 1`. A field
+*named* `_` (`t._`, `{ _ = 1 }`) is a field, not a binding, and is
+unaffected.
+
+Checked by peeking at the source *before* `L.identifier` chomps anything,
+then failing with `P.commit`: `L.identifier` is `P.backtrackable`, so a
+problem raised after it counts as no progress, and an enclosing `P.oneOf`
+or statement loop would swallow it ("expected the end of the program").
+Peeking first also puts the error's position on the `_` itself.
+-}
+rejectThrowaway : Parser ()
+rejectThrowaway =
+    P.succeed (\offset source -> String.slice offset (offset + 2) source)
+        |= P.getOffset
+        |= P.getSource
+        |> P.andThen
+            (\next ->
+                if isBareThrowaway next then
+                    P.commit () |> P.andThen (\_ -> P.problem "“_” is a throwaway name and can't be used as a value")
+
+                else
+                    P.succeed ()
+            )
+
+
+{-| `next` is the (up to) two characters at the current offset: a bare `_`
+is one not followed by any further identifier character (`_base`, `_?`
+and `_1` are ordinary names).
+-}
+isBareThrowaway : String -> Bool
+isBareThrowaway next =
+    case String.toList next of
+        [ '_' ] ->
+            True
+
+        [ '_', c ] ->
+            not (Char.isAlphaNum c || c == '_' || c == '?')
+
+        _ ->
+            False
 
 
 arrayLiteral : Parser Expr
@@ -669,14 +717,15 @@ isTrailingDefaultsOnly params =
 
 
 {-| `function(a, a)` is a hard parse-time error — otherwise the later
-argument silently wins, which is almost always a typo. `_` gets no special
-treatment: it's an ordinary identifier (see `Zak.Lexer.identifier`), so
-`function(_, _)` is rejected too. Same separate-pass-after-`commaSeparated`
-shape as `validateTrailingDefaults` above.
+argument silently wins, which is almost always a typo. The throwaway
+name `_` (see `rejectThrowaway`) is the one exception: `function(_, _)` is
+fine, since nothing is ever bound under it. Same
+separate-pass-after-`commaSeparated` shape as `validateTrailingDefaults`
+above.
 -}
 validateUniqueParams : List ( String, Maybe Expr ) -> Parser (List ( String, Maybe Expr ))
 validateUniqueParams params =
-    case firstDuplicate (List.map Tuple.first params) of
+    case firstDuplicate (List.filter ((/=) "_") (List.map Tuple.first params)) of
         Just name ->
             P.problem ("parameter “" ++ name ++ "” appears more than once")
 

@@ -151,7 +151,7 @@ let score = 0
 const MAX_SCORE = 999
 ```
 
-See [Execution context](Execution.md) for the rules on declaring, scope, and constants.
+See [Execution context](Execution.md) for the rules on declaring, scope, and constants. To evaluate a value and throw it away, declare it as `_` (see [Lexical structure](Lexical.md#the-throwaway-name-_)).
 
 ## Assignment
 

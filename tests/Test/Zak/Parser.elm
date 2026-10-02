@@ -412,8 +412,13 @@ suite =
                 -- a default doesn't make a repeated name any less repeated
                 , ( "function(a, a=1): return a end", Nothing )
 
-                -- `_` is an ordinary identifier, not a throwaway
-                , ( "function(_, _): return 1 end", Nothing )
+                -- the throwaway `_` is the one name that may repeat
+                , ( "function(_, _): return 1 end"
+                  , Just (FunctionLiteral [ ( "_", Nothing ), ( "_", Nothing ) ] (dummyBlock [ Return (Just (NumberLiteral 1)) ]))
+                  )
+                , ( "function(_, b, _): return b end"
+                  , Just (FunctionLiteral [ ( "_", Nothing ), ( "b", Nothing ), ( "_", Nothing ) ] (dummyBlock [ Return (Just (Name "b")) ]))
+                  )
                 , ( "function(a, b): return a end"
                   , Just (FunctionLiteral [ ( "a", Nothing ), ( "b", Nothing ) ] (dummyBlock [ Return (Just (Name "a")) ]))
                   )
@@ -512,6 +517,34 @@ let b = 2"""
 
                 -- "const" is now reserved, the same way "let" already is
                 , ( "let const = 5", Nothing )
+                ]
+        , describe "throwaway name `_`: bindable, never readable" <|
+            List.map testProgram
+                [ ( "let _ = 1\nlet _ = 2", Just [ Let "_" (NumberLiteral 1), Let "_" (NumberLiteral 2) ] )
+                , ( "const _ = 1", Just [ Const "_" (NumberLiteral 1) ] )
+                , ( "for _ in items:\nend", Just [ testFor "_" (Name "items") [] ] )
+
+                -- reading it, in any position, is a parse error
+                , ( "print(_)", Nothing )
+                , ( "let x = _", Nothing )
+                , ( "let x = 1 + _", Nothing )
+                , ( "_.x", Nothing )
+                , ( "_[0]", Nothing )
+                , ( "_()", Nothing )
+
+                -- assignment targets are parsed as expressions first, so
+                -- these are rejected by the same check
+                , ( "_ = 1", Nothing )
+                , ( "_.x = 1", Nothing )
+                , ( "_[0] = 1", Nothing )
+
+                -- only a bare `_` is special: longer names and table
+                -- fields are untouched
+                , ( "let x = _base", Just [ Let "x" (Name "_base") ] )
+                , ( "let x = _?", Just [ Let "x" (Name "_?") ] )
+                , ( "let x = t._", Just [ Let "x" (FieldAccess (Name "t") "_") ] )
+                , ( "let t = { _ = 1 }", Just [ Let "t" (TableLiteral [ ( "_", NumberLiteral 1 ) ]) ] )
+                , ( "t._ = 1", Just [ Assign (AssignTarget (Name "t") [ FieldSegment "_" ]) (NumberLiteral 1) ] )
                 ]
         , describe "statement: assignment vs expr-statement" <|
             List.map testProgram
