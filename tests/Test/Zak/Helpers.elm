@@ -58,6 +58,24 @@ suite =
                 , ( "let x = 1\nif true:\n    let y = 2\n    print(_)\nend", ( 4, 11 ), throwawayMessage )
                 , ( "let f = function():\n    let y = 2\n    return y +\nend", ( 3, 15 ), "" )
                 ]
+        , describe "formatError: a failed chompIf (a name, number or string) never shows up as a vague \"something else here\" -- each case says what was expected" <|
+            List.map testSyntaxError
+                [ ( "return y +", ( 1, 11 ), "expected an expression" )
+                , ( "let x = )", ( 1, 9 ), "expected an expression" )
+                , ( "print(1,)", ( 1, 9 ), "expected an expression" )
+                , ( "let t = { x = }", ( 1, 15 ), "expected an expression" )
+                , ( "let 1 = 2", ( 1, 5 ), "expected a name" )
+                , ( "const = 2", ( 1, 7 ), "expected a name" )
+                , ( "for 1 in x:\nend", ( 1, 5 ), "expected a name" )
+                , ( "let f = function(a, 1): return 1 end", ( 1, 21 ), "expected a name" )
+                , ( "let x = t.1", ( 1, 11 ), "expected a name" )
+                , ( "let t = { a = 1, 2 = 3 }", ( 1, 18 ), "expected a name" )
+                , ( "let s = \"abc", ( 1, 13 ), "this string is missing its closing “\"”" )
+                , ( "let x = 1.", ( 1, 11 ), "expected a digit after the decimal point" )
+
+                -- the generic list stays when it's the whole story
+                , ( "let s = \"a\\q\"", ( 1, 12 ), "expected “\"”, or “\\”" )
+                ]
         , describe "formatError: a line no statement can start with still gets the generic message, at that line" <|
             List.map testSyntaxError
                 [ ( "let x = 1\n)", ( 2, 1 ), "expected the end of the program" )

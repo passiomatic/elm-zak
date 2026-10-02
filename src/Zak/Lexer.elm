@@ -30,7 +30,10 @@ number =
         |. P.oneOf
             [ P.succeed ()
                 |. P.symbol "."
-                |. chompOneOrMore Char.isDigit
+                |. P.oneOf
+                    [ chompOneOrMore Char.isDigit
+                    , P.problem "expected a digit after the decimal point"
+                    ]
             , P.succeed ()
             ]
         |> P.getChompedString
@@ -74,6 +77,10 @@ stringBody revChunks =
         , P.chompIf (\c -> c /= '"' && c /= '\\')
             |> P.getChompedString
             |> P.map (\chunk -> P.Loop (chunk :: revChunks))
+
+        -- every character is taken by one of the above, so this is only
+        -- reached at the end of the input
+        , P.problem "this string is missing its closing “\"”"
         ]
 
 

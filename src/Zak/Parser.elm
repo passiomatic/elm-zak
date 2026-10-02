@@ -150,7 +150,7 @@ letStmt : Parser Statement
 letStmt =
     P.succeed Let
         |. L.keyword "let"
-        |= L.identifier
+        |= requiredName
         |. L.symbol "="
         |= P.lazy (\_ -> expr)
 
@@ -165,7 +165,7 @@ constStmt : Parser Statement
 constStmt =
     P.succeed Const
         |. L.keyword "const"
-        |= L.identifier
+        |= requiredName
         |. L.symbol "="
         |= P.lazy (\_ -> expr)
 
@@ -252,7 +252,7 @@ forStmt : Parser Statement
 forStmt =
     P.succeed For
         |. L.keyword "for"
-        |= L.identifier
+        |= requiredName
         |. L.keyword "in"
         |= P.lazy (\_ -> expr)
         |. L.symbol ":"
@@ -541,7 +541,7 @@ postfixExprHelp target =
     P.oneOf
         [ P.succeed (FieldAccess target)
             |. L.symbol "."
-            |= L.identifier
+            |= requiredName
             |> P.andThen postfixExprHelp
         , P.succeed (Index target)
             |. L.symbol "["
@@ -576,6 +576,11 @@ primaryExpr =
             |= P.lazy (\_ -> expr)
             |. L.blankSpace
             |. L.symbol ")"
+
+        -- names, numbers and strings start with a bare `chompIf`, which
+        -- can only report "unexpected character", so without this the
+        -- message would list `{`, `[`, `(`... and leave those out
+        , P.problem "expected an expression"
         ]
 
 
@@ -659,7 +664,7 @@ validateUniqueFields fields =
 tableField : Parser ( String, Expr )
 tableField =
     P.succeed Tuple.pair
-        |= L.identifier
+        |= requiredName
         |. L.symbol "="
         |= P.lazy (\_ -> expr)
 
@@ -683,7 +688,7 @@ made optional via `P.oneOf` instead of mandatory.
 parameter : Parser ( String, Maybe Expr )
 parameter =
     P.succeed Tuple.pair
-        |= L.identifier
+        |= requiredName
         |= P.oneOf
             [ P.succeed Just |. L.symbol "=" |= P.lazy (\_ -> expr)
             , P.succeed Nothing
@@ -761,6 +766,21 @@ firstDuplicateHelp seen names =
 
 
 -- SHARED HELPERS
+
+
+{-| `L.identifier` where a name is required: a `let`/`const`/`for`
+variable, a parameter, a table field, or a field after `.`. An identifier
+starts with a bare `chompIf`, which can only report "unexpected
+character"; this says what was expected instead. A reserved word
+(`let if = 2`) still gets the lexer's own message, since that one is
+raised further into the input.
+-}
+requiredName : Parser String
+requiredName =
+    P.oneOf
+        [ L.identifier
+        , P.problem "expected a name"
+        ]
 
 
 {-| Zero or more `item`s separated by commas — **no** trailing comma after

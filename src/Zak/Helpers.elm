@@ -291,6 +291,11 @@ alongside it at the same position, since those would only restate the
 same spot in vaguer terms. Only once every alternative at the deepest
 position turns out to be one of `elm/parser`'s own generic problems does
 this fall back to combining them into one "expected ... or ..." sentence.
+
+`UnexpectedChar` (a failed `chompIf`) says nothing about what was
+expected, so it's left out of that sentence. The parser and lexer give
+the common cases their own message instead ("expected an expression",
+"expected a name", ...); if it's all that's left, the message says so.
 -}
 describeProblems : List Problem -> String
 describeProblems problems =
@@ -306,12 +311,18 @@ describeProblems problems =
                             _ ->
                                 Nothing
                     )
+
+        expectations =
+            List.filter ((/=) UnexpectedChar) problems
     in
     if not (List.isEmpty customMessages) then
         String.join "; " customMessages
 
+    else if List.isEmpty expectations then
+        "unexpected character"
+
     else
-        "expected " ++ String.join ", or " (List.map expectationText problems)
+        "expected " ++ String.join ", or " (List.map expectationText expectations)
 
 
 {-| What `elm/parser` was expecting to find next, phrased to slot
@@ -361,7 +372,8 @@ expectationText problem =
             "the end of the program"
 
         UnexpectedChar ->
-            "something else here"
+            -- never reached: `describeProblems` filters it out
+            "a different character"
 
         Problem message ->
             message
