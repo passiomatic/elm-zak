@@ -1,6 +1,6 @@
 # Future ideas
 
-## 1. Let underscore identifier be special
+## 1. Let underscore identifier be special - DONE
 
 Currently this is raises an error:
 
