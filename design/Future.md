@@ -30,7 +30,6 @@ print(y)
 
 let [_, b] = [1,2]
 let { x, y } = {x: 1, y: 2}
-
 ```
 
 Notes:
@@ -43,12 +42,11 @@ Use a new name look up syntax to allow to pass a table as an argument.
 
 ```
 String.format("I ate %{count}d apples and I feel %{status}s.", {count: 5, baz: false, status: "fine"})
+```
 
 Notes: 
 * The `baz` field is ignored 
 * The positions of the table fields are not significant while resolving the format string names
-```
-
 
 
 [q]: https://quirrel.io/doc/coming-from/squirrel.html
