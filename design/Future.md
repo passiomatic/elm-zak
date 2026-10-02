@@ -50,3 +50,20 @@ Notes:
 
 
 [q]: https://quirrel.io/doc/coming-from/squirrel.html
+
+
+## 4. Multiple variables declarations on the same line
+
+A really little thing, today this isn't allowed:
+
+```
+let a=1, b=2, c=3
+```
+
+Could be superseded by structural unpacking, although is not really as clear. E.g.:
+
+```
+let a, b, c = [1,2,3]
+```
+
+
