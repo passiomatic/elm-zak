@@ -37,7 +37,7 @@ Notes:
 * [Quirrel][q] allows this by using the `[a, b]` or `{x, y}` to specify the source data structure, which makes sense too since it communicates the intent better.
 * Using `_` from point 1.
 
-# 3. Expand String.format to use name look ups
+## 3. Expand String.format to use name look ups
 
 Use a new name look up syntax to allow to pass a table as an argument.
 
