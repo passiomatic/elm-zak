@@ -92,12 +92,16 @@ blockHelp insideLoop revStatements =
                 ]
 
         _ ->
+            -- Only the newline is backtrackable: at a block's normal end
+            -- (`end`, `else`, end of input) every statement parser fails
+            -- without consuming anything, so the branch fails uncommitted
+            -- and `Done` is taken. Wrapping the statement too would also
+            -- swallow a real error partway through it (`print(1 +)`),
+            -- leaving only the outer "expected the end of the program".
             P.oneOf
-                [ P.backtrackable
-                    (P.succeed identity
-                        |. L.newline
-                        |= positionedStatement insideLoop
-                    )
+                [ P.succeed identity
+                    |. P.backtrackable L.newline
+                    |= positionedStatement insideLoop
                     |> P.map (\s -> P.Loop (s :: revStatements))
                 , P.succeed (P.Done (List.reverse revStatements))
                 ]
