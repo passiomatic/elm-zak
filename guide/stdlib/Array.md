@@ -160,9 +160,9 @@ Array.foldr(["a", "b", "c"], String.append, "")   # "abc"
 Array.foldl(["a", "b", "c"], String.append, "")   # "cba"
 ```
 
-## Array.range(lo, hi)
+## Array.range(low, hi)
 
-A new array of consecutive integers from `lo` to `hi`, inclusive of both. Empty, not an error, when `lo > hi`.
+A new array of consecutive integers from `low` to `hi`, inclusive of both. Empty, not an error, when `low > hi`.
 
 ```
 Array.range(3, 6)   # [3, 4, 5, 6]
