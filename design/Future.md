@@ -1,6 +1,6 @@
 # Future ideas
 
-## 1. Let underscore identifier be special - DONE
+## ✅ 1. Let underscore identifier be special - DONE
 
 Currently this is raises an error:
 
@@ -65,5 +65,21 @@ Could be superseded by structural unpacking, although is not really as clear. E.
 ```
 let a, b, c = [1,2,3]
 ```
+
+
+# 5. Allow more types as table field names 
+
+Allow specify a numeric index like Squirrel, with a array-like syntax: 
+
+```
+local tbl  = {
+    some_slot = "foo"
+    [99] = "Ninetynine"
+}
+```
+
+This is more flexbile than that: https://developer.electricimp.com/squirrel/squirrel-guide/variables-collections#tables you can use various  types as keys. 
+
+I think we need to implement this only if there's a real usage need. 
 
 
