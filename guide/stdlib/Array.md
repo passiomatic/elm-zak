@@ -2,9 +2,9 @@
 
 Ordered, mutable collections that can grow and shrink. An array is a reference, not a plain value — passing one to a function, or storing one in a `let`, never copies it.
 
-`array` is always the first argument of every function below: `Array.push(items, "key")`, not `Array.push("key", items)`.
+Every function below follows one rule for whether it mutates: a function that edits one specific part of the array (a slot, an appended value, the last element) mutates it directly, so every other reference to the same array sees the change. 
 
-Every function below follows one rule for whether it mutates: a function that edits one specific part of the array (a slot, an appended value, the last element) mutates it directly, so every other reference to the same array sees the change. A function that derives a whole new array from the existing one (`map`, `filter`, `foldl`, `foldr`) never mutates — it always returns a new value instead.
+A function that derives a whole new array from the existing one (`map`, `filter`, `foldl`, `foldr`) never mutates — it always returns a new value instead.
 
 `get`/`set` are bounds-checked: `index` must be `0 <= index < length(array)`. `index` must also be a whole number.
 
