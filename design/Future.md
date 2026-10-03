@@ -48,6 +48,13 @@ Notes:
 * The `baz` field is ignored 
 * The positions of the table fields are not significant while resolving the format string names
 
+# 3a. Allow String.format to accept multiple arguments
+
+We can implement native functions as variadic.
+
+```
+String.format("First %s, then %s", "this", "that")
+```
 
 [q]: https://quirrel.io/doc/coming-from/squirrel.html
 
