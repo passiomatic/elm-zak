@@ -3,7 +3,7 @@ module Zak.String exposing (displayString, natives)
 {-| String-related functions under one `String` namespace table
 (`String.from(value)`, `String.length(string)`, ...), following the exact
 same shape as `Zak.Math`. `from` was this namespace's seed; `length`,
-`is_empty`, `reverse`, `replace`, and `append` are its first real
+`is_empty`, `reverse`, `replace`, and `append` were its first real
 *manipulation* functions — Zak's counterparts to Elm's own
 `String.length`/`isEmpty`/`reverse`/`replace`/`append` — added the moment
 a script actually needed them, per "a small, evidence-backed core,
@@ -66,6 +66,8 @@ natives =
                 , ( "length", NativeFunction stringLength )
                 , ( "is_empty", NativeFunction stringIsEmpty )
                 , ( "reverse", NativeFunction stringReverse )
+                , ( "upper", NativeFunction stringUpper )
+                , ( "lower", NativeFunction stringLower )
                 , ( "replace", NativeFunction stringReplace )
                 , ( "slice", NativeFunction stringSlice )
                 , ( "append", NativeFunction stringAppend )
@@ -143,6 +145,42 @@ stringReverse state args =
     case args of
         [ VString string ] ->
             Ok ( VString (String.reverse string), state )
+
+        [ other ] ->
+            Err (TypeError { expected = "String", got = other })
+
+        _ ->
+            Err (WrongArgCount { expected = 1, got = List.length args })
+
+
+{-| `String.upper(string)` — Elm's own `String.toUpper` directly, which
+is JavaScript's `toUpperCase` underneath: full Unicode case mapping, not
+ASCII-only, so a single character can map to several and change the
+string's length (`"ß"` becomes `"SS"`). Inherited rather than adjusted
+for, the same way `String.length` inherits Elm's UTF-16 counting.
+-}
+stringUpper : State -> List Value -> Result RuntimeError ( Value, State )
+stringUpper state args =
+    case args of
+        [ VString string ] ->
+            Ok ( VString (String.toUpper string), state )
+
+        [ other ] ->
+            Err (TypeError { expected = "String", got = other })
+
+        _ ->
+            Err (WrongArgCount { expected = 1, got = List.length args })
+
+
+{-| `String.lower(string)` — Elm's own `String.toLower` directly, the
+mirror of `String.upper`: full Unicode case mapping via JavaScript's
+`toLowerCase`, not ASCII-only.
+-}
+stringLower : State -> List Value -> Result RuntimeError ( Value, State )
+stringLower state args =
+    case args of
+        [ VString string ] ->
+            Ok ( VString (String.toLower string), state )
 
         [ other ] ->
             Err (TypeError { expected = "String", got = other })

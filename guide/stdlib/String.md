@@ -44,6 +44,25 @@ String.is_empty("hi")  # false
 String.reverse("hello")   # "olleh"
 ```
 
+## String.upper(string)
+
+`string`, in uppercase. Works on any letter, not just A–Z. A few characters become more than one, so the result can be longer than `string`.
+
+```
+String.upper("Hello")    # "HELLO"
+String.upper("città")    # "CITTÀ"
+String.upper("straße")   # "STRASSE" (ß becomes two letters)
+```
+
+## String.lower(string)
+
+`string`, in lowercase. Works on any letter, not just A–Z.
+
+```
+String.lower("Hello")   # "hello"
+String.lower("CITTÀ")   # "città"
+```
+
 ## String.replace(string, needle, replacement)
 
 `string`, with every occurrence of `needle` swapped for `replacement`.

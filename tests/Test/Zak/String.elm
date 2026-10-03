@@ -27,7 +27,7 @@ runExpr =
 
 suite : Test
 suite =
-    describe "Zak.String (from, length, is_empty, reverse, replace, slice, append)"
+    describe "Zak.String (from, length, is_empty, reverse, upper, lower, replace, slice, append)"
         [ describe "from (accepts any value — the only possible error is arity)" <|
             [ test "a string comes back unquoted, unchanged" <|
                 \_ -> runExpr "String.from(\"hi\")" |> Expect.equal (Ok (VString "hi"))
@@ -105,6 +105,48 @@ suite =
             , test "wrong argument count" <|
                 \_ ->
                     runExpr "String.reverse(\"a\", \"b\")"
+                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 2 })))
+            ]
+        , describe "upper (Elm's String.toUpper — full Unicode, not ASCII-only)" <|
+            [ test "uppercases a simple string" <|
+                \_ -> runExpr "String.upper(\"Hello, world!\")" |> Expect.equal (Ok (VString "HELLO, WORLD!"))
+            , test "the empty string stays empty" <|
+                \_ -> runExpr "String.upper(\"\")" |> Expect.equal (Ok (VString ""))
+            , test "non-ASCII letters are uppercased too" <|
+                \_ -> runExpr "String.upper(\"città\")" |> Expect.equal (Ok (VString "CITTÀ"))
+            , test "one character can map to several, changing the length" <|
+                \_ -> runExpr "String.upper(\"straße\")" |> Expect.equal (Ok (VString "STRASSE"))
+            , test "does not mutate" <|
+                \_ ->
+                    run "let a = \"hello\"\nlet b = String.upper(a)\nreturn a"
+                        |> Expect.equal (Ok (VString "hello"))
+            , test "wrong argument type" <|
+                \_ ->
+                    runExpr "String.upper(1)"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
+            , test "wrong argument count" <|
+                \_ ->
+                    runExpr "String.upper(\"a\", \"b\")"
+                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 2 })))
+            ]
+        , describe "lower (Elm's String.toLower — full Unicode, not ASCII-only)" <|
+            [ test "lowercases a simple string" <|
+                \_ -> runExpr "String.lower(\"Hello, World!\")" |> Expect.equal (Ok (VString "hello, world!"))
+            , test "the empty string stays empty" <|
+                \_ -> runExpr "String.lower(\"\")" |> Expect.equal (Ok (VString ""))
+            , test "non-ASCII letters are lowercased too" <|
+                \_ -> runExpr "String.lower(\"CITTÀ\")" |> Expect.equal (Ok (VString "città"))
+            , test "does not mutate" <|
+                \_ ->
+                    run "let a = \"HELLO\"\nlet b = String.lower(a)\nreturn a"
+                        |> Expect.equal (Ok (VString "HELLO"))
+            , test "wrong argument type" <|
+                \_ ->
+                    runExpr "String.lower(1)"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
+            , test "wrong argument count" <|
+                \_ ->
+                    runExpr "String.lower(\"a\", \"b\")"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 2 })))
             ]
         , describe "replace (string, needle, replacement — subject first, matching String.append/String.format)" <|
