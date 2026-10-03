@@ -56,8 +56,6 @@ We can implement native functions as variadic.
 String.format("First %s, then %s", "this", "that")
 ```
 
-[q]: https://quirrel.io/doc/coming-from/squirrel.html
-
 
 ## 4. Multiple variables declarations on the same line
 
@@ -99,3 +97,7 @@ We currently don't have a way to return a value from a `if/else` construct. We h
 * Elm: `if` pred `then` when-true `else` when-false
  
 Python's version is stronger for Zak because we don't introduce new keywords and reads well.
+
+
+[q]: https://quirrel.io/doc/coming-from/squirrel.html
+
