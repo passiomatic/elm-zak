@@ -22,7 +22,7 @@ log.value = log.value ++ "C"       # runs right away — start never blocks its 
 
 ## Thread.start_global(closure)
 
-Same as `start`. Marks the resulting thread as "global" — reserved for a future distinction between per-scene and persistent background threads.
+Same as `start`. Marks the resulting thread as "global" — reserved for a future distinction between "temporary" and persistent background threads.
 
 ```
 Thread.start_global(function():
