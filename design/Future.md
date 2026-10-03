@@ -83,3 +83,12 @@ This is more flexbile than that: https://developer.electricimp.com/squirrel/squi
 I think we need to implement this only if there's a real usage need. 
 
 
+# 6. Ternary operator or if/else variant
+
+We currently don't have a way to return a value from a `if/else` construct. We have various options (quoting from memory):
+
+* Classic C-style op: pred `?` when-true `:` when-false
+* Python: when-true `if` pred `else` when-false
+* Elm: `if` pred `then` when-true `else` when-false
+ 
+Python's version is stronger for Zak because we don't introduce new keywords and reads well.
