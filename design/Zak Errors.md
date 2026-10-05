@@ -2,7 +2,7 @@
 
 A second pass on the Errors section of the public `Zak` module, before the package is published. It follows "Zak Public API.md", which left errors almost as they were inside the interpreter.
 
-**Status:** planned, 2026-10-05. Not implemented yet. Everything stays in the `Zak` module: a separate `Zak.Error` module would not be able to mention `Value`, because `Zak` and `Zak.Error` would then import each other.
+**Status:** implemented, 2026-10-05, on the `api-refactor` (elm-zak) and `zak-api-refactor` (the game) branches. Two things changed while implementing, both in "Changes made while implementing". Everything stays in the `Zak` module: a separate `Zak.Error` module would not be able to mention `Value`, because `Zak` and `Zak.Error` would then import each other.
 
 ## The problem
 
@@ -104,6 +104,11 @@ The host picks the name scripts call it by, as it does for any other native. The
 - **The game's natives barely change.** Their 72 `Err (TypeError …)` and `Err (WrongArgCount …)` lines stay exactly as they are. Only the annotations change, from `Result RuntimeError` to `Result Problem`. `Scene.transition`'s one `DomainError` becomes `Problem`.
 - **Tests read the kind with `Result.mapError Zak.errorProblem`.** The `leaf` and `dropPosition` helpers go away. Tests that checked a library kind, like `DomainError` or `AssertionFailed`, check its message instead.
 - **A native that calls back into Zak loses the callback's position.** Such a native calls `Zak.call`, gets an `Error`, and has to hand back `errorProblem error`. The game has no such native. The position of the native's own call is still added.
+
+## Changes made while implementing
+
+- **The game's tests load the helper files with `Zak.run`.** Five test files repeated the same chain of four `Zak.include` calls to load the helper files. That chain is now one function, `DefineHelpersFixture.loadHelpers`, which runs them with `Zak.run`.
+- **`Actor.callVerb` used `Debug.toString` too**, not just `Scene.callHook`. Both now use `errorToString`, and three tests check the readable message instead of a constructor name. A side effect: the game now builds with `--optimize`.
 
 ## Deferred
 
