@@ -2,7 +2,7 @@
 
 A proposal to cut elm-zak's public API down to a minimum before it's published as a package. Once the decisions below are settled, the result gets documented in the package itself.
 
-**Status:** a proposal. Nothing is implemented. Every decision below is settled; only the names of the data functions are deferred (see "Deferred"). One known bug must be fixed first (see "Known bug: `tick` revives a stopped thread"), and "Order of work" lists the steps.
+**Status:** a proposal. Nothing is implemented. Every decision below is settled; only the names of the data functions are deferred (see "Deferred"). "Order of work" lists the steps.
 
 **Evidence:** the three exposed modules in `../elm-zak/src/Zak/`, and every use of them in the real embedders: the game (`src/`, 27 files), its tests (`tests/`), and the Try Zak playground (`../elm-zak/try/src/Main.elm`). Counts are from 2026-09-29, except the `Value` counts, which are from 2026-10-05.
 
@@ -198,7 +198,7 @@ stopLocalThreads : World -> World
 - **It stops threads immediately, with no mark.** `Scene.enter_from` calls it directly, while the native is running. Threads started afterwards are kept automatically, such as the autoclose thread in `exit_scene_from_door`. This matches DeloresDev's synchronous `enterRoom`: "the old room's local threads stop before the script's next line".
   - **It replaces a mark.** Today `enter_from` puts `state.nextThreadId` into the `enter_scene` effect, and `Main` later drops the local threads whose id is below it (`Scene.stopLocalThreads`). That approach would have made thread ids, and the fact that they only grow, part of the public API. It also let the old room's threads run once more within the same `tick`, between the request and the effect being applied.
   - **One difference from today:** the old room's local threads are gone by the time its exit hook runs. In TWP, and in the game today, the exit hook runs first. This matters only if an exit hook interacts with those threads, for example with `join`.
-  - **The thread that calls it** finishes its current run. If it then waits, it's dropped too. That depends on fixing the `tick` bug below.
+  - **The thread that calls it isn't affected,** even if it's local. That's the language's existing rule for `Thread.stop`: only a suspended thread can be stopped, and a thread ends itself by returning (guide, "Threads"). Today's mark approach differs here: the calling thread would be dropped at its next wait. No script relies on that. `exit_scene_from_door` runs from verb bodies, which aren't threads, and `Boot.zak`'s thread ends right after `enter_from`. The transition commented out in `Boot.zak` (blinds down, wait, `enter_from`, blinds up) needs the calling thread to survive.
 - **Thread ids stay hidden.** Scripts still get a thread's id as a `Number` from `Thread.start`, for `Thread.stop` and `join`, but the host never handles one.
 - **No other thread control for now.** The real code gives no reason to stop *all* threads, list them, or report which thread failed in `tick`'s errors. The playground just throws the world away when it resets.
 
@@ -312,14 +312,6 @@ Elm can't re-export a type's constructors: `type alias Value = Internal.Value` i
 
 elm-zak's tests (`tests/Test/Zak/*.elm`) keep testing the internals directly. Only their imports change.
 
-## Known bug: `tick` revives a stopped thread
-
-**To fix before `stopLocalThreads`.** When a thread suspends, `tick` puts it back into `threads` unconditionally (`Interpreter.elm:574-581`). So a thread removed while it's running comes back as soon as it waits.
-
-- **Today:** a thread that stops itself with `Thread.stop` and then waits keeps running.
-- **With `stopLocalThreads`:** the thread that calls `enter_from` would survive the stop it asked for. Today's mark approach hides this only because the filter runs after `tick` returns.
-- **Fix:** when a thread suspends, put it back only if it's still in `threads`. Add tests for both cases.
-
 ## Why `Value` isn't opaque
 
 Decision 3 keeps plain constructors. The alternative was considered: with an opaque `Value`, hosts would build values with functions (`Zak.number 3`) and read them back with accessors (`Zak.toString : Value -> Maybe String`).
@@ -346,7 +338,7 @@ Decision 3 keeps plain constructors. The alternative was considered: with an opa
 - **elm-zak itself:**
   - the current modules move under `Zak/Internal/`, and `Zak.Helpers` becomes `Zak.Internal.ErrorMessage`, without `toConsoleEntry`;
   - `Zak` is written on top of the internals: the public types, the private conversions, and the functions above;
-  - the `tick` fix (see "Known bug"), then `threadCount` and `stopLocalThreads`;
+  - `threadCount` and `stopLocalThreads`;
   - `pendingLogs` and `pendingEffects` merge into one queue;
   - `Interpreter.resolveNative` logs a broken `nativeExpression` instead of dropping it silently;
   - `ImportNotFound`/`ImportParseError` are renamed to `IncludeNotFound`/`IncludeParseError`, and `AtPosition` to `WithPosition` (in `Runtime`, `Interpreter`, `Helpers` and 5 test modules);
@@ -369,17 +361,16 @@ Decision 3 keeps plain constructors. The alternative was considered: with an opa
 
 Each step leaves elm-zak's tests, and the game, passing.
 
-1. **The `tick` fix,** in today's code. It's independent of everything else, and the game benefits right away (`Thread.stop` on the calling thread).
-2. **Internal changes, still under today's module names:**
+1. **Internal changes, still under today's module names:**
    - the single effect queue;
    - the `Include*` and `WithPosition` renames;
    - logging broken `nativeExpression`s;
    - `threadCount` and `stopLocalThreads`.
 
    The game follows along with small edits, since it still uses today's API.
-3. **The new layout:**
+2. **The new layout:**
    - move the modules under `Zak/Internal/`;
    - write `Zak`, with the public types, the private conversions and the functions above;
    - list only `Zak` in `exposed-modules`.
-4. **The playground,** first: one file, and it exercises most of the embedding API.
-5. **The game:** the larger migration listed above, including `enter_from` moving to `stopLocalThreads`.
+3. **The playground,** first: one file, and it exercises most of the embedding API.
+4. **The game:** the larger migration listed above, including `enter_from` moving to `stopLocalThreads`.
