@@ -425,12 +425,17 @@ threadCount (World state) =
 
 
 {-| Stops every thread started with `Thread.start`, and keeps those
-started with `Thread.start_global`: what a game does when the player
-leaves a room. Called from a native, it stops the threads started before
-the call, and keeps those its script starts afterwards.
+started with `Thread.start_global`.
 
-Like `Thread.stop`, it only stops threads that are waiting: the thread
-that's running when it's called carries on.
+Scripts start a thread with `Thread.start` for work that belongs to what
+the host is doing now, and with `Thread.start_global` for work that
+should outlive it. The host decides when "now" is over, and calls this
+then.
+
+It takes effect at once: called from a native, it stops the threads
+that are waiting at that moment, and threads the script starts after
+the call keep running. Like `Thread.stop`, it doesn't stop the thread
+that's running when it's called.
 
 -}
 stopLocalThreads : World -> World

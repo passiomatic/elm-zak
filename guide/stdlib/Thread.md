@@ -22,7 +22,7 @@ log.value = log.value ++ "C"       # runs right away — start never blocks its 
 
 ## Thread.start_global(closure)
 
-Same as `start`. Marks the resulting thread as "global" — reserved for a future distinction between "temporary" and persistent background threads.
+Same as `start`, except that the thread is global. The program that runs your scripts can stop every thread that isn't global in one go, when the work those threads belong to is over. Global threads keep running. Use `start_global` for a thread that should outlive what's happening now.
 
 ```
 Thread.start_global(function():

@@ -41,7 +41,7 @@ The function starts running immediately, as part of the `Thread.start` call, and
 
 A thread can start other threads, and a thread can share state with the rest of the script through closures, like any other function — see [Closures](Functions.md#closures).
 
-`Thread.start_global` works the same as `Thread.start`, and is reserved for a future distinction between kinds of threads.
+`Thread.start_global` works the same as `Thread.start`, except that the thread is global. The program that runs your scripts can stop every thread that isn't global in one go, and global threads keep running. See [Thread.start_global](../stdlib/Thread.md#threadstart_globalclosure).
 
 ## Waiting
 
