@@ -267,6 +267,15 @@ suite =
                         |> Zak.run "return current()"
                         |> Result.map Tuple.first
                         |> Expect.equal (Ok (String "Diner"))
+            , test "globals lists the scripts' top-level definitions and setGlobal's, not the natives" <|
+                \_ ->
+                    withWorld (runIn [ ( "seven", Zak.nativeConstant (Number 7) ) ] "let a = 1\nlet f = function(): let local = 2 end") <|
+                        \( _, world ) ->
+                            world
+                                |> Zak.setGlobal "b" (Bool True)
+                                |> Zak.globals
+                                |> Dict.keys
+                                |> Expect.equal [ "a", "b", "f" ]
             , test "newTable makes a table the scripts can read" <|
                 \_ ->
                     let

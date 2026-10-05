@@ -1,7 +1,7 @@
 module Zak exposing
     ( World, init, run, include, call, tick, reseed
     , Value(..), TableRef, ArrayRef, FunctionRef
-    , getGlobal, setGlobal, newTable, getField, setField, fields, items
+    , getGlobal, setGlobal, globals, newTable, getField, setField, fields, items
     , threadCount, stopLocalThreads
     , Effect(..), LogLevel(..), emitEffect, takeEffects
     , Error(..), RuntimeError(..), Position, ParseError, errorToString
@@ -42,7 +42,7 @@ second, so updates chain with `|>`.
 
 # Data
 
-@docs getGlobal, setGlobal, newTable, getField, setField, fields, items
+@docs getGlobal, setGlobal, globals, newTable, getField, setField, fields, items
 
 
 # Threads
@@ -320,6 +320,17 @@ setGlobal name value (World state) =
 
         Nothing ->
             World (Runtime.bindGlobal name (toInternal value) state)
+
+
+{-| Every global the scripts defined at the top level, and every one
+[`setGlobal`](#setGlobal) added. Natives and the standard library aren't
+included.
+-}
+globals : World -> Dict String Value
+globals (World state) =
+    Dict.get state.globalFrameId state.heap
+        |> Maybe.withDefault Dict.empty
+        |> Dict.map (\_ value -> fromInternal value)
 
 
 {-| The frame `name` resolves to at the top level: the world's own
