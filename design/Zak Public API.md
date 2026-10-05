@@ -2,7 +2,7 @@
 
 A proposal to cut elm-zak's public API down to a minimum before it's published as a package. Once the decisions below are settled, the result gets documented in the package itself.
 
-**Status:** errors, and `include`, were redone afterward: see "Zak Errors.md". Where the two docs disagree, that one wins. Implemented on the `api-refactor` branch (elm-zak) and `zak-api-refactor` (the game), 2026-10-05: `Zak` is the only exposed module, and the game and the playground use nothing else. Two things changed while implementing, both in "Changes made while implementing". Only the names of the data functions are still deferred (see "Deferred"). "Order of work" lists the steps.
+**Status:** errors, and `include`, were redone afterward: see "Zak Errors.md". Where the two docs disagree, that one wins. Implemented on the `api-refactor` branch (elm-zak) and `zak-api-refactor` (the game), 2026-10-05: `Zak` is the only exposed module, and the game and the playground use nothing else. Two things changed while implementing, both in "Changes made while implementing". The names of the data functions and the thread model are still deferred (see "Deferred"). "Order of work" lists the steps.
 
 **Evidence:** the three exposed modules in `../elm-zak/src/Zak/`, and every use of them in the real embedders: the game (`src/`, 27 files), its tests (`tests/`), and the Try Zak playground (`../elm-zak/try/src/Main.elm`). Counts are from 2026-09-29, except the `Value` counts, which are from 2026-10-05.
 
@@ -343,6 +343,11 @@ Decision 3 keeps plain constructors. The alternative was considered: with an opa
 ## Deferred
 
 - **The names of the data functions.** `getField` reads one field, but `fields` (not `getFields`) reads them all, and `items` is its array counterpart. The names don't line up, but they're good enough for v1.
+- **Two kinds of thread, for v1.** A script decides when it starts a thread whether it's local (`Thread.start`) or global (`Thread.start_global`). The host has one way to act on that: `stopLocalThreads`. That fits the game, which stops local threads on a room change. A host whose threads need more than one boundary, such as a level and a dialog inside it, can't express that. Two alternatives were considered, and set aside for now:
+  - **Named groups.** A script names a group when it starts a thread, as in `Thread.start(fn, "dialog")`, and the host stops a group with `Zak.stopThreads "dialog" world`. It's more general, but it adds to both the language and the API.
+  - **Grouping left to the host.** `start_global` goes away. A native records the ids of the threads it cares about, and stops them. It's the most flexible option, but every host has to do that work itself.
+
+  Whether "local" is the right word is also still open.
 
 ## Migration cost, once decided
 
