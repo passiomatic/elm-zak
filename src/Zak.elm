@@ -1,11 +1,11 @@
 module Zak exposing
-    ( World, init, run, include, call, tick, reseed
+    ( World, init, run, call, tick, reseed
     , Value(..), TableRef, ArrayRef, FunctionRef
     , getGlobal, setGlobal, globals, newTable, getField, setField, fields, items
     , threadCount, stopLocalThreads
     , Effect(..), LogLevel(..), emitEffect, takeEffects
-    , Error(..), RuntimeError(..), Position, ParseError, errorToString
-    , Native, nativeFunction, nativeTable, nativeExpression, nativeConstant
+    , Error, Problem(..), Position, errorProblem, errorPosition, errorToString
+    , Native, nativeFunction, nativeTable, nativeExpression, nativeConstant, nativeInclude
     )
 
 {-| Embed Zak, a small scripting language, in an Elm program.
@@ -38,7 +38,7 @@ second, so updates chain with `|>`.
 
 # Running
 
-@docs World, init, run, include, call, tick, reseed
+@docs World, init, run, call, tick, reseed
 
 
 # Values
@@ -63,12 +63,12 @@ second, so updates chain with `|>`.
 
 # Errors
 
-@docs Error, RuntimeError, Position, ParseError, errorToString
+@docs Error, Problem, Position, errorProblem, errorPosition, errorToString
 
 
 # Writing natives
 
-@docs Native, nativeFunction, nativeTable, nativeExpression, nativeConstant
+@docs Native, nativeFunction, nativeTable, nativeExpression, nativeConstant, nativeInclude
 
 -}
 
@@ -118,35 +118,7 @@ run : String -> World -> Result Error ( Value, World )
 run source (World state) =
     Interpreter.runIncremental (Interpreter.worldEnv state) state source
         |> Result.map (\( value, state1 ) -> ( fromInternal value, World state1 ))
-        |> Result.mapError errorFromInternal
-
-
-{-| Runs the source of the file at `path` into `world`, as if it were
-part of the script that includes it: its top-level definitions become
-globals, shared with every other script, with no table of their own to
-reach them through. A path already included is skipped, which also
-stops include cycles. Meant for a host's own `include` native, after it
-has found `source` for `path`:
-
-    include : List Value -> World -> Result RuntimeError ( Value, World )
-    include args world =
-        case args of
-            [ String path ] ->
-                case Dict.get path files of
-                    Just source ->
-                        Zak.include path source world
-
-                    Nothing ->
-                        Err (IncludeNotFound path)
-
-            ...
-
--}
-include : String -> String -> World -> Result RuntimeError ( Value, World )
-include path source (World state) =
-    Interpreter.include path source state
-        |> Result.map (\( value, state1 ) -> ( fromInternal value, World state1 ))
-        |> Result.mapError runtimeErrorFromInternal
+        |> Result.mapError Error
 
 
 {-| Calls a Zak function with `args`. Get the function first, with
@@ -167,20 +139,20 @@ call : Value -> List Value -> World -> Result Error ( Value, World )
 call fn args (World state) =
     Interpreter.call state (toInternal fn) (List.map toInternal args)
         |> Result.map (\( value, state1 ) -> ( fromInternal value, World state1 ))
-        |> Result.mapError errorFromInternal
+        |> Result.mapError Error
 
 
 {-| Advances every waiting thread by `seconds`, resuming those whose wait
 is over. A thread that fails is dropped, and its error is returned; the
 errors come in the order the threads failed.
 -}
-tick : Float -> World -> ( List RuntimeError, World )
+tick : Float -> World -> ( List Error, World )
 tick seconds (World state) =
     let
         ( state1, errors ) =
             Interpreter.tick seconds state
     in
-    ( List.map runtimeErrorFromInternal (List.reverse errors), World state1 )
+    ( List.map (Interpreter.RuntimeError >> Error) (List.reverse errors), World state1 )
 
 
 {-| Starts the `Random` functions over from `seed`. A new world always
@@ -557,26 +529,30 @@ logLevelFromInternal level =
 -- ERRORS
 
 
-{-| Why [`run`](#run) or [`call`](#call) failed: the source didn't parse,
-or running it went wrong.
+{-| Why [`run`](#run), [`call`](#call) or a thread failed: a
+[`Problem`](#Problem), and where it happened when that's known.
 -}
 type Error
-    = SyntaxError ParseError
-    | RuntimeError RuntimeError
+    = Error Interpreter.Error
 
 
-{-| What went wrong while running. Natives raise these too, usually
-`TypeError` or `WrongArgCount`:
+{-| What went wrong. Natives return these too, usually `TypeError` or
+`WrongArgCount`:
 
     [ other ] ->
         Err (TypeError { expected = "String", got = other })
 
-An error raised while a statement runs comes back wrapped in
-`WithPosition`, with the position of that statement.
+  - `SyntaxError` is the parser's message, such as `expected “end”`.
+    A file that fails to parse while it's included gives one too, naming
+    the file.
+  - `Problem` is any other problem, described by its message. The
+    standard library raises it, as in `Problem "the array is empty"`,
+    and so can a native.
 
 -}
-type RuntimeError
-    = UndefinedName String
+type Problem
+    = SyntaxError String
+    | UndefinedName String
     | AlreadyDefined String
     | ConstReassigned String
     | UndefinedField String
@@ -584,20 +560,8 @@ type RuntimeError
     | NotAFunction Value
     | WrongArgCount { expected : Int, got : Int }
     | TypeError { expected : String, got : Value }
-    | DivisionByZero String
-    | DomainError String
-    | AssertionFailed String
-    | IndexOutOfBounds { index : Float, length : Int }
-    | NotAnInteger { index : Float }
-    | NegativeIndex { index : Float }
-    | EmptyArray
-    | SuspendedNotAllowed
-    | FormatArgMismatch { expected : Int, got : Int }
-    | UnknownFormatDirective String
     | IncludeNotFound String
-    | IncludeParseError String ParseError
-    | InternalError String
-    | WithPosition Position RuntimeError
+    | Problem String
 
 
 {-| A place in the source: `row` and `col` both start at 1.
@@ -608,11 +572,32 @@ type alias Position =
     }
 
 
-{-| Why the source didn't parse, as `elm/parser` reports it.
-[`errorToString`](#errorToString) turns it into a message.
+{-| What went wrong.
 -}
-type alias ParseError =
-    List Parser.DeadEnd
+errorProblem : Error -> Problem
+errorProblem (Error error) =
+    case error of
+        Interpreter.SyntaxError deadEnds ->
+            SyntaxError (ErrorMessage.describeSyntaxError deadEnds)
+
+        Interpreter.RuntimeError runtimeError ->
+            problemFromInternal runtimeError
+
+
+{-| Where it went wrong: the statement that failed, or where parsing
+stopped. `Nothing` for an error outside any statement.
+-}
+errorPosition : Error -> Maybe Position
+errorPosition (Error error) =
+    case error of
+        Interpreter.SyntaxError deadEnds ->
+            ErrorMessage.syntaxErrorPosition deadEnds
+
+        Interpreter.RuntimeError (Runtime.WithPosition position _) ->
+            Just position
+
+        Interpreter.RuntimeError _ ->
+            Nothing
 
 
 {-| A message a person can read. Pass the source that failed, and the
@@ -630,27 +615,17 @@ Pass `""` when there's no source to show, as for an error from
 
 -}
 errorToString : String -> Error -> String
-errorToString source error =
-    case error of
-        SyntaxError deadEnds ->
-            ErrorMessage.formatSyntaxError source deadEnds
-
-        RuntimeError runtimeError ->
-            ErrorMessage.formatRuntimeError source (runtimeErrorToInternal runtimeError)
-
-
-errorFromInternal : Interpreter.Error -> Error
-errorFromInternal error =
+errorToString source (Error error) =
     case error of
         Interpreter.SyntaxError deadEnds ->
-            SyntaxError deadEnds
+            ErrorMessage.formatSyntaxError source deadEnds
 
         Interpreter.RuntimeError runtimeError ->
-            RuntimeError (runtimeErrorFromInternal runtimeError)
+            ErrorMessage.formatRuntimeError source runtimeError
 
 
-runtimeErrorFromInternal : Runtime.RuntimeError -> RuntimeError
-runtimeErrorFromInternal error =
+problemFromInternal : Runtime.RuntimeError -> Problem
+problemFromInternal error =
     case error of
         Runtime.UndefinedName name ->
             UndefinedName name
@@ -676,52 +651,66 @@ runtimeErrorFromInternal error =
         Runtime.TypeError { expected, got } ->
             TypeError { expected = expected, got = fromInternal got }
 
-        Runtime.DivisionByZero message ->
-            DivisionByZero message
-
-        Runtime.DomainError message ->
-            DomainError message
-
-        Runtime.AssertionFailed message ->
-            AssertionFailed message
-
-        Runtime.IndexOutOfBounds details ->
-            IndexOutOfBounds details
-
-        Runtime.NotAnInteger details ->
-            NotAnInteger details
-
-        Runtime.NegativeIndex details ->
-            NegativeIndex details
-
-        Runtime.EmptyArray ->
-            EmptyArray
-
-        Runtime.SuspendedNotAllowed ->
-            SuspendedNotAllowed
-
-        Runtime.FormatArgMismatch counts ->
-            FormatArgMismatch counts
-
-        Runtime.UnknownFormatDirective directive ->
-            UnknownFormatDirective directive
-
         Runtime.IncludeNotFound path ->
             IncludeNotFound path
 
-        Runtime.IncludeParseError path deadEnds ->
-            IncludeParseError path deadEnds
+        Runtime.IncludeParseError _ _ ->
+            SyntaxError (ErrorMessage.describeRuntimeError error)
 
-        Runtime.InternalError message ->
-            InternalError message
+        Runtime.Problem message ->
+            Problem message
 
-        Runtime.WithPosition position inner ->
-            WithPosition position (runtimeErrorFromInternal inner)
+        Runtime.WithPosition _ inner ->
+            problemFromInternal inner
+
+        Runtime.DivisionByZero _ ->
+            libraryProblem error
+
+        Runtime.DomainError _ ->
+            libraryProblem error
+
+        Runtime.AssertionFailed _ ->
+            libraryProblem error
+
+        Runtime.IndexOutOfBounds _ ->
+            libraryProblem error
+
+        Runtime.NotAnInteger _ ->
+            libraryProblem error
+
+        Runtime.NegativeIndex _ ->
+            libraryProblem error
+
+        Runtime.EmptyArray ->
+            libraryProblem error
+
+        Runtime.SuspendedNotAllowed ->
+            libraryProblem error
+
+        Runtime.FormatArgMismatch _ ->
+            libraryProblem error
+
+        Runtime.UnknownFormatDirective _ ->
+            libraryProblem error
+
+        Runtime.InternalError _ ->
+            libraryProblem error
 
 
-runtimeErrorToInternal : RuntimeError -> Runtime.RuntimeError
-runtimeErrorToInternal error =
-    case error of
+{-| One of the standard library's own checks, which hosts only ever show:
+its message.
+-}
+libraryProblem : Runtime.RuntimeError -> Problem
+libraryProblem error =
+    Problem (ErrorMessage.describeRuntimeError error)
+
+
+problemToInternal : Problem -> Runtime.RuntimeError
+problemToInternal problem =
+    case problem of
+        SyntaxError message ->
+            Runtime.Problem message
+
         UndefinedName name ->
             Runtime.UndefinedName name
 
@@ -746,47 +735,11 @@ runtimeErrorToInternal error =
         TypeError { expected, got } ->
             Runtime.TypeError { expected = expected, got = toInternal got }
 
-        DivisionByZero message ->
-            Runtime.DivisionByZero message
-
-        DomainError message ->
-            Runtime.DomainError message
-
-        AssertionFailed message ->
-            Runtime.AssertionFailed message
-
-        IndexOutOfBounds details ->
-            Runtime.IndexOutOfBounds details
-
-        NotAnInteger details ->
-            Runtime.NotAnInteger details
-
-        NegativeIndex details ->
-            Runtime.NegativeIndex details
-
-        EmptyArray ->
-            Runtime.EmptyArray
-
-        SuspendedNotAllowed ->
-            Runtime.SuspendedNotAllowed
-
-        FormatArgMismatch counts ->
-            Runtime.FormatArgMismatch counts
-
-        UnknownFormatDirective directive ->
-            Runtime.UnknownFormatDirective directive
-
         IncludeNotFound path ->
             Runtime.IncludeNotFound path
 
-        IncludeParseError path deadEnds ->
-            Runtime.IncludeParseError path deadEnds
-
-        InternalError message ->
-            Runtime.InternalError message
-
-        WithPosition position inner ->
-            Runtime.WithPosition position (runtimeErrorToInternal inner)
+        Problem message ->
+            Runtime.Problem message
 
 
 
@@ -794,13 +747,15 @@ runtimeErrorToInternal error =
 
 
 {-| A name the host defines for its scripts, which they use like one of
-their own globals. It's one of:
+their own globals. It's one of these:
 
   - a function written in Elm, made with [`nativeFunction`](#nativeFunction);
   - a table of natives, made with [`nativeTable`](#nativeTable);
   - a function or other value written in Zak, made with
     [`nativeExpression`](#nativeExpression);
-  - a fixed value, made with [`nativeConstant`](#nativeConstant).
+  - a fixed value, made with [`nativeConstant`](#nativeConstant);
+  - the function that includes another file, made with
+    [`nativeInclude`](#nativeInclude).
 
 Give natives to [`init`](#init) by name. Unlike a script's globals, they
 exist before any script runs.
@@ -826,14 +781,14 @@ and the world; it gives back its result and the world, or an error.
             )
 
 -}
-nativeFunction : (List Value -> World -> Result RuntimeError ( Value, World )) -> Native
+nativeFunction : (List Value -> World -> Result Problem ( Value, World )) -> Native
 nativeFunction fn =
     Native
         (Runtime.NativeFunction
             (\state args ->
                 fn (List.map fromInternal args) (World state)
                     |> Result.map (\( value, World state1 ) -> ( toInternal value, state1 ))
-                    |> Result.mapError runtimeErrorToInternal
+                    |> Result.mapError problemToInternal
             )
         )
 
@@ -876,3 +831,39 @@ nativeExpression source =
 nativeConstant : Value -> Native
 nativeConstant value =
     Native (Runtime.NativeConstant (toInternal value))
+
+
+{-| The native that includes a file: `include("Scenes/Diner.zak")`. Its
+argument is a path, and `find` gives back that file's source.
+
+    Zak.init
+        [ ( "include", Zak.nativeInclude (\path -> Dict.get path files) ) ]
+
+The file runs as if it were part of the script that includes it: its
+top-level definitions become globals, shared with every other script,
+with no table of their own to reach them through. A path already
+included is skipped, which also stops include cycles. A path `find`
+doesn't know is an `IncludeNotFound`.
+
+-}
+nativeInclude : (String -> Maybe String) -> Native
+nativeInclude find =
+    Native
+        (Runtime.NativeFunction
+            (\state args ->
+                case args of
+                    [ Runtime.VString path ] ->
+                        case find path of
+                            Just source ->
+                                Interpreter.include path source state
+
+                            Nothing ->
+                                Err (Runtime.IncludeNotFound path)
+
+                    [ other ] ->
+                        Err (Runtime.TypeError { expected = "String", got = other })
+
+                    _ ->
+                        Err (Runtime.WrongArgCount { expected = 1, got = List.length args })
+            )
+        )

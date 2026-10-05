@@ -115,6 +115,7 @@ type RuntimeError
     | IncludeNotFound String
     | IncludeParseError String Parser.Error
     | InternalError String
+    | Problem String
     | WithPosition Position RuntimeError
 
 

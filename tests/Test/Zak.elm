@@ -9,7 +9,7 @@ errors and effects faithfully, both ways.
 import Dict
 import Expect
 import Test exposing (Test, describe, test)
-import Zak exposing (Effect(..), Error(..), LogLevel(..), RuntimeError(..), Value(..), World)
+import Zak exposing (Effect(..), Error, LogLevel(..), Problem(..), Value(..), World)
 
 
 {-| A world with `natives`, then `source` run into it. -}
@@ -24,25 +24,21 @@ returns natives source =
     runIn natives source |> Result.map Tuple.first
 
 
-{-| A runtime error without the `WithPosition` it comes wrapped in. -}
-leaf : RuntimeError -> RuntimeError
-leaf error =
-    case error of
-        WithPosition _ inner ->
-            leaf inner
-
-        _ ->
-            error
-
-
-leafError : Result Error a -> Maybe RuntimeError
-leafError result =
+{-| What went wrong, if anything. -}
+problem : Result Error a -> Maybe Problem
+problem result =
     case result of
-        Err (RuntimeError error) ->
-            Just (leaf error)
+        Err error ->
+            Just (Zak.errorProblem error)
 
-        _ ->
+        Ok _ ->
             Nothing
+
+
+{-| A world with `files` to include, then `source` run into it. -}
+withFiles : List ( String, String ) -> String -> Result Error ( Value, World )
+withFiles files source =
+    runIn [ ( "include", Zak.nativeInclude (\path -> Dict.get path (Dict.fromList files)) ) ] source
 
 
 double : Zak.Native
@@ -96,41 +92,21 @@ suite =
             , test "a source that doesn't parse is a SyntaxError" <|
                 \_ ->
                     case returns [] "let = 1" of
-                        Err (SyntaxError _) ->
-                            Expect.pass
+                        Err error ->
+                            ( Zak.errorProblem error, Zak.errorPosition error )
+                                |> Expect.equal ( SyntaxError "expected a name", Just { row = 1, col = 5 } )
 
-                        other ->
-                            Expect.fail ("expected a SyntaxError, got: " ++ Debug.toString other)
+                        Ok _ ->
+                            Expect.fail "expected a SyntaxError"
             , test "a runtime error comes back with the position of its statement" <|
                 \_ ->
                     case returns [] "let a = 1\nreturn b" of
-                        Err (RuntimeError (WithPosition position (UndefinedName "b"))) ->
-                            Expect.equal { row = 2, col = 1 } position
-
-                        other ->
-                            Expect.fail ("expected UndefinedName at line 2, got: " ++ Debug.toString other)
-            , test "include runs a file's definitions into the world, once" <|
-                \_ ->
-                    let
-                        twice =
-                            Zak.init []
-                                |> Zak.include "lib.zak" "let answer = 42"
-                                |> Result.andThen (\( _, world ) -> Zak.include "lib.zak" "let answer = 42" world)
-                    in
-                    case twice of
-                        Ok ( _, world ) ->
-                            Zak.getGlobal "answer" world |> Expect.equal (Just (Number 42))
-
                         Err error ->
-                            Expect.fail ("expected success, got: " ++ Debug.toString error)
-            , test "include of a file that doesn't parse is an IncludeParseError naming it" <|
-                \_ ->
-                    case Zak.include "bad.zak" "let = " (Zak.init []) of
-                        Err (IncludeParseError path _) ->
-                            Expect.equal "bad.zak" path
+                            ( Zak.errorProblem error, Zak.errorPosition error )
+                                |> Expect.equal ( UndefinedName "b", Just { row = 2, col = 1 } )
 
-                        other ->
-                            Expect.fail ("expected IncludeParseError, got: " ++ Debug.toString other)
+                        Ok _ ->
+                            Expect.fail "expected UndefinedName"
             , test "two worlds reseeded alike roll alike" <|
                 \_ ->
                     let
@@ -158,7 +134,7 @@ suite =
             , test "call on a value that isn't a function is NotAFunction" <|
                 \_ ->
                     Zak.call (Number 1) [] (Zak.init [])
-                        |> leafError
+                        |> problem
                         |> Expect.equal (Just (NotAFunction (Number 1)))
             , test "a native can be called from the host too" <|
                 \_ ->
@@ -181,8 +157,21 @@ suite =
             , test "an error a native raises reaches the host, with the value it carried" <|
                 \_ ->
                     returns [ ( "double", double ) ] "return double(\"x\")"
-                        |> leafError
+                        |> problem
                         |> Expect.equal (Just (TypeError { expected = "Number", got = String "x" }))
+            , test "a Problem a native raises reaches the host as it was, at the native's call" <|
+                \_ ->
+                    let
+                        refuse =
+                            Zak.nativeFunction (\_ _ -> Err (Problem "not today"))
+                    in
+                    case returns [ ( "refuse", refuse ) ] "let a = 1\nrefuse()" of
+                        Err error ->
+                            ( Zak.errorProblem error, Zak.errorPosition error, Zak.errorToString "" error )
+                                |> Expect.equal ( Problem "not today", Just { row = 2, col = 1 }, "Runtime error at line 2, column 1: not today" )
+
+                        Ok _ ->
+                            Expect.fail "expected an error"
             , test "a table passed to a native and back is the same table" <|
                 \_ ->
                     let
@@ -208,7 +197,7 @@ suite =
                                     case args of
                                         [ fn, value ] ->
                                             Zak.call fn [ value ] world
-                                                |> Result.mapError (\_ -> InternalError "call failed")
+                                                |> Result.mapError Zak.errorProblem
 
                                         _ ->
                                             Ok ( Nil, world )
@@ -236,6 +225,43 @@ suite =
 
                         other ->
                             Expect.fail ("expected one LogError, got: " ++ Debug.toString (Tuple.first other))
+            ]
+        , describe "including"
+            [ test "nativeInclude runs a file's definitions into the world" <|
+                \_ ->
+                    withFiles [ ( "lib.zak", "let answer = 42" ) ] "include(\"lib.zak\")\nreturn answer"
+                        |> Result.map Tuple.first
+                        |> Expect.equal (Ok (Number 42))
+            , test "a file is included once, which also stops include cycles" <|
+                \_ ->
+                    withFiles
+                        [ ( "a.zak", "include(\"b.zak\")\nlet from_a = 1" )
+                        , ( "b.zak", "include(\"a.zak\")\nlet from_b = 2" )
+                        ]
+                        "include(\"a.zak\")\ninclude(\"a.zak\")\nreturn from_a + from_b"
+                        |> Result.map Tuple.first
+                        |> Expect.equal (Ok (Number 3))
+            , test "a path the host doesn't know is IncludeNotFound" <|
+                \_ ->
+                    withFiles [] "include(\"missing.zak\")"
+                        |> problem
+                        |> Expect.equal (Just (IncludeNotFound "missing.zak"))
+            , test "include takes one String" <|
+                \_ ->
+                    ( withFiles [] "include(1)" |> problem, withFiles [] "include()" |> problem )
+                        |> Expect.equal
+                            ( Just (TypeError { expected = "String", got = Number 1 })
+                            , Just (WrongArgCount { expected = 1, got = 0 })
+                            )
+            , test "a file that doesn't parse is a SyntaxError naming it, at the include line" <|
+                \_ ->
+                    case withFiles [ ( "bad.zak", "let = 1" ) ] "let a = 1\ninclude(\"bad.zak\")" of
+                        Err error ->
+                            ( Zak.errorProblem error, Zak.errorPosition error )
+                                |> Expect.equal ( SyntaxError "“bad.zak” failed to parse at line 1, column 5: expected a name", Just { row = 2, col = 1 } )
+
+                        Ok _ ->
+                            Expect.fail "expected a SyntaxError"
             ]
         , describe "data"
             [ test "getGlobal reads a script's global, and a native" <|
@@ -327,7 +353,7 @@ suite =
                         \( _, world ) ->
                             Zak.tick 1.0 world
                                 |> Tuple.first
-                                |> List.map leaf
+                                |> List.map Zak.errorProblem
                                 |> Expect.equal [ UndefinedName "first", UndefinedName "second" ]
             , test "stopLocalThreads keeps only the global threads" <|
                 \_ ->
@@ -348,7 +374,12 @@ suite =
                                 |> Expect.equal ( [ Log LogPrint "a", Effect "ping" [ Number 1 ], Log LogWarning "b" ], [] )
             ]
         , describe "errors"
-            [ test "errorToString shows the line and a caret when given the source" <|
+            [ test "the standard library's own checks are a Problem with their message" <|
+                \_ ->
+                    returns [] "return Array.pop([])"
+                        |> problem
+                        |> Expect.equal (Just (Problem "the array is empty"))
+            , test "errorToString shows the line and a caret when given the source" <|
                 \_ ->
                     case returns [] "let a = 1\nreturn b" of
                         Err error ->

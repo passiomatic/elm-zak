@@ -1,4 +1,4 @@
-module Zak.Internal.ErrorMessage exposing (describeRuntimeError, describeRuntimeErrorAt, formatRuntimeError, formatSyntaxError)
+module Zak.Internal.ErrorMessage exposing (describeRuntimeError, describeRuntimeErrorAt, describeSyntaxError, formatRuntimeError, formatSyntaxError, syntaxErrorPosition)
 
 {-| Error text: a syntax error or a `RuntimeError` as a message a person
 can read, with the source line and a `^` under the column when there's
@@ -8,7 +8,7 @@ interpreter itself can use it (to log a broken `NativeZakExpr`, say).
 `formatRuntimeError`.
 -}
 
-import Parser exposing (DeadEnd, Problem(..))
+import Parser exposing (DeadEnd)
 import Zak.Internal.AST exposing (Position)
 import Zak.Internal.Runtime exposing (RuntimeError(..), Value(..))
 
@@ -93,6 +93,9 @@ describeRuntimeError runtimeError =
 
         InternalError message ->
             "internal interpreter error: " ++ message
+
+        Problem message ->
+            message
 
         IndexOutOfBounds { index, length } ->
             "index " ++ formatNumber index ++ " is out of bounds — the array has " ++ pluralize length "element"
@@ -200,7 +203,25 @@ formatSyntaxError source deadEnds =
             errorBlock "Syntax error" position source (describeProblems problems)
 
 
-deepestDeadEnds : List DeadEnd -> Maybe ( Position, List Problem )
+{-| A syntax error's message on its own: the line `formatSyntaxError`
+shows under the source, without its position.
+-}
+describeSyntaxError : List DeadEnd -> String
+describeSyntaxError deadEnds =
+    deepestDeadEnds deadEnds
+        |> Maybe.map (Tuple.second >> describeProblems)
+        |> Maybe.withDefault "syntax error"
+
+
+{-| Where parsing stopped: the position `formatSyntaxError` points at.
+-}
+syntaxErrorPosition : List DeadEnd -> Maybe Position
+syntaxErrorPosition deadEnds =
+    deepestDeadEnds deadEnds
+        |> Maybe.map Tuple.first
+
+
+deepestDeadEnds : List DeadEnd -> Maybe ( Position, List Parser.Problem )
 deepestDeadEnds deadEnds =
     case deadEnds of
         [] ->
@@ -243,7 +264,7 @@ expected, so it's left out of that sentence. The parser and lexer give
 the common cases their own message instead ("expected an expression",
 "expected a name", ...); if it's all that's left, the message says so.
 -}
-describeProblems : List Problem -> String
+describeProblems : List Parser.Problem -> String
 describeProblems problems =
     let
         customMessages =
@@ -251,7 +272,7 @@ describeProblems problems =
                 |> List.filterMap
                     (\p ->
                         case p of
-                            Problem message ->
+                            Parser.Problem message ->
                                 Just message
 
                             _ ->
@@ -259,7 +280,7 @@ describeProblems problems =
                     )
 
         expectations =
-            List.filter ((/=) UnexpectedChar) problems
+            List.filter ((/=) Parser.UnexpectedChar) problems
     in
     if not (List.isEmpty customMessages) then
         String.join "; " customMessages
@@ -281,50 +302,50 @@ covers every constructor `elm/parser`'s own `Problem` type has, so this
 stays exhaustive rather than silently going generic if a future change
 ever introduces one of the others.
 -}
-expectationText : Problem -> String
+expectationText : Parser.Problem -> String
 expectationText problem =
     case problem of
-        Expecting s ->
+        Parser.Expecting s ->
             "“" ++ s ++ "”"
 
-        ExpectingInt ->
+        Parser.ExpectingInt ->
             "a whole number"
 
-        ExpectingHex ->
+        Parser.ExpectingHex ->
             "a hexadecimal number"
 
-        ExpectingOctal ->
+        Parser.ExpectingOctal ->
             "an octal number"
 
-        ExpectingBinary ->
+        Parser.ExpectingBinary ->
             "a binary number"
 
-        ExpectingFloat ->
+        Parser.ExpectingFloat ->
             "a number"
 
-        ExpectingNumber ->
+        Parser.ExpectingNumber ->
             "a number"
 
-        ExpectingVariable ->
+        Parser.ExpectingVariable ->
             "a name"
 
-        ExpectingSymbol s ->
+        Parser.ExpectingSymbol s ->
             "“" ++ s ++ "”"
 
-        ExpectingKeyword s ->
+        Parser.ExpectingKeyword s ->
             "“" ++ s ++ "”"
 
-        ExpectingEnd ->
+        Parser.ExpectingEnd ->
             "the end of the program"
 
-        UnexpectedChar ->
+        Parser.UnexpectedChar ->
             -- never reached: `describeProblems` filters it out
             "a different character"
 
-        Problem message ->
+        Parser.Problem message ->
             message
 
-        BadRepeat ->
+        Parser.BadRepeat ->
             "something else here"
 
 
