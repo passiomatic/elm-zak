@@ -12,22 +12,18 @@ call, so it needs a hand-authored HTML page plus an `elm-watch` target —
 see `index.html` itself for the JS side of this port.
 -}
 
-import Array
 import Browser
 import Browser.Events
 import Dict
 import Html exposing (Html, button, div, pre, text, textarea)
 import Html.Attributes exposing (placeholder, style, value)
 import Html.Events exposing (onClick, onInput)
-import Set exposing (Set)
-import Zak.Helpers
-import Zak.Internal.Interpreter as Interpreter exposing (Error)
-import Zak.Internal.Runtime exposing (Effect(..), LogLevel(..), State, Value(..))
+import Zak exposing (Effect(..), Error, LogLevel(..), Value(..), World)
 
 
-{-| The one JS-facing effect this tool has: hand every `Log` drained
-this call (`State.pendingEffects`, via `Zak.Internal.Interpreter.drainEffects`) to
-the real browser console, in the order the script actually logged them.
+{-| The one JS-facing effect this tool has: hand every `Log` taken
+this call (`Zak.takeEffects`) to the real browser console, in the order
+the script actually logged them.
 
 **One port call carrying the whole ordered list, deliberately, not one
 call per entry.** The first version of this used `Cmd.batch (List.map
@@ -45,9 +41,8 @@ guarantee can actually be made to hold.
 (`"log"`/`"debug"`/`"info"`/`"warn"`/`"error"` — see `consoleMethod`),
 not a Zak-level name, so the JS side can stay a one-liner per entry:
 `console[entry.level](entry.message)`. This is genuinely the *only* way a
-`Log` ever becomes a real console call — see `Zak.Internal.Runtime`'s own
-`pendingEffects` doc for why no native function could ever do this
-itself, no matter what it stashed in `State`.
+`Log` ever becomes a real console call: a native can't produce a `Cmd`,
+so it can only queue the line in the world, for the host to take.
 -}
 port logToConsole : List { level : String, message : String } -> Cmd msg
 
@@ -66,7 +61,7 @@ error to a since-changed line.
 type alias Model =
     { source : String
     , lastRunSource : String
-    , result : Maybe (Result Error ( Value, State ))
+    , result : Maybe (Result Error ( Value, World ))
     }
 
 
@@ -82,7 +77,7 @@ type Msg
     | Tick Float
 
 
-{-| Drains every `Log` queued in `state` since the last drain and
+{-| Takes every `Log` queued in `world` since the last call and
 hands them all to *one* `logToConsole` call, in order — `Cmd.none` if
 none were queued (an empty list would be a harmless no-op port call
 either way, but there's no reason to make one). Called from both
@@ -91,16 +86,16 @@ either way, but there's no reason to make one). Called from both
 `Debug.log_error` call (`ClickedRun` from the script's own top level,
 `Tick` from a resumed thread's body).
 -}
-drainAndLog : State -> ( State, Cmd Msg )
-drainAndLog state =
+drainAndLog : World -> ( World, Cmd Msg )
+drainAndLog world =
     let
-        ( effects, state1 ) =
-            Interpreter.drainEffects state
+        ( effects, world1 ) =
+            Zak.takeEffects world
 
         entries =
             List.filterMap consoleEntry effects
     in
-    ( state1
+    ( world1
     , if List.isEmpty entries then
         Cmd.none
 
@@ -151,25 +146,21 @@ update msg model =
             ( { model | source = source }, Cmd.none )
 
         ClickedRun ->
-            let
-                ( env, state ) =
-                    Interpreter.initialWorld Dict.empty
-            in
-            case Interpreter.runIncremental env state model.source of
-                Ok ( _, state1 ) ->
+            case Zak.run model.source (Zak.init []) of
+                Ok ( _, world1 ) ->
                     -- A required main(): a missing one surfaces as an
                     -- ordinary UndefinedName "main" failure, not a
                     -- bespoke case of its own. "return main()", not a
                     -- bare "main()": this tool's whole job is showing
                     -- main()'s return value, so the synthesized program
                     -- needs its own explicit return to carry it out.
-                    case Interpreter.runIncremental env state1 "return main()" of
-                        Ok ( value, state2 ) ->
+                    case Zak.run "return main()" world1 of
+                        Ok ( value, world2 ) ->
                             let
-                                ( state3, cmd ) =
-                                    drainAndLog state2
+                                ( world3, cmd ) =
+                                    drainAndLog world2
                             in
-                            ( { model | lastRunSource = model.source, result = Just (Ok ( value, state3 )) }, cmd )
+                            ( { model | lastRunSource = model.source, result = Just (Ok ( value, world3 )) }, cmd )
 
                         (Err _) as result ->
                             ( { model | lastRunSource = model.source, result = Just result }, Cmd.none )
@@ -187,30 +178,28 @@ update msg model =
 
         Tick deltaMs ->
             -- Advances every currently-suspended thread by one scheduler
-            -- step (see `Zak.Internal.Interpreter.tick`'s own doc) -- `result`'s own
-            -- `Value` (the top-level script's return value, captured the
-            -- moment it returned) never changes here, only `State`, so a
+            -- step (see `Zak.tick`'s own doc) -- `result`'s own `Value`
+            -- (the top-level script's return value, captured the moment
+            -- it returned) never changes here, only the `World`, so a
             -- resumed thread's effects only ever become visible through
-            -- `state.threads`/`state.heap`, rendered below by `viewThreads`
-            -- -- or, for a `Debug.log`/`Debug.log_debug`/`Debug.log_info`/
+            -- the world's threads and tables, rendered below by
+            -- `viewThreads` -- or, for a `Debug.log`/`Debug.log_debug`/`Debug.log_info`/
             -- `Debug.log_warning`/`Debug.log_error` call
             -- made from inside a resumed thread body, drained here into a
             -- real console call the same way `ClickedRun` already does.
             -- Per-thread runtime errors from a bad resume are silently
-            -- dropped for now (a `NativeThreadFunction`'s two natives
-            -- can't actually raise one in practice -- see `Zak.Internal.Library.Thread`'s
-            -- own doc) rather than surfacing a second, parallel error
-            -- channel alongside `result`'s own.
+            -- dropped for now, rather than surfacing a second, parallel
+            -- error channel alongside `result`'s own.
             case model.result of
-                Just (Ok ( value, state )) ->
+                Just (Ok ( value, world )) ->
                     let
-                        ( state1, _ ) =
-                            Interpreter.tick (deltaMs / 1000) state
+                        ( _, world1 ) =
+                            Zak.tick (deltaMs / 1000) world
 
-                        ( state2, cmd ) =
-                            drainAndLog state1
+                        ( world2, cmd ) =
+                            drainAndLog world1
                     in
-                    ( { model | result = Just (Ok ( value, state2 )) }, cmd )
+                    ( { model | result = Just (Ok ( value, world2 )) }, cmd )
 
                 _ ->
                     ( model, Cmd.none )
@@ -224,8 +213,8 @@ nothing.
 subscriptions : Model -> Sub Msg
 subscriptions model =
     case model.result of
-        Just (Ok ( _, state )) ->
-            if Interpreter.threadCount state == 0 then
+        Just (Ok ( _, world )) ->
+            if Zak.threadCount world == 0 then
                 Sub.none
 
             else
@@ -307,13 +296,13 @@ place this tool makes the scheduler itself observable. Nothing to show once ever
 has finished (or none were ever spawned), matching `subscriptions`'s own
 "nothing to advance" check.
 -}
-viewThreads : Maybe (Result Error ( Value, State )) -> Html Msg
+viewThreads : Maybe (Result Error ( Value, World )) -> Html Msg
 viewThreads result =
     case result of
-        Just (Ok ( _, state )) ->
+        Just (Ok ( _, world )) ->
             let
                 count =
-                    Interpreter.threadCount state
+                    Zak.threadCount world
             in
             if count == 0 then
                 text ""
@@ -480,72 +469,63 @@ end
 -- RENDERING THE RESULT
 
 
-{-| Recursively renders `value`'s actual contents using `state`'s heap.
-`VArray`/`VTable` are just opaque heap ids on their own (see `Value`'s own
-doc in `Zak.Internal.Runtime`) — `Debug.toString` alone would only ever show
-`VArray 7`, never `[2, 4, 6, 8, 10]`. Rendering them meaningfully needs the
-`State` they were produced against, which is why `ClickedRun` below reaches
-for `Interpreter.initialWorld`/`runIncremental` (the same pair `run` itself
-is built from) instead of the simpler `run`, which discards `State` once
-it's done with it.
+{-| Recursively renders `value`'s actual contents, read from `world`.
+A `Table`/`Array` is only a reference on its own, so `Debug.toString`
+would never show `[2, 4, 6, 8, 10]`. Rendering it needs the `World` it
+was produced in, which is why `ClickedRun` keeps the world `Zak.run`
+gives back.
 
-Cycle-guarded via `seen` — the ids currently being rendered on the path
-from the root, not "ever seen anywhere" (so `[a, a]`, the same table
-twice but not circular, still renders both) — because a genuinely
-self-referential array (`Array.push(a, a)`) is completely legal Zak, and
-this tool lets you type anything. `Zak.Internal.Library.String`'s own `String.from` sidesteps
-this by not recursing into `Array`/`Table` at all; this tool can afford to
-recurse, since it's for interactive exploration.
+Cycle-guarded via `seen` — the tables and arrays currently being rendered
+on the path from the root, not "ever seen anywhere" (so `[a, a]`, the
+same table twice but not circular, still renders both) — because a
+genuinely self-referential array (`Array.push(a, a)`) is completely legal
+Zak, and this tool lets you type anything. Two references are `==`
+exactly when they're the same table or array. Zak's own `String.from`
+sidesteps this by not recursing into `Array`/`Table` at all; this tool can
+afford to recurse, since it's for interactive exploration.
 -}
-renderValue : State -> Set Int -> Value -> String
-renderValue state seen value =
+renderValue : World -> List Value -> Value -> String
+renderValue world seen value =
     case value of
-        VString s ->
+        String s ->
             "\"" ++ s ++ "\""
 
-        VNumber n ->
+        Number n ->
             String.fromFloat n
 
-        VBool True ->
+        Bool True ->
             "true"
 
-        VBool False ->
+        Bool False ->
             "false"
 
-        VNil ->
+        Nil ->
             "nil"
 
-        VArray id ->
-            if Set.member id seen then
+        Array _ ->
+            if List.member value seen then
                 "<cycle>"
 
             else
-                Dict.get id state.arrayHeap
-                    |> Maybe.withDefault Array.empty
-                    |> Array.toList
-                    |> List.map (renderValue state (Set.insert id seen))
+                Zak.items value world
+                    |> Maybe.withDefault []
+                    |> List.map (renderValue world (value :: seen))
                     |> String.join ", "
                     |> (\inner -> "[" ++ inner ++ "]")
 
-        VTable id ->
-            if Set.member id seen then
+        Table _ ->
+            if List.member value seen then
                 "<cycle>"
 
             else
-                Dict.get id state.heap
+                Zak.fields value world
                     |> Maybe.withDefault Dict.empty
                     |> Dict.toList
-                    |> List.map (\( name, fieldValue ) -> name ++ " = " ++ renderValue state (Set.insert id seen) fieldValue)
+                    |> List.map (\( name, fieldValue ) -> name ++ " = " ++ renderValue world (value :: seen) fieldValue)
                     |> String.join ", "
                     |> (\inner -> "{ " ++ inner ++ " }")
 
-        VFunction _ _ _ ->
-            "<function>"
-
-        VNative _ ->
-            "<function>"
-
-        VNativeThread _ ->
+        Function _ ->
             "<function>"
 
 
@@ -554,20 +534,20 @@ renderValue state seen value =
 currently in the textarea) — needed here only to print the offending
 line an error points at.
 -}
-viewResult : String -> Maybe (Result Error ( Value, State )) -> String
+viewResult : String -> Maybe (Result Error ( Value, World )) -> String
 viewResult source maybeResult =
     case maybeResult of
         Nothing ->
             "(not run yet)"
 
-        Just (Ok ( value, state )) ->
-            renderValue state Set.empty value
+        Just (Ok ( value, world )) ->
+            renderValue world [] value
 
         Just (Err error) ->
-            Zak.Helpers.formatError source error
+            Zak.errorToString source error
 
 
-isError : Maybe (Result Error ( Value, State )) -> Bool
+isError : Maybe (Result Error ( Value, World )) -> Bool
 isError maybeResult =
     case maybeResult of
         Just (Err _) ->

@@ -204,20 +204,24 @@ type Value
 
 
 {-| A reference to a table in a world. Read it with
-[`getField`](#getField) or [`fields`](#fields).
+[`getField`](#getField) or [`fields`](#fields). Two references are `==`
+when they point at the same table, so a host can tell tables apart (to
+stop at a table that contains itself, say).
 -}
 type TableRef
     = TableRef Int
 
 
 {-| A reference to an array in a world. Read it with [`items`](#items).
+Two references are `==` when they point at the same array.
 -}
 type ArrayRef
     = ArrayRef Int
 
 
 {-| A Zak function, written in Zak or a native. Call it with
-[`call`](#call).
+[`call`](#call). Don't compare two functions with `==`: Elm can't
+compare functions, and fails at runtime.
 -}
 type FunctionRef
     = FunctionRef Runtime.Value

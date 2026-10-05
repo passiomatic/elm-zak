@@ -16,8 +16,8 @@
       node: document.getElementById("app")
     });
 
-    // Zak.Runtime.LogLevel is already reduced to the real console method
-    // name (log/debug/info/warn/error) by Zak.Helpers.toConsoleEntry,
+    // Zak's LogLevel is already reduced to the real console method name
+    // (log/debug/info/warn/error) by Main.consoleMethod on the Elm side,
     // so there's nothing to map here -- console[...] filtering and
     // coloring by level then come from the browser itself, for free.
     //
