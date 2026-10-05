@@ -19,7 +19,7 @@ import Dict
 import Expect
 import Test exposing (Test, describe, test)
 import Zak.Interpreter as I exposing (tick)
-import Zak.Runtime as Runtime exposing (RuntimeError(..), Value(..))
+import Zak.Runtime as Runtime exposing (NativeValue(..), RuntimeError(..), Value(..))
 
 
 {-| Runs `source` against a fresh world (no caller-supplied natives — the
@@ -566,4 +566,89 @@ return log"""
                                 Expect.fail ("expected WrongArgCount, got: " ++ Debug.toString other)
                     ]
                     ()
+        , describe "threadCount/stopLocalThreads (host-side thread control)" <|
+            [ test "threadCount counts the threads waiting for tick, and drops back as they finish" <|
+                \_ ->
+                    case runWithState "Thread.start(function(): Thread.wait_for(1.0) end)\nThread.start(function(): Thread.wait_for(2.0) end)\nreturn nil" of
+                        Ok ( _, state0 ) ->
+                            let
+                                ( state1, _ ) =
+                                    tick 1.0 state0
+
+                                ( state2, _ ) =
+                                    tick 1.0 state1
+                            in
+                            [ I.threadCount state0, I.threadCount state1, I.threadCount state2 ]
+                                |> Expect.equal [ 2, 1, 0 ]
+
+                        Err err ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString err)
+            , test "stopLocalThreads drops every Thread.start thread and keeps the Thread.start_global ones" <|
+                \_ ->
+                    case runWithState "Thread.start(function(): Thread.wait_for(1.0) end)\nThread.start_global(function(): Thread.wait_for(1.0) end)\nThread.start(function(): Thread.wait_for(1.0) end)\nreturn nil" of
+                        Ok ( _, state ) ->
+                            I.stopLocalThreads state |> .threads |> Dict.keys |> Expect.equal [ 1 ]
+
+                        Err err ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString err)
+            , test "called from a native, it stops the threads started before the call and keeps those started after it" <|
+                \_ ->
+                    let
+                        leave =
+                            NativeFunction (\state _ -> Ok ( VNil, I.stopLocalThreads state ))
+
+                        ( env, state0 ) =
+                            I.initialWorld (Dict.singleton "leave" leave)
+                    in
+                    case I.runIncremental env state0 "Thread.start(function(): Thread.wait_for(1.0) end)\nleave()\nThread.start(function(): Thread.wait_for(1.0) end)\nreturn nil" of
+                        Ok ( _, state ) ->
+                            state.threads |> Dict.keys |> Expect.equal [ 1 ]
+
+                        Err err ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString err)
+            , test "the running thread that asks for it isn't stopped: it carries on past its next wait, like Thread.stop on itself" <|
+                \_ ->
+                    let
+                        leave =
+                            NativeFunction (\state _ -> Ok ( VNil, I.stopLocalThreads state ))
+
+                        ( env, state0 ) =
+                            I.initialWorld (Dict.singleton "leave" leave)
+                    in
+                    case
+                        I.runIncremental env
+                            state0
+                            """let log = { value = "" }
+Thread.start(function():
+    Thread.wait_for(5.0)
+    log.value = log.value ++ "old room"
+end)
+Thread.start(function():
+    Thread.wait_for(1.0)
+    leave()
+    log.value = log.value ++ "a"
+    Thread.wait_for(1.0)
+    log.value = log.value ++ "b"
+end)
+return log"""
+                    of
+                        Ok ( result, s0 ) ->
+                            let
+                                ( s1, _ ) =
+                                    tick 1.0 s0
+
+                                ( s2, _ ) =
+                                    tick 10.0 s1
+                            in
+                            Expect.all
+                                [ \_ -> Expect.equal (Just (VString "a")) (readTableField s1 result "value")
+                                , \_ -> Expect.equal 1 (I.threadCount s1)
+                                , \_ -> Expect.equal (Just (VString "ab")) (readTableField s2 result "value")
+                                , \_ -> Expect.equal 0 (I.threadCount s2)
+                                ]
+                                ()
+
+                        Err err ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString err)
+            ]
         ]

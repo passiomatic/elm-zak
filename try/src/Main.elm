@@ -225,7 +225,7 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     case model.result of
         Just (Ok ( _, state )) ->
-            if Dict.isEmpty state.threads then
+            if Interpreter.threadCount state == 0 then
                 Sub.none
 
             else
@@ -302,7 +302,7 @@ view model =
         ]
 
 
-{-| "N threads still running" while `state.threads` is non-empty — the one
+{-| "N threads still running" while any thread is waiting — the one
 place this tool makes the scheduler itself observable. Nothing to show once every thread
 has finished (or none were ever spawned), matching `subscriptions`'s own
 "nothing to advance" check.
@@ -313,7 +313,7 @@ viewThreads result =
         Just (Ok ( _, state )) ->
             let
                 count =
-                    Dict.size state.threads
+                    Interpreter.threadCount state
             in
             if count == 0 then
                 text ""

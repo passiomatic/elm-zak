@@ -6,6 +6,8 @@ module Zak.Interpreter exposing
     , runIncremental
     , include
     , tick
+    , threadCount
+    , stopLocalThreads
     , drainEffects
     , call
     , allocCell
@@ -586,6 +588,30 @@ tick dt state =
         ( state, [] )
         state.threads
 
+
+
+{-| How many threads are waiting for `tick` to resume them. `0` means
+there's nothing to advance, so a host can stop calling `tick` on every
+frame.
+-}
+threadCount : State -> Int
+threadCount state =
+    Dict.size state.threads
+
+
+{-| Stops every thread started with `Thread.start`, and keeps those
+started with `Thread.start_global`. A host calls it when the scene
+changes, as TWP's `exitRoom` does ("stop all local threads"); a native
+can call it too, so threads its script starts afterwards are kept.
+
+The same rule as `Thread.stop`: only a *suspended* thread can be stopped.
+The thread that's running when this is called — the one whose native
+asked for it — isn't affected, since `tick` re-registers it at its next
+wait.
+-}
+stopLocalThreads : State -> State
+stopLocalThreads state =
+    { state | threads = Dict.filter (\_ (Thread thread) -> thread.isGlobal) state.threads }
 
 {-| Hands back every `Effect` queued in `state.pendingEffects` since the
 last `drainEffects` call, oldest first, and clears the queue. Two kinds

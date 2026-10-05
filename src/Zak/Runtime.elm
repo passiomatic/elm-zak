@@ -225,10 +225,9 @@ any other call goes through) — `Thread` only ever needs to carry that
 call forward to completion, resuming it exactly like any other suspended
 call. `elapsed` is reset to `0` every time `waitCondition` changes (a
 fresh suspend point starts its own fresh countdown); `isGlobal`
-(mirroring `start_global`) is recorded as a bare scheduling marker
-only — this pass doesn't yet define any policy that treats a global
-thread differently from an ordinary one (that's dialog/cutscene-shaped
-policy, deliberately out of scope here).
+(mirroring `start_global`) is what `Zak.Interpreter.stopLocalThreads`
+reads: it stops every thread that isn't global, and that's the only
+difference in how the two are treated.
 
 A real `type` (not a `type alias`) for the same reason `Env` already is
 one: `Thread`'s own `resume` field refers back to `State`, and `State`
