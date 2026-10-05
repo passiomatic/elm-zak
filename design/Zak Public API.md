@@ -2,7 +2,7 @@
 
 A proposal to cut elm-zak's public API down to a minimum before it's published as a package. Once the decisions below are settled, the result gets documented in the package itself.
 
-**Status:** a proposal. Nothing is implemented. Every decision below is settled; only the names of the data functions are deferred (see "Deferred"). "Order of work" lists the steps.
+**Status:** implemented on the `api-refactor` branch (elm-zak) and `zak-api-refactor` (the game), 2026-10-05: `Zak` is the only exposed module, and the game and the playground use nothing else. Two things changed while implementing, both in "Changes made while implementing". Only the names of the data functions are still deferred (see "Deferred"). "Order of work" lists the steps.
 
 **Evidence:** the three exposed modules in `../elm-zak/src/Zak/`, and every use of them in the real embedders: the game (`src/`, 27 files), its tests (`tests/`), and the Try Zak playground (`../elm-zak/try/src/Main.elm`). Counts are from 2026-09-29, except the `Value` counts, which are from 2026-10-05.
 
@@ -94,6 +94,7 @@ reseed  : Int -> World -> World
 -- data
 getGlobal : String -> World -> Maybe Value
 setGlobal : String -> Value -> World -> World
+globals   : World -> Dict String Value
 newTable  : List ( String, Value ) -> World -> ( Value, World )
 getField  : String -> Value -> World -> Maybe Value
 setField  : String -> Value -> Value -> World -> World
@@ -116,7 +117,7 @@ errorToString : String -> Error -> String
 - **`include`, not `import_`.** It works like a C include: it runs the file's source into the same global scope, with no module object and no aliasing. Like today's `importSource`, it skips a path that was already included, which also guards against cycles. So it's really an "include once". The two `ImportNotFound`/`ImportParseError` constructors become `IncludeNotFound`/`IncludeParseError`, since `RuntimeError(..)` is now public.
 - **`include` versus `run`.** Both run source into a world. `include` is for natives: it remembers paths, and fails with a `RuntimeError`, like any other native. `run` is for the host: it fails with an `Error`, which can also be a syntax error.
 - **`include` takes two `String`s in a row** (path, then source). They're easy to swap by mistake, but it has one caller in the game. A record isn't worth it yet.
-- **`getGlobal` and `setGlobal` resolve a name the way a top-level script line would.** A world has two global frames: the natives' frame `0`, and the world's own frame under it, which holds the scripts' top-level `let`s. `getGlobal` looks in the world's frame first, then frame `0`. `setGlobal` changes the global wherever it's defined, natives included, like a top-level `name = value`. A name that isn't defined anywhere becomes a new global in the world's frame, like a `let`. This matters for `nativeExpression`: it closes over frame `0`, so it sees natives but not the scripts' globals. A host that wants a native expression to read a global it sets declares that global as a native (`nativeConstant Nil`) first. The game's `_current_actor` and `_current_scene`, read by `Actor.current()` and `Scene.current()`, work this way.
+- **`getGlobal` and `setGlobal` resolve a name the way a top-level script line would.** A world has two global frames: the natives' frame `0`, and the world's own frame under it, which holds the scripts' top-level `let`s. `getGlobal` looks in the world's frame first, then frame `0`. `setGlobal` changes the global wherever it's defined, natives included, like a top-level `name = value`. A name that isn't defined anywhere becomes a new global in the world's frame, like a `let`. This matters for `nativeExpression`: it closes over frame `0`, so it sees natives but not the scripts' globals. A host that wants a native expression to read a global it sets declares that global as a native (`nativeConstant Nil`) first, or reads it from an Elm native instead (see "Changes made while implementing").
 - **`errorToString` with `""` as the source gives one line,** such as `Runtime error at line 3, column 7: “x” is not defined`. That covers errors with no source to show, such as those from `tick`, so there's no separate function for them.
 - **`call` is the only way to call a function.** The host gets the function first, with `getGlobal` or `getField`, then calls it. A `callGlobal` shortcut would favor one of the two places functions come from: the game calls globals (`Engine.Actor.callGlobal`/`queryGlobal`) and table fields (`Engine.Scene.zakHook`'s `enter`/`exit`, verbs through `callVerb`). A missing function is a `Maybe` the host handles, which the game already does, with its own message.
 - **`emitEffect` queues `Effect name args`** for the host, which takes it back with `takeEffects`. The two names pair up, and the name says what's emitted. It replaces the game's `Engine.Load.pushEffect`. A `Table` or `Array` argument is queued as a reference, not a copy: the host sees its contents as they are when it handles the effect, not as they were when it was emitted.
@@ -279,7 +280,7 @@ Today all 12 modules live side by side in `src/Zak/`, and 3 of them are exposed.
 | `Zak.Runtime` | `Zak.Internal.Runtime` | The runtime model: the internal `Value` and `RuntimeError`, `State`, `NativeValue`, the heaps, the effect queue, the thread types, `Signal`/`Outcome` |
 | `Zak.Interpreter` | `Zak.Internal.Interpreter` | Evaluation, calls, the thread scheduler (`tick`), `include`, the `Array`/`Table` built-ins and `Thread.start`. It keeps `runOnce` and `runExpr` for elm-zak's own tests |
 | `Zak.Debug`, `Zak.Globals`, `Zak.Math`, `Zak.Random`, `Zak.String`, `Zak.Thread` | `Zak.Internal.Library.*` | The standard library: one module per built-in table (plus `Globals` for `type`) |
-| `Zak.Helpers` | `Zak.Internal.ErrorMessage` | Error text, behind `Zak.errorToString`. The console mapping (`toConsoleEntry`) is dropped. `Zak.Helpers` stays, unexposed, as a shim around it until the game no longer uses it |
+| `Zak.Helpers` | `Zak.Internal.ErrorMessage` | Error text, behind `Zak.errorToString`. The console mapping (`toConsoleEntry`) is dropped. |
 
 ### Who imports whom
 
@@ -313,6 +314,14 @@ Elm can't re-export a type's constructors: `type alias Value = Internal.Value` i
 - **The standard library doesn't use the public API for natives.** It sits below the interpreter, which installs it, and `Thread`'s natives suspend, which the public API doesn't offer. So it keeps building `NativeValue`s directly.
 
 elm-zak's tests (`tests/Test/Zak/*.elm`) keep testing the internals directly. Only their imports change.
+
+## Changes made while implementing
+
+- **`Zak.globals : World -> Dict String Value` was added.** It lists the scripts' own top-level globals, natives left out. The game's boot (`Engine.Boot.attachAll`) scans every global to find the objects each scene table defines; it used to read the world frame out of the heap, and nothing in the planned API replaced that.
+- **The game reads `_current_actor` and `_current_scene` from Elm natives.** `Actor.current()` and `Scene.current()` were native expressions, which only see natives, so the game wrote both globals into frame `0` by hand. Declaring them as `nativeConstant Nil` would have made `Actor.current()` return `nil` before any actor is selected, where a test requires `UndefinedName`. Instead both getters are now Elm natives (`Engine.Load.reservedGlobal`) reading the global with `Zak.getGlobal`, and failing with `UndefinedName` until it's set.
+- **`errorToString ""` gives one line,** for errors with no source to show (see "Embedding").
+- **Two table or array references are `==` exactly when they're the same table or array.** Both the playground and the game rely on it to stop at a table that contains itself, now that ids are hidden. `Zak` documents it on `TableRef` and `ArrayRef`.
+- **Tests that read internals were rewritten against the public API:** heap growth became "the same `_position` table both times", thread ids became which threads ran to the end, and the raw queue became `takeEffects`.
 
 ## Why `Value` isn't opaque
 

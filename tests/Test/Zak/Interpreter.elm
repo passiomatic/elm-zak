@@ -4,7 +4,7 @@ import Dict exposing (Dict)
 import Expect
 import Test exposing (Test, describe, test)
 import Zak.Internal.Interpreter as I exposing (Error(..))
-import Zak.Helpers
+import Zak.Internal.ErrorMessage as ErrorMessage
 import Zak.Internal.Runtime as Runtime exposing (Effect(..), LogLevel(..), NativeValue(..), RuntimeError(..), Value(..))
 
 
@@ -971,7 +971,7 @@ return Array.length(seen)"""
                         |> Expect.equal ( Ok (Runtime.Done 6), Err (InternalError "not positive") )
             , test "an InternalError reads as an interpreter bug, not a script problem" <|
                 \_ ->
-                    Zak.Helpers.describeRuntimeError (InternalError "a break signal escaped its enclosing loop")
+                    ErrorMessage.describeRuntimeError (InternalError "a break signal escaped its enclosing loop")
                         |> Expect.equal "internal interpreter error: a break signal escaped its enclosing loop"
             ]
         , describe "include -- an embedder's `include(path)` native can be a thin wrapper around this" <|

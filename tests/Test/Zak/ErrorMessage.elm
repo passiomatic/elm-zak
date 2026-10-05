@@ -1,22 +1,20 @@
-module Test.Zak.Helpers exposing (suite)
+module Test.Zak.ErrorMessage exposing (suite)
 
-import Dict
 import Expect
 import Test exposing (Test, describe, test)
-import Zak.Helpers as H
-import Zak.Internal.Interpreter as I
+import Zak
 
 
 {-| The message a user actually sees for `source`, or `""` if it runs.
 -}
 errorMessage : String -> String
 errorMessage source =
-    case I.run Dict.empty source of
+    case Zak.run source (Zak.init []) of
         Ok _ ->
             ""
 
         Err error ->
-            H.formatError source error
+            Zak.errorToString source error
 
 
 {-| `source`'s error must be reported at (`row`, `col`), with a message
@@ -44,8 +42,8 @@ throwawayMessage =
 
 suite : Test
 suite =
-    describe "Zak.Helpers"
-        [ describe "formatError: a syntax error is reported where it happens, in any statement of any block -- not swallowed into a generic \"expected the end of the program\" at the start of its line" <|
+    describe "Zak.Internal.ErrorMessage, through Zak.errorToString"
+        [ describe "errorToString: a syntax error is reported where it happens, in any statement of any block -- not swallowed into a generic \"expected the end of the program\" at the start of its line" <|
             List.map testSyntaxError
                 [ ( "print(1 +)", ( 1, 10 ), "" )
                 , ( "let x = 1\nprint(1 +)", ( 2, 10 ), "" )
@@ -58,7 +56,7 @@ suite =
                 , ( "let x = 1\nif true:\n    let y = 2\n    print(_)\nend", ( 4, 11 ), throwawayMessage )
                 , ( "let f = function():\n    let y = 2\n    return y +\nend", ( 3, 15 ), "" )
                 ]
-        , describe "formatError: a failed chompIf (a name, number or string) never shows up as a vague \"something else here\" -- each case says what was expected" <|
+        , describe "errorToString: a failed chompIf (a name, number or string) never shows up as a vague \"something else here\" -- each case says what was expected" <|
             List.map testSyntaxError
                 [ ( "return y +", ( 1, 11 ), "expected an expression" )
                 , ( "let x = )", ( 1, 9 ), "expected an expression" )
@@ -76,7 +74,7 @@ suite =
                 -- the generic list stays when it's the whole story
                 , ( "let s = \"a\\q\"", ( 1, 12 ), "expected “\"”, or “\\”" )
                 ]
-        , describe "formatError: a line no statement can start with still gets the generic message, at that line" <|
+        , describe "errorToString: a line no statement can start with still gets the generic message, at that line" <|
             List.map testSyntaxError
                 [ ( "let x = 1\n)", ( 2, 1 ), "expected the end of the program" )
                 ]

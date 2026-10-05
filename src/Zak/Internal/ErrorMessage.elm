@@ -3,9 +3,9 @@ module Zak.Internal.ErrorMessage exposing (describeRuntimeError, describeRuntime
 {-| Error text: a syntax error or a `RuntimeError` as a message a person
 can read, with the source line and a `^` under the column when there's
 source to show. Imports nothing from `Zak.Internal.Interpreter`, so the
-interpreter itself can use it (to log a broken `NativeZakExpr`, say);
-`Zak.Helpers.formatError` is the one piece that needs the interpreter's
-own `Error` type, and lives there instead.
+interpreter itself can use it (to log a broken `NativeZakExpr`, say).
+`Zak.errorToString` picks between `formatSyntaxError` and
+`formatRuntimeError`.
 -}
 
 import Parser exposing (DeadEnd, Problem(..))
