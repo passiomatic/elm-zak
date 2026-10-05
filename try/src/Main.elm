@@ -22,12 +22,12 @@ import Html.Events exposing (onClick, onInput)
 import Set exposing (Set)
 import Zak.Helpers
 import Zak.Interpreter as Interpreter exposing (Error)
-import Zak.Runtime exposing (State, Value(..))
+import Zak.Runtime exposing (Effect(..), LogLevel(..), State, Value(..))
 
 
-{-| The one JS-facing effect this tool has: hand every `LogEntry` drained
-this call (`State.pendingLogs`, via `Zak.Interpreter.drainLogs`) to the
-real browser console, in the order the script actually logged them.
+{-| The one JS-facing effect this tool has: hand every `Log` drained
+this call (`State.pendingEffects`, via `Zak.Interpreter.drainEffects`) to
+the real browser console, in the order the script actually logged them.
 
 **One port call carrying the whole ordered list, deliberately, not one
 call per entry.** The first version of this used `Cmd.batch (List.map
@@ -42,12 +42,12 @@ iterates it in order itself, which is the only place an ordering
 guarantee can actually be made to hold.
 
 `level` is already the exact `console.*` method name to call
-(`"log"`/`"debug"`/`"info"`/`"warn"`/`"error"` — see
-`Zak.Helpers.toConsoleEntry`), not a Zak-level name, so the JS side can stay a one-liner per
-entry: `console[entry.level](entry.message)`. This is genuinely the
-*only* way a `LogEntry` ever becomes a real console call — see
-`Zak.Runtime`'s own `pendingLogs` doc for why no native function could
-ever do this itself, no matter what it stashed in `State`.
+(`"log"`/`"debug"`/`"info"`/`"warn"`/`"error"` — see `consoleMethod`),
+not a Zak-level name, so the JS side can stay a one-liner per entry:
+`console[entry.level](entry.message)`. This is genuinely the *only* way a
+`Log` ever becomes a real console call — see `Zak.Runtime`'s own
+`pendingEffects` doc for why no native function could ever do this
+itself, no matter what it stashed in `State`.
 -}
 port logToConsole : List { level : String, message : String } -> Cmd msg
 
@@ -82,7 +82,7 @@ type Msg
     | Tick Float
 
 
-{-| Drains every `LogEntry` queued in `state` since the last drain and
+{-| Drains every `Log` queued in `state` since the last drain and
 hands them all to *one* `logToConsole` call, in order — `Cmd.none` if
 none were queued (an empty list would be a harmless no-op port call
 either way, but there's no reason to make one). Called from both
@@ -94,16 +94,54 @@ either way, but there's no reason to make one). Called from both
 drainAndLog : State -> ( State, Cmd Msg )
 drainAndLog state =
     let
-        ( entries, state1 ) =
-            Interpreter.drainLogs state
+        ( effects, state1 ) =
+            Interpreter.drainEffects state
+
+        entries =
+            List.filterMap consoleEntry effects
     in
     ( state1
     , if List.isEmpty entries then
         Cmd.none
 
       else
-        logToConsole (List.map Zak.Helpers.toConsoleEntry entries)
+        logToConsole entries
     )
+
+
+{-| A `Log` as the record `logToConsole` sends. This tool has no host
+natives of its own, so there's never an `Effect` to handle.
+-}
+consoleEntry : Effect -> Maybe { level : String, message : String }
+consoleEntry effect =
+    case effect of
+        Log level message ->
+            Just { level = consoleMethod level, message = message }
+
+        Effect _ _ ->
+            Nothing
+
+
+{-| The browser `console` method for each `LogLevel`. Only `LogWarning`
+differs from its Zak name: `console.warn`, not `console.warning`.
+-}
+consoleMethod : LogLevel -> String
+consoleMethod level =
+    case level of
+        LogPrint ->
+            "log"
+
+        LogDebug ->
+            "debug"
+
+        LogInfo ->
+            "info"
+
+        LogWarning ->
+            "warn"
+
+        LogError ->
+            "error"
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )

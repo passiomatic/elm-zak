@@ -12,8 +12,7 @@ module Zak.Runtime exposing
     , ThreadId
     , Thread(..)
     , LogLevel(..)
-    , LogEntry
-    , Effect
+    , Effect(..)
     , bindGlobal
     , dropPosition
     , mapOutcome
@@ -390,33 +389,19 @@ a plain `State -> State` shape, the same as everything else that advances
 entirely, not kept around in some other state — there's no history to
 query once a thread completes.
 
-`pendingLogs`/`pendingEffects` are a *different* kind of "kept as part of
-`State`" than `threads` is, worth not conflating even though both look
-like "a queue a native appends to." `threads` holds continuations — Elm
-closures the interpreter itself calls back into later, entirely within
-pure Elm. `Debug.log`/`Debug.log_debug`/`Debug.log_info`/
-`Debug.log_warning`/`Debug.log_error` (`Zak.Debug`) have no such callback
-to give: what they want to happen (a real `console.log`/etc. call, via a
-port) can only ever be a `Cmd`, and only an embedder's own `update` can
-produce one — no native function ever can, no matter what it stashes in
-`State`. So `pendingLogs` holds plain, inert data describing what already
-happened (a level and a message), not anything callable; appending to it
-is the *entire* job a logging native does. Turning that data into an
-actual `Cmd` is `Zak.Interpreter.drainLogs`'s job, and from there,
-entirely the embedder's — see `Zak.Debug`'s own doc for why this had to
-wait for something like this to exist at all.
-
-`pendingEffects` is the exact same shape of thing, generalized to any
-embedder rather than logging specifically: a host-specific native (a
-hypothetical `play_sound`, defined entirely outside this package by
-whatever embeds this interpreter — see `Effect`'s own doc for why it's a
-generic `{ name, args }` pair and not a closed type naming actual host
-operations) has exactly the same "wants something only the embedder can
-produce" problem `print` does, and the same fix: append plain, inert data
-describing what was asked for, and let `Zak.Interpreter.drainEffects` +
-the embedder do the rest. Nothing in the interpreter ever inspects `name`
-or interprets `args` — doing so would mean this module (still meant to
-work for *any* embedder) knowing about one specific host's vocabulary.
+`pendingEffects` is a *different* kind of "kept as part of `State`" than
+`threads` is, worth not conflating even though both look like "a queue a
+native appends to." `threads` holds continuations — Elm closures the
+interpreter itself calls back into later, entirely within pure Elm. An
+effect has no such callback to give: what a native wants to happen (a
+`console.log` call, a sound playing) can only ever be a `Cmd`, and only an
+embedder's own `update` can produce one — no native function ever can, no
+matter what it stashes in `State`. So `pendingEffects` holds plain, inert
+data describing what was asked for, oldest first; appending to it is the
+*entire* job such a native does. `Zak.Interpreter.drainEffects` hands the
+queue to the embedder, and turning it into a `Cmd` is entirely the
+embedder's job. Logs and host effects share the one queue, so their
+relative order survives the drain — see `Effect`'s own doc.
 
 `constNames` tracks which names in which scope frame were declared with
 `const` rather than `let` — a separate, narrow side-structure rather
@@ -436,7 +421,6 @@ type alias State =
     , nextId : Int
     , threads : Dict ThreadId Thread
     , nextThreadId : ThreadId
-    , pendingLogs : List LogEntry
     , pendingEffects : List Effect
     , randomSeed : Random.Seed
 
@@ -491,36 +475,28 @@ type LogLevel
     | LogError
 
 
-{-| One logged message, queued in `State.pendingLogs` until
-`Zak.Interpreter.drainLogs` hands it to the embedder. Plain, inert data —
-see `pendingLogs`'s own doc for why this is *not* the same kind of thing
-`Thread`'s `resume` is, despite both living on `State`.
--}
-type alias LogEntry =
-    { level : LogLevel
-    , message : String
-    }
+{-| One item a native queued in `State.pendingEffects` for the embedder,
+until `Zak.Interpreter.drainEffects` hands it over. Plain, inert data —
+see `pendingEffects`'s own doc for why this is *not* the same kind of
+thing `Thread`'s `resume` is, despite both living on `State`. The two
+variants differ in who defines them:
 
+  - `Log` is defined by the language: `Zak.Debug`'s `Debug.log*` natives,
+    and the interpreter's own warnings. Its shape is fixed — a level and a
+    message — so it's typed, not a magic effect name a host could forget
+    to handle.
+  - `Effect` is defined by the host: a name its own native chooses
+    (`"play_sound"`, `"move_to"`, ...) and that native's arguments.
+    Deliberately generic, not a closed type naming actual host operations:
+    that would put one embedder's vocabulary inside `Zak.Runtime`, which
+    is meant to work for any host. This module never inspects `name` or
+    `args`.
 
-{-| One host-specific effect a native asked for, queued in
-`State.pendingEffects` until `Zak.Interpreter.drainEffects` hands it to
-the embedder. Deliberately a generic `{ name, args }` pair, not a closed
-type naming actual host operations (`PlaySound { name } | MoveTo { ... }`
-and so on): a type like that would put one specific embedder's
-vocabulary inside `Zak.Runtime`, which is meant to work for any host this
-interpreter gets embedded in. `name` is whatever string the native itself
-chooses (`"play_sound"`, `"move_to"`, ...) — this module never inspects
-it. `args` holds each
-argument's already-resolved `Value` — a plain `VString`/`VNumber`, never
-a `VArray`/`VTable` id kept around past the call that produced it, since
-those reference `state.heap`/`state.arrayHeap`, which may not look the
-same by the time this effect is actually drained. A native that wants to
-queue "move to this table's `x`/`y` fields" reads `x`/`y` out *before*
-appending, the same way `logNative` (`Zak.Debug`) already extracts the
-plain `String` out of a `VString` before appending to `pendingLogs`,
-rather than storing the `Value` itself.
+A `VTable`/`VArray` argument is queued as a reference, not a copy: the
+host reads its contents when it handles the effect, so it sees any change
+a script made in between. A native that needs a snapshot reads the plain
+fields out *before* queuing.
 -}
-type alias Effect =
-    { name : String
-    , args : List Value
-    }
+type Effect
+    = Log LogLevel String
+    | Effect String (List Value)

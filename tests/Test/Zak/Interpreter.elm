@@ -5,7 +5,7 @@ import Expect
 import Test exposing (Test, describe, test)
 import Zak.Interpreter as I exposing (Error(..))
 import Zak.Helpers
-import Zak.Runtime as Runtime exposing (LogLevel(..), NativeValue(..), RuntimeError(..), Value(..))
+import Zak.Runtime as Runtime exposing (Effect(..), LogLevel(..), NativeValue(..), RuntimeError(..), Value(..))
 
 
 {-| `I.run`, with any `AtPosition` a `RuntimeError` comes back wrapped in
@@ -1329,8 +1329,8 @@ return function?(function?)"""
                             Expect.all
                                 [ \_ -> value |> Expect.equal (VBool False)
                                 , \_ ->
-                                    state2.pendingLogs
-                                        |> Expect.equal [ { level = LogWarning, message = "“true” shadows a const of the same name from an outer scope" } ]
+                                    state2.pendingEffects
+                                        |> Expect.equal [ Log LogWarning "“true” shadows a const of the same name from an outer scope" ]
                                 ]
                                 ()
 
@@ -1347,8 +1347,8 @@ return function?(function?)"""
                             Expect.all
                                 [ \_ -> value |> Expect.equal (VNumber 2)
                                 , \_ ->
-                                    state2.pendingLogs
-                                        |> Expect.equal [ { level = LogWarning, message = "“x” shadows a const of the same name from an outer scope" } ]
+                                    state2.pendingEffects
+                                        |> Expect.equal [ Log LogWarning "“x” shadows a const of the same name from an outer scope" ]
                                 ]
                                 ()
 
@@ -1362,8 +1362,8 @@ return function?(function?)"""
                     in
                     case I.runIncremental env state1 "const x = 1\nif true:\n    const x = 2\nend\nreturn x" of
                         Ok ( _, state2 ) ->
-                            state2.pendingLogs
-                                |> Expect.equal [ { level = LogWarning, message = "“x” shadows a const of the same name from an outer scope" } ]
+                            state2.pendingEffects
+                                |> Expect.equal [ Log LogWarning "“x” shadows a const of the same name from an outer scope" ]
 
                         Err error ->
                             Expect.fail ("expected success, got: " ++ Debug.toString error)
@@ -1375,7 +1375,7 @@ return function?(function?)"""
                     in
                     case I.runIncremental env state1 "let x = 1\nif true:\n    let x = 2\nend\nreturn x" of
                         Ok ( _, state2 ) ->
-                            state2.pendingLogs |> Expect.equal []
+                            state2.pendingEffects |> Expect.equal []
 
                         Err error ->
                             Expect.fail ("expected success, got: " ++ Debug.toString error)
@@ -1387,7 +1387,7 @@ return function?(function?)"""
                     in
                     case I.runIncremental env state1 "let x = 1\nreturn x" of
                         Ok ( _, state2 ) ->
-                            state2.pendingLogs |> Expect.equal []
+                            state2.pendingEffects |> Expect.equal []
 
                         Err error ->
                             Expect.fail ("expected success, got: " ++ Debug.toString error)

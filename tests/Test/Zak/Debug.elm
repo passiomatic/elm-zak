@@ -5,7 +5,7 @@ import Expect
 import Test exposing (Test, describe, test)
 import Zak.Debug as ZakDebug
 import Zak.Interpreter as I exposing (Error(..))
-import Zak.Runtime as Runtime exposing (LogLevel(..), RuntimeError(..), State, Value(..))
+import Zak.Runtime as Runtime exposing (Effect(..), LogLevel(..), NativeValue(..), RuntimeError(..), State, Value(..))
 
 
 {-| `Debug` is seeded by `Zak.Interpreter.run` itself now, automatically —
@@ -44,7 +44,7 @@ runExpr =
 
 {-| Same pattern `Test.Zak.Thread`'s own `runWithState` uses, for the
 same reason: `run`/`runExpr` above both discard `State`, but the logging
-tests below need to inspect `state.pendingLogs` directly, not just a
+tests below need to inspect `state.pendingEffects` directly, not just a
 script's own return value.
 -}
 runWithState : String -> Result Error ( Value, State )
@@ -54,6 +54,21 @@ runWithState source =
             I.initialWorld Dict.empty
     in
     I.runIncremental env state source
+
+
+{-| The message of every `Log` in `effects`, in order. -}
+logMessages : List Effect -> List String
+logMessages effects =
+    List.filterMap
+        (\effect ->
+            case effect of
+                Log _ message ->
+                    Just message
+
+                Effect _ _ ->
+                    Nothing
+        )
+        effects
 
 
 suite : Test
@@ -69,7 +84,7 @@ suite =
                     run "return Debug.log(\"a\", \"b\")"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 2 })))
             ]
-        , describe "log_debug/log_info/log_warning/log_error (same shape as log, one shared logNative parameterized by level — see 'logging queues a LogEntry' below for the part that's actually new)" <|
+        , describe "log_debug/log_info/log_warning/log_error (same shape as log, one shared logNative parameterized by level — see 'logging queues a Log' below for the part that's actually new)" <|
             [ test "log_debug returns nil" <| \_ -> run "return Debug.log_debug(\"x\")" |> Expect.equal (Ok VNil)
             , test "log_info returns nil" <| \_ -> run "return Debug.log_info(\"x\")" |> Expect.equal (Ok VNil)
             , test "log_warning returns nil" <| \_ -> run "return Debug.log_warning(\"x\")" |> Expect.equal (Ok VNil)
@@ -81,12 +96,12 @@ suite =
                     run "return Debug.log_warning(\"a\", \"b\")"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 2 })))
             ]
-        , describe "logging queues a LogEntry in state.pendingLogs, drained via Zak.Interpreter.drainLogs — no Debug.log anywhere in this module's own Elm code" <|
+        , describe "logging queues a Log in state.pendingEffects, drained via Zak.Interpreter.drainEffects — no Debug.log anywhere in this module's own Elm code" <|
             [ test "log tags its entry LogPrint" <|
                 \_ ->
                     case runWithState "Debug.log(\"hi\")\nreturn nil" of
                         Ok ( _, state ) ->
-                            state.pendingLogs |> Expect.equal [ { level = LogPrint, message = "hi" } ]
+                            state.pendingEffects |> Expect.equal [ Log LogPrint "hi" ]
 
                         Err error ->
                             Expect.fail ("expected success, got: " ++ Debug.toString error)
@@ -94,12 +109,12 @@ suite =
                 \_ ->
                     case runWithState "Debug.log_debug(\"a\")\nDebug.log_info(\"b\")\nDebug.log_warning(\"c\")\nDebug.log_error(\"d\")\nreturn nil" of
                         Ok ( _, state ) ->
-                            state.pendingLogs
+                            state.pendingEffects
                                 |> Expect.equal
-                                    [ { level = LogDebug, message = "a" }
-                                    , { level = LogInfo, message = "b" }
-                                    , { level = LogWarning, message = "c" }
-                                    , { level = LogError, message = "d" }
+                                    [ Log LogDebug "a"
+                                    , Log LogInfo "b"
+                                    , Log LogWarning "c"
+                                    , Log LogError "d"
                                     ]
 
                         Err error ->
@@ -108,7 +123,7 @@ suite =
                 \_ ->
                     case runWithState "Debug.log(\"hi\")\nDebug.log(99)\nDebug.log(1.5)\nDebug.log(true)\nDebug.log(nil)\nDebug.log([1, 2])\nDebug.log({ x = 1 })\nDebug.log(function(): end)\nDebug.log(Math.cos)\nreturn nil" of
                         Ok ( _, state ) ->
-                            List.map .message state.pendingLogs
+                            logMessages state.pendingEffects
                                 |> Expect.equal [ "hi", "99", "1.5", "true", "nil", "<array>", "<table>", "<function>", "<function>" ]
 
                         Err error ->
@@ -117,7 +132,7 @@ suite =
                 \_ ->
                     case runWithState "Debug.log(\"first\")\nDebug.log(\"second\")\nDebug.log(\"third\")\nreturn nil" of
                         Ok ( _, state ) ->
-                            List.map .message state.pendingLogs |> Expect.equal [ "first", "second", "third" ]
+                            logMessages state.pendingEffects |> Expect.equal [ "first", "second", "third" ]
 
                         Err error ->
                             Expect.fail ("expected success, got: " ++ Debug.toString error)
@@ -125,38 +140,54 @@ suite =
                 \_ ->
                     case runWithState "return 1" of
                         Ok ( _, state ) ->
-                            state.pendingLogs |> Expect.equal []
+                            state.pendingEffects |> Expect.equal []
 
                         Err error ->
                             Expect.fail ("expected success, got: " ++ Debug.toString error)
-            , test "drainLogs returns the queued entries and clears the queue" <|
+            , test "drainEffects returns the queued logs and clears the queue" <|
                 \_ ->
                     case runWithState "Debug.log(\"a\")\nDebug.log(\"b\")\nreturn nil" of
                         Ok ( _, state ) ->
                             let
                                 ( drained, state1 ) =
-                                    I.drainLogs state
+                                    I.drainEffects state
                             in
                             Expect.all
-                                [ \_ -> List.map .message drained |> Expect.equal [ "a", "b" ]
-                                , \_ -> state1.pendingLogs |> Expect.equal []
+                                [ \_ -> logMessages drained |> Expect.equal [ "a", "b" ]
+                                , \_ -> state1.pendingEffects |> Expect.equal []
                                 ]
                                 ()
 
                         Err error ->
                             Expect.fail ("expected success, got: " ++ Debug.toString error)
-            , test "a second drainLogs call after an empty run returns nothing — the queue doesn't leak entries from a previous drain" <|
+            , test "a second drainEffects call after an empty run returns nothing — the queue doesn't leak entries from a previous drain" <|
                 \_ ->
                     case runWithState "Debug.log(\"only once\")\nreturn nil" of
                         Ok ( _, state ) ->
                             let
                                 ( _, state1 ) =
-                                    I.drainLogs state
+                                    I.drainEffects state
 
                                 ( secondDrain, _ ) =
-                                    I.drainLogs state1
+                                    I.drainEffects state1
                             in
                             secondDrain |> Expect.equal []
+
+                        Err error ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString error)
+            , test "logs and a host native's effects share one queue, in call order" <|
+                \_ ->
+                    let
+                        ping =
+                            NativeFunction (\state _ -> Ok ( VNil, { state | pendingEffects = state.pendingEffects ++ [ Effect "ping" [ VNumber 1 ] ] } ))
+
+                        ( env, state0 ) =
+                            I.initialWorld (Dict.singleton "ping" ping)
+                    in
+                    case I.runIncremental env state0 "Debug.log(\"a\")\nping()\nDebug.log(\"b\")\nreturn nil" of
+                        Ok ( _, state ) ->
+                            state.pendingEffects
+                                |> Expect.equal [ Log LogPrint "a", Effect "ping" [ VNumber 1 ], Log LogPrint "b" ]
 
                         Err error ->
                             Expect.fail ("expected success, got: " ++ Debug.toString error)

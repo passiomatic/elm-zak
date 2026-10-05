@@ -6,7 +6,6 @@ module Zak.Interpreter exposing
     , runIncremental
     , importSource
     , tick
-    , drainLogs
     , drainEffects
     , call
     , allocCell
@@ -51,9 +50,8 @@ import Zak.Random as ZakRandom
 import Zak.Thread as Thread
 import Zak.Runtime
     exposing
-        ( Effect
+        ( Effect(..)
         , Env(..)
-        , LogEntry
         , LogLevel(..)
         , NativeValue(..)
         , Outcome(..)
@@ -376,7 +374,6 @@ seedState natives =
                 , nextId = 1
                 , threads = Dict.empty
                 , nextThreadId = 0
-                , pendingLogs = []
                 , pendingEffects = []
                 , randomSeed = Random.initialSeed 0
 
@@ -589,35 +586,23 @@ tick dt state =
         state.threads
 
 
-{-| Hands back every `LogEntry` a `Debug.log`/`Debug.log_debug`/
-`Debug.log_info`/`Debug.log_warning`/`Debug.log_error` call
-(`Zak.Debug`) has queued in `state.pendingLogs` since the last
-`drainLogs` call, and clears the queue — same "call this yourself,
-repeatedly, threading `State` through" contract `tick` already has for
-`threads`, not something that drains on its own. Unlike `tick`, this
-never fails and never needs a `dt`: it's a plain read-and-clear, not a
-scheduler step. The embedder is expected to
-call this after every `run`/`runIncremental`/`tick` call that could have
-run a logging native, and turn each returned `LogEntry` into a real
-`console.log`/`console.debug`/`console.info`/`console.warn`/
-`console.error` call via a port — nothing in this module does that
-itself, on purpose (see `Zak.Runtime`'s own `pendingLogs` doc for why a
-native function structurally can't).
--}
-drainLogs : State -> ( List LogEntry, State )
-drainLogs state =
-    ( state.pendingLogs, { state | pendingLogs = [] } )
+{-| Hands back every `Effect` queued in `state.pendingEffects` since the
+last `drainEffects` call, oldest first, and clears the queue. Two kinds
+share the queue (see `Zak.Runtime`'s `Effect`): a `Log` from a
+`Debug.log*` call (`Zak.Debug`) or an interpreter warning, and an
+`Effect` from a host-specific native (defined by the embedder, outside
+this package entirely, passed in as one of `initialWorld`'s own
+`natives`). One queue keeps their relative order.
 
-
-{-| Hands back every `Effect` a host-specific native (defined by the
-embedder, outside this package entirely, passed in as one of `initialWorld`/`runIncremental`'s
-own `natives`) has queued in `state.pendingEffects` since the last
-`drainEffects` call, and clears the queue — the exact same "plain
-read-and-clear, call it yourself after every run/tick" contract
-`drainLogs` already has, generalized from "turn this into a console call"
-to "turn this into whatever the embedder's own effect is." This
-module never inspects an `Effect`'s `name`/`args` itself, and never will —
-see `Zak.Runtime`'s own `Effect`/`pendingEffects` doc for why.
+Same "call this yourself, repeatedly, threading `State` through" contract
+`tick` already has for `threads`, not something that drains on its own.
+Unlike `tick`, this never fails and never needs a `dt`: it's a plain
+read-and-clear, not a scheduler step. The embedder is expected to call it
+after every `run`/`runIncremental`/`call`/`tick` that could have run a
+native, and turn each item into its own `Cmd` (a `Log` into a
+`console.*` call via a port, say) — nothing in this module does that
+itself, on purpose, and it never inspects an `Effect`'s name or arguments
+(see `Zak.Runtime`'s own `pendingEffects` doc for why).
 -}
 drainEffects : State -> ( List Effect, State )
 drainEffects state =
@@ -1959,12 +1944,9 @@ warnIfShadowsConst : Env -> String -> State -> State
 warnIfShadowsConst env name state =
     if shadowsConst env name state then
         { state
-            | pendingLogs =
-                state.pendingLogs
-                    ++ [ { level = LogWarning
-                         , message = "“" ++ name ++ "” shadows a const of the same name from an outer scope"
-                         }
-                       ]
+            | pendingEffects =
+                state.pendingEffects
+                    ++ [ Log LogWarning ("“" ++ name ++ "” shadows a const of the same name from an outer scope") ]
         }
 
     else

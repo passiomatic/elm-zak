@@ -1,54 +1,13 @@
-module Zak.Helpers exposing (describeRuntimeError, describeRuntimeErrorAt, formatError, toConsoleEntry)
+module Zak.Helpers exposing (describeRuntimeError, describeRuntimeErrorAt, formatError)
 
-{-| Cross-cutting Zak utilities that don't belong to any one type's own
-home module: error formatting (`formatError`, `describeRuntimeError`)
-and the `LogEntry` → browser-console mapping every embedder's log port
-shares (`toConsoleEntry`).
+{-| Error formatting (`formatError`, `describeRuntimeError`): turning a
+`Zak.Interpreter.Error` or a `RuntimeError` into text a person can read.
 -}
 
 import Parser exposing (DeadEnd, Problem(..))
 import Zak.AST exposing (Position)
 import Zak.Interpreter as Interpreter exposing (Error)
-import Zak.Runtime exposing (LogEntry, LogLevel(..), RuntimeError(..), Value(..))
-
-
-{-| One drained `LogEntry` as the plain record an embedder's
-`logToConsole` port sends to JS, which then only has to call
-`console[entry.level](entry.message)` -- so the level-name mapping
-lives here once, not in every embedder.
--}
-toConsoleEntry : LogEntry -> { level : String, message : String }
-toConsoleEntry entry =
-    { level = consoleMethod entry.level, message = entry.message }
-
-
-{-| The real `console.*` method each `LogLevel` maps to. None of the five
-match their Zak-level `Debug.log*` names *literally* — `Debug.log` maps
-to `console.log`, not a `console.print`/`console.debug`/... family this
-already isn't — but each is still the obvious, predictable suffix once
-the shared `Debug.log`/`Debug.log_` prefix is stripped off, except
-`LogWarning`: `console.warn`, not `console.warning` (the one place the
-browser API's own naming and Zak's diverge — `warning` chosen for
-`Debug.log_warning` to read better as an imperative-verb suffix than the
-browser's own noun-shaped `warn` would).
--}
-consoleMethod : LogLevel -> String
-consoleMethod level =
-    case level of
-        LogPrint ->
-            "log"
-
-        LogDebug ->
-            "debug"
-
-        LogInfo ->
-            "info"
-
-        LogWarning ->
-            "warn"
-
-        LogError ->
-            "error"
+import Zak.Runtime exposing (RuntimeError(..), Value(..))
 
 
 {-| A one-line, plain-English description of a `Zak.Interpreter.Error`,

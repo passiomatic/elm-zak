@@ -31,7 +31,7 @@ point that deliberately does *not* include it.
 -}
 
 import Dict exposing (Dict)
-import Zak.Runtime exposing (LogLevel(..), NativeValue(..), RuntimeError(..), State, Value(..))
+import Zak.Runtime exposing (Effect(..), LogLevel(..), NativeValue(..), RuntimeError(..), State, Value(..))
 import Zak.String
 
 
@@ -73,22 +73,22 @@ ship in a real embedder. The deeper problem it papered over — every native
 function's signature (`State -> List Value -> Result RuntimeError (
 Value, State )`) is a pure transformation of interpreter state, with no
 channel at all to communicate anything to the outside world — is what
-`State.pendingLogs` (`Zak.Runtime`) now actually solves: this native's
-*entire* job is appending one `LogEntry` to that list and returning,
-still fully pure. Turning a queued `LogEntry` into a real
-`console.log`/`console.debug`/`console.info`/`console.warn`/
-`console.error` call is `Zak.Interpreter.drainLogs` and, past that, the
-embedder's own job (e.g. via a port) — never this
-module's, and never anything a native function could do directly no
-matter what it stashed in `State` (see `pendingLogs`'s own doc in
-`Zak.Runtime` for why this needed genuinely different machinery than
-`Thread`'s `state.threads`, not just a same-shaped copy of it).
+`State.pendingEffects` (`Zak.Runtime`) now actually solves: this native's
+*entire* job is appending one `Log` to that queue and returning, still
+fully pure. Turning a queued `Log` into a real `console.log`/
+`console.debug`/`console.info`/`console.warn`/`console.error` call is
+`Zak.Interpreter.drainEffects` and, past that, the embedder's own job
+(e.g. via a port) — never this module's, and never anything a native
+function could do directly no matter what it stashed in `State` (see
+`pendingEffects`'s own doc in `Zak.Runtime` for why this needed genuinely
+different machinery than `Thread`'s `state.threads`, not just a
+same-shaped copy of it).
 -}
 logNative : LogLevel -> State -> List Value -> Result RuntimeError ( Value, State )
 logNative level state args =
     case args of
         [ value ] ->
-            Ok ( VNil, { state | pendingLogs = state.pendingLogs ++ [ { level = level, message = Zak.String.displayString value } ] } )
+            Ok ( VNil, { state | pendingEffects = state.pendingEffects ++ [ Log level (Zak.String.displayString value) ] } )
 
         _ ->
             Err (WrongArgCount { expected = 1, got = List.length args })
