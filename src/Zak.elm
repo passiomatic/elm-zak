@@ -10,6 +10,12 @@ module Zak exposing
 
 {-| Embed Zak, a small scripting language, in an Elm program.
 
+A native is a name the host's Elm code gives its scripts, such as a
+`say` function that makes a character speak. Most natives are Elm
+functions, but a native can also be a table of natives, a Zak
+expression or a constant (see [`Native`](#Native)). Scripts use natives
+the way they use their own globals.
+
 A host creates a [`World`](#World) with its own natives, runs Zak source
 into it, calls the functions the scripts define, and advances their
 threads once per frame. Natives and scripts never perform effects
@@ -115,9 +121,10 @@ run source (World state) =
         |> Result.mapError errorFromInternal
 
 
-{-| Runs the source of the file at `path` into `world`, the way a C
-`#include` would: its top-level definitions become globals, with no
-module of their own. A path already included is skipped, which also
+{-| Runs the source of the file at `path` into `world`, as if it were
+part of the script that includes it: its top-level definitions become
+globals, shared with every other script, with no table of their own to
+reach them through. A path already included is skipped, which also
 stops include cycles. Meant for a host's own `include` native, after it
 has found `source` for `path`:
 
@@ -786,9 +793,18 @@ runtimeErrorToInternal error =
 -- WRITING NATIVES
 
 
-{-| Something the host defines for its scripts: a function, a table of
-natives, a function written in Zak, or a constant. Give natives to
-[`init`](#init) by name.
+{-| A name the host defines for its scripts, which they use like one of
+their own globals. It's one of:
+
+  - a function written in Elm, made with [`nativeFunction`](#nativeFunction);
+  - a table of natives, made with [`nativeTable`](#nativeTable);
+  - a function or other value written in Zak, made with
+    [`nativeExpression`](#nativeExpression);
+  - a fixed value, made with [`nativeConstant`](#nativeConstant).
+
+Give natives to [`init`](#init) by name. Unlike a script's globals, they
+exist before any script runs.
+
 -}
 type Native
     = Native Runtime.NativeValue
