@@ -145,6 +145,11 @@ call fn args (World state) =
 {-| Advances every waiting thread by `seconds`, resuming those whose wait
 is over. A thread that fails is dropped, and its error is returned; the
 errors come in the order the threads failed.
+
+See [`threadCount`](#threadCount) and
+[`stopLocalThreads`](#stopLocalThreads) for the other ways a host
+manages threads.
+
 -}
 tick : Float -> World -> ( List Error, World )
 tick seconds (World state) =
