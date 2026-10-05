@@ -28,7 +28,7 @@ tier as `Math`/`String`/`print`/`type`), returning both the top-level
 script's own return value and the resulting `State`, so tests can inspect
 `state.threads`/`state.heap` afterward.
 
-Strips any `AtPosition` a `RuntimeError` comes back wrapped in — this
+Strips any `WithPosition` a `RuntimeError` comes back wrapped in — this
 suite pins down *which* `RuntimeError` a case produces, the same as
 before position-tracking existed; *where* it happened is exercised by
 `Test.Zak.Interpreter`'s own dedicated position-tracking tests instead,

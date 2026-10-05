@@ -11,7 +11,7 @@ import Zak.Runtime as Runtime exposing (RuntimeError(..), Value(..))
 no natives need passing in here at all. See `Zak.Interpreter`'s own doc
 for why `run` gets this and `runExpr` deliberately doesn't.
 
-Strips any `AtPosition` a `RuntimeError` comes back wrapped in — this
+Strips any `WithPosition` a `RuntimeError` comes back wrapped in — this
 suite pins down *which* `RuntimeError` each case produces, the same as
 before position-tracking existed; *where* it happened is exercised by
 `Test.Zak.Interpreter`'s own dedicated position-tracking tests instead.

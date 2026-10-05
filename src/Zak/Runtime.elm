@@ -77,13 +77,13 @@ type Value
     | VNativeThread (State -> List Value -> Result RuntimeError ( Outcome Value, State ))
 
 
-{-| `AtPosition` is different in kind from the other 15 constructors here —
+{-| `WithPosition` is different in kind from the other 15 constructors here —
 they're all *leaf* errors, raised directly at the ~116 places across this
 module and the native modules that actually detect something wrong;
-`AtPosition` is a *wrapper*, added by exactly one place
+`WithPosition` is a *wrapper*, added by exactly one place
 (`Zak.Interpreter.execStatements`, via its own `tagPosition` helper) once
 a leaf error has already propagated out of whichever statement raised it.
-None of those ~116 raise sites construct `AtPosition` themselves, or need
+None of those ~116 raise sites construct `WithPosition` themselves, or need
 to change at all for it to exist — every one of them still just builds a
 plain leaf error the same way it always has; the wrapping happens exactly
 once, after the fact, at the one place that actually knows *which*
@@ -112,13 +112,13 @@ type RuntimeError
     | SuspendedNotAllowed
     | FormatArgMismatch { expected : Int, got : Int }
     | UnknownFormatDirective String
-    | ImportNotFound String
-    | ImportParseError String Parser.Error
+    | IncludeNotFound String
+    | IncludeParseError String Parser.Error
     | InternalError String
-    | AtPosition Position RuntimeError
+    | WithPosition Position RuntimeError
 
 
-{-| The underlying leaf error, discarding whatever `AtPosition` it's
+{-| The underlying leaf error, discarding whatever `WithPosition` it's
 wrapped in (if any) — the inverse of what `Zak.Interpreter.execStatements`
 builds via `tagPosition`. Use it when matching on a *specific*
 `RuntimeError` shape (a test asserting on the exact error returned, say)
@@ -130,7 +130,7 @@ wants to throw a captured position away.
 dropPosition : RuntimeError -> RuntimeError
 dropPosition error =
     case error of
-        AtPosition _ inner ->
+        WithPosition _ inner ->
             dropPosition inner
 
         _ ->
@@ -431,20 +431,20 @@ type alias State =
        in `initialWorld`, to the same id its own returned `Env` already
        carries. Exists so a plain `NativeFunction` (`State -> List Value ->
        ...`, no `Env` of its own) can still splice more top-level code into
-       the shared world -- an embedder's own `import` native -- without
+       the shared world -- an embedder's own `include` native -- without
        needing `Env` threaded into every native's own signature just for
        this one case.
     -}
     , globalFrameId : Int
 
-    {- Every path `import` has already spliced in, world-wide -- makes a
-       second `import` of the same file a no-op instead of re-running (and
+    {- Every path `include` has already spliced in, world-wide -- makes a
+       second `include` of the same file a no-op instead of re-running (and
        re-`AlreadyDefined`-erroring on) its own top-level `let`s, and this
-       is also the entire cycle-guard: if `A` imports `B` imports `A`, `A`
-       is already in here by the time `B`'s own `import("A")` runs, so it
+       is also the entire cycle-guard: if `A` includes `B` includes `A`, `A`
+       is already in here by the time `B`'s own `include("A")` runs, so it
        resolves to nothing rather than looping.
     -}
-    , importedFiles : Set String
+    , includedFiles : Set String
     }
 
 

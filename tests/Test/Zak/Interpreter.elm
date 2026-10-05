@@ -8,13 +8,13 @@ import Zak.Helpers
 import Zak.Runtime as Runtime exposing (Effect(..), LogLevel(..), NativeValue(..), RuntimeError(..), Value(..))
 
 
-{-| `I.run`, with any `AtPosition` a `RuntimeError` comes back wrapped in
+{-| `I.run`, with any `WithPosition` a `RuntimeError` comes back wrapped in
 stripped off — this suite (mostly) pins down *which* `RuntimeError` each
 case produces, the same as before position-tracking existed; *where* it
 happened has its own dedicated describe block below
 ("position tracking"), not re-asserted at every other call site.
 `I.runExpr` deliberately isn't wrapped the same way — it never gets
-`AtPosition` in the first place, per `Zak.Interpreter`'s own doc.
+`WithPosition` in the first place, per `Zak.Interpreter`'s own doc.
 -}
 run : Dict String NativeValue -> String -> Result Error Value
 run natives source =
@@ -931,14 +931,14 @@ return Array.length(seen)"""
                     Zak.Helpers.describeRuntimeError (InternalError "a break signal escaped its enclosing loop")
                         |> Expect.equal "internal interpreter error: a break signal escaped its enclosing loop"
             ]
-        , describe "importSource -- an embedder's `import(path)` native can be a thin wrapper around this" <|
+        , describe "include -- an embedder's `include(path)` native can be a thin wrapper around this" <|
             [ test "a file's own top-level statements land in the shared world scope, visible to code that runs after it" <|
                 \_ ->
                     let
                         ( env, state1 ) =
                             I.initialWorld noNatives
                     in
-                    case I.importSource "Helpers.zak" "let x = 1" state1 of
+                    case I.include "Helpers.zak" "let x = 1" state1 of
                         Err _ ->
                             Expect.fail "import failed"
 
@@ -946,18 +946,18 @@ return Array.length(seen)"""
                             I.runIncremental env state2 "return x"
                                 |> Result.map Tuple.first
                                 |> Expect.equal (Ok (VNumber 1))
-            , test "importing the same path twice is a no-op the second time -- not a re-run, not an AlreadyDefined error (this is also the whole import-cycle guard)" <|
+            , test "including the same path twice is a no-op the second time -- not a re-run, not an AlreadyDefined error (this is also the whole include-cycle guard)" <|
                 \_ ->
                     let
                         ( _, state1 ) =
                             I.initialWorld noNatives
                     in
-                    case I.importSource "Helpers.zak" "let x = 1" state1 of
+                    case I.include "Helpers.zak" "let x = 1" state1 of
                         Err _ ->
                             Expect.fail "first import failed"
 
                         Ok ( _, state2 ) ->
-                            I.importSource "Helpers.zak" "let x = 1" state2
+                            I.include "Helpers.zak" "let x = 1" state2
                                 |> Result.map Tuple.first
                                 |> Expect.equal (Ok VNil)
             , test "a genuinely different second file still runs normally after the first (the no-op above is keyed by path, not a blanket one-import-ever limit)" <|
@@ -966,12 +966,12 @@ return Array.length(seen)"""
                         ( env, state1 ) =
                             I.initialWorld noNatives
                     in
-                    case I.importSource "A.zak" "let x = 1" state1 of
+                    case I.include "A.zak" "let x = 1" state1 of
                         Err _ ->
                             Expect.fail "first import failed"
 
                         Ok ( _, state2 ) ->
-                            case I.importSource "B.zak" "let y = 2" state2 of
+                            case I.include "B.zak" "let y = 2" state2 of
                                 Err _ ->
                                     Expect.fail "second import failed"
 
@@ -979,18 +979,18 @@ return Array.length(seen)"""
                                     I.runIncremental env state3 "return x + y"
                                         |> Result.map Tuple.first
                                         |> Expect.equal (Ok (VNumber 3))
-            , test "a syntax error in the imported source is a real ImportParseError naming the path, not a crash" <|
+            , test "a syntax error in the included source is a real IncludeParseError naming the path, not a crash" <|
                 \_ ->
                     let
                         ( _, state1 ) =
                             I.initialWorld noNatives
                     in
-                    case I.importSource "Broken.zak" "let x = " state1 of
-                        Err (ImportParseError path _) ->
+                    case I.include "Broken.zak" "let x = " state1 of
+                        Err (IncludeParseError path _) ->
                             path |> Expect.equal "Broken.zak"
 
                         other ->
-                            Expect.fail ("expected an ImportParseError, got: " ++ Debug.toString other)
+                            Expect.fail ("expected an IncludeParseError, got: " ++ Debug.toString other)
             ]
         , describe "run: functions, recursion, and closures" <|
             List.map (testValue (run noNatives))
@@ -1398,22 +1398,22 @@ return function?(function?)"""
                             I.initialWorld noNatives
                     in
                     I.runIncremental env state1 "const x = 1\nlet x = 2"
-                        |> Expect.equal (Err (RuntimeError (AtPosition { row = 2, col = 1 } (AlreadyDefined "x"))))
+                        |> Expect.equal (Err (RuntimeError (WithPosition { row = 2, col = 1 } (AlreadyDefined "x"))))
             ]
-        , describe "position tracking: a RuntimeError comes back wrapped in AtPosition, tagged with the statement that raised it (unstripped — the only block in this suite that looks at raw I.run/I.runIncremental output instead of going through this file's own dropRuntimePosition-wrapping run helper)" <|
+        , describe "position tracking: a RuntimeError comes back wrapped in WithPosition, tagged with the statement that raised it (unstripped — the only block in this suite that looks at raw I.run/I.runIncremental output instead of going through this file's own dropRuntimePosition-wrapping run helper)" <|
             [ test "a single top-level statement's error is tagged with its own real (row, col)" <|
                 \_ ->
                     I.run noNatives "return undefined_name"
-                        |> Expect.equal (Err (RuntimeError (AtPosition { row = 1, col = 1 } (UndefinedName "undefined_name"))))
+                        |> Expect.equal (Err (RuntimeError (WithPosition { row = 1, col = 1 } (UndefinedName "undefined_name"))))
             , test "a later statement's error is tagged with its own line, not the first statement's" <|
                 \_ ->
                     I.run noNatives "let x = 1\nreturn undefined_name"
-                        |> Expect.equal (Err (RuntimeError (AtPosition { row = 2, col = 1 } (UndefinedName "undefined_name"))))
+                        |> Expect.equal (Err (RuntimeError (WithPosition { row = 2, col = 1 } (UndefinedName "undefined_name"))))
             , test "an error inside a nested if body is tagged with its own position, not the enclosing if's -- innermost statement wins" <|
                 \_ ->
                     I.run noNatives "if true:\n    return undefined_name\nend"
-                        |> Expect.equal (Err (RuntimeError (AtPosition { row = 2, col = 5 } (UndefinedName "undefined_name"))))
-            , test "runExpr never wraps its error in AtPosition -- there's no statement/Block structure to tag a bare expression with" <|
+                        |> Expect.equal (Err (RuntimeError (WithPosition { row = 2, col = 5 } (UndefinedName "undefined_name"))))
+            , test "runExpr never wraps its error in WithPosition -- there's no statement/Block structure to tag a bare expression with" <|
                 \_ ->
                     I.runExpr noNatives "undefined_name"
                         |> Expect.equal (Err (RuntimeError (UndefinedName "undefined_name")))
@@ -1429,6 +1429,6 @@ return function?(function?)"""
 
                         Ok ( _, state2 ) ->
                             I.runIncremental env state2 "return undefined_name"
-                                |> Expect.equal (Err (RuntimeError (AtPosition { row = 1, col = 1 } (UndefinedName "undefined_name"))))
+                                |> Expect.equal (Err (RuntimeError (WithPosition { row = 1, col = 1 } (UndefinedName "undefined_name"))))
             ]
         ]

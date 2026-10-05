@@ -26,7 +26,7 @@ formatError source error =
             formatRuntimeError source runtimeError
 
 
-{-| A `RuntimeError` reaching here is usually `AtPosition`-tagged in
+{-| A `RuntimeError` reaching here is usually `WithPosition`-tagged in
 practice: every statement `execStatements` executes (and so everything
 run through `runIncremental`) gets tagged on its way out (see that
 function's own doc in `Zak.Interpreter`) — only `runExpr` deliberately
@@ -42,7 +42,7 @@ crashing outright, if that guarantee were ever weakened later.
 formatRuntimeError : String -> RuntimeError -> String
 formatRuntimeError source runtimeError =
     case runtimeError of
-        AtPosition position innerError ->
+        WithPosition position innerError ->
             errorBlock "Runtime error" position source (describeRuntimeError innerError)
 
         untaggedError ->
@@ -52,14 +52,14 @@ formatRuntimeError source runtimeError =
 {-| A one-line description for when there's no source text to show a
 snippet from (e.g. an error inside a thread or an embedder-called Zak
 function, which carries no file identity): keeps the row/column an
-`AtPosition` wrapper carries, which `describeRuntimeError` alone drops.
+`WithPosition` wrapper carries, which `describeRuntimeError` alone drops.
 `"line 3, column 7: “x” is not defined"`, or just the message when there's
 no position -- callers add their own prefix (`"Zak thread error: " ++ …`).
 -}
 describeRuntimeErrorAt : RuntimeError -> String
 describeRuntimeErrorAt runtimeError =
     case runtimeError of
-        AtPosition position inner ->
+        WithPosition position inner ->
             "line " ++ String.fromInt position.row ++ ", column " ++ String.fromInt position.col ++ ": " ++ describeRuntimeError inner
 
         _ ->
@@ -128,10 +128,10 @@ describeRuntimeError runtimeError =
         UnknownFormatDirective directive ->
             "unknown String.format directive “" ++ directive ++ "”"
 
-        ImportNotFound path ->
+        IncludeNotFound path ->
             "“" ++ path ++ "” was not found among the loaded Zak sources"
 
-        ImportParseError path deadEnds ->
+        IncludeParseError path deadEnds ->
             case deepestDeadEnds deadEnds of
                 Just ( position, problems ) ->
                     "“" ++ path ++ "” failed to parse at line " ++ String.fromInt position.row ++ ", column " ++ String.fromInt position.col ++ ": " ++ describeProblems problems
@@ -139,7 +139,7 @@ describeRuntimeError runtimeError =
                 Nothing ->
                     "“" ++ path ++ "” failed to parse"
 
-        AtPosition _ innerError ->
+        WithPosition _ innerError ->
             -- `tagPosition` only ever wraps once (see its own doc), so
             -- this never actually recurses in practice — kept only so
             -- this match stays exhaustive without a wildcard swallowing

@@ -11,7 +11,7 @@ import Zak.Runtime as Runtime exposing (RuntimeError(..), Value(..))
 {-| The bare global `type` is seeded by `Zak.Interpreter.run` itself now,
 automatically — no natives need passing in here at all.
 
-Strips any `AtPosition` a `RuntimeError` comes back wrapped in
+Strips any `WithPosition` a `RuntimeError` comes back wrapped in
 (`Runtime.dropPosition`) — this suite pins down *which* `RuntimeError`
 each case produces, the same as before position-tracking existed; *where*
 it happened is a different, orthogonal thing, exercised by

@@ -4,7 +4,7 @@ module Zak.Interpreter exposing
     , runExpr
     , initialWorld
     , runIncremental
-    , importSource
+    , include
     , tick
     , drainEffects
     , call
@@ -220,8 +220,8 @@ runIncremental env state source =
 
 {-| The shared "run this block's own top-level statements into `env`,
 collapsing an unexpected top-level suspend into `SuspendedNotAllowed`"
-core both `runIncremental` and `importSource` (below) are built from —
-factored out once `importSource` needed the exact same collapsing logic
+core both `runIncremental` and `include` (below) are built from —
+factored out once `include` needed the exact same collapsing logic
 but a `RuntimeError`-only result (a native mid-execution has no
 `Error`/`SyntaxError` channel to report through, only `RuntimeError`).
 -}
@@ -239,38 +239,38 @@ runProgramInto env state program =
             )
 
 
-{-| `import(path)`'s own core (the embedder's own `import` native is the
+{-| `include(path)`'s own core (the embedder's own `include` native is the
 thin, host-specific wrapper around this: it resolves `path` to `source`,
 a lookup this module deliberately knows nothing about). Splices `source`'s own
 top-level statements into the shared *world* frame, not `env`'s (whatever
 that happens to be at the call site) — `state.globalFrameId`, stamped
 once by `initialWorld`, is what every top-level `let` across every
-`import`ed file needs to land in, matching `runIncremental`'s own
+included file needs to land in, matching `runIncremental`'s own
 existing "every file sees every other file's globals" behavior, just
 triggered from inside a running script instead of the embedder's own
 external loop.
 
-Idempotent: importing the same `path` twice is a silent no-op (`state.
-importedFiles`) rather than a second, redundant run — the same
+Idempotent: including the same `path` twice is a silent no-op (`state.
+includedFiles`) rather than a second, redundant run — the same
 `AlreadyDefined` a second literal run would hit anyway for every `let` it
 already declared, and (not incidentally) the entire guard against an
-import cycle: if `A` imports `B` imports `A`, `A` is already marked
-imported by the time `B`'s own `import("A")` runs, so it resolves to
+include cycle: if `A` includes `B` includes `A`, `A` is already marked
+included by the time `B`'s own `include("A")` runs, so it resolves to
 `VNil` instead of looping.
 -}
-importSource : String -> String -> State -> Result RuntimeError ( Value, State )
-importSource path source state =
-    if Set.member path state.importedFiles then
+include : String -> String -> State -> Result RuntimeError ( Value, State )
+include path source state =
+    if Set.member path state.includedFiles then
         Ok ( VNil, state )
 
     else
         case Parser.parseProgram source of
             Err parserError ->
-                Err (ImportParseError path parserError)
+                Err (IncludeParseError path parserError)
 
             Ok program ->
                 runProgramInto (Env state.globalFrameId (Just globalEnv))
-                    { state | importedFiles = Set.insert path state.importedFiles }
+                    { state | includedFiles = Set.insert path state.includedFiles }
                     program
 
 
@@ -382,7 +382,7 @@ seedState natives =
                 -- this and stamps its own id into `globalFrameId`; nothing
                 -- reads either field before that happens.
                 , globalFrameId = 0
-                , importedFiles = Set.empty
+                , includedFiles = Set.empty
                 }
                 natives
 
@@ -803,7 +803,7 @@ execBlock parentEnv state statements =
 
 
 {-| Runs each statement in turn, tagging any `RuntimeError` that comes out
-of it with *that statement's own* position (`Zak.Runtime.AtPosition`, via
+of it with *that statement's own* position (`Zak.Runtime.WithPosition`, via
 `tagPosition` below) before it propagates any further — the one place in
 this whole module position-tagging happens at all. Because this function
 is exactly what runs recursively for every nested block too (an `if`
@@ -841,7 +841,7 @@ execStatements env state statements =
                     )
 
 
-{-| Wraps `error` in `AtPosition position error` — but only if it isn't
+{-| Wraps `error` in `WithPosition position error` — but only if it isn't
 already wrapped. This is what makes "the innermost failure's position
 wins" in `execStatements` above actually true: without the guard, every
 enclosing `execStatements` call would re-wrap an already-positioned error
@@ -852,11 +852,11 @@ that actually failed.
 tagPosition : Position -> RuntimeError -> RuntimeError
 tagPosition position error =
     case error of
-        AtPosition _ _ ->
+        WithPosition _ _ ->
             error
 
         _ ->
-            AtPosition position error
+            WithPosition position error
 
 
 {-| Every case but the last (`ExprStatement (Call ...)`) can never itself
