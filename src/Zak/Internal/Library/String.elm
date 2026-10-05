@@ -1,8 +1,8 @@
-module Zak.String exposing (displayString, natives)
+module Zak.Internal.Library.String exposing (displayString, natives)
 
 {-| String-related functions under one `String` namespace table
 (`String.from(value)`, `String.length(string)`, ...), following the exact
-same shape as `Zak.Math`. `from` was this namespace's seed; `length`,
+same shape as `Zak.Internal.Library.Math`. `from` was this namespace's seed; `length`,
 `is_empty`, `reverse`, `replace`, and `append` were its first real
 *manipulation* functions — Zak's counterparts to Elm's own
 `String.length`/`isEmpty`/`reverse`/`replace`/`append` — added the moment
@@ -22,7 +22,7 @@ mutating twin for any of them — not a per-function naming choice, but because 
 `VString` wraps a plain Elm `String` directly, with no heap id and so no
 identity to mutate in the first place (unlike `VArray`/`VTable`, which
 are heap cells precisely so they *can* be mutated in place and shared —
-see `Zak.Runtime`'s own `Value` doc). "A targeted edit mutates, a
+see `Zak.Internal.Runtime`'s own `Value` doc). "A targeted edit mutates, a
 whole-collection derivation doesn't" (see "Arrays" in the language
 reference) is a real choice for `Array`/`Table`; for `String` there's no
 mutating option to choose between, so the question never arises.
@@ -45,8 +45,8 @@ printing risks looping forever on a cycle. Solving that safely is a real,
 separate problem — for now these get a fixed placeholder rather than
 attempting to print their contents.
 
-Exposes `natives`, merged in automatically by `Zak.Interpreter` (along
-with `Zak.Math`/`Zak.Debug`/`Zak.Globals`) for `run`/`initialWorld`/
+Exposes `natives`, merged in automatically by `Zak.Internal.Interpreter` (along
+with `Zak.Internal.Library.Math`/`Zak.Internal.Library.Debug`/`Zak.Internal.Library.Globals`) for `run`/`initialWorld`/
 `runIncremental` — nothing needs to import or merge this by hand.
 `runExpr` is the one entry point that deliberately does *not* include it.
 -}
@@ -54,7 +54,7 @@ with `Zak.Math`/`Zak.Debug`/`Zak.Globals`) for `run`/`initialWorld`/
 import Array
 import Dict exposing (Dict)
 import Hex
-import Zak.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..))
+import Zak.Internal.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..))
 
 
 natives : Dict String NativeValue
@@ -235,7 +235,7 @@ stringReplace state args =
 {-| `String.slice(string, start, end)` — `string`, from `start` up to but
 not including `end` (a plain half-open range, 0-based). `end` is
 optional, defaulting to `string`'s own length — precedented in this
-codebase by `Debug.assert` (`Zak.Debug`), the first Zak native to accept
+codebase by `Debug.assert` (`Zak.Internal.Library.Debug`), the first Zak native to accept
 a variable argument count. This is what makes deriving a name like
 `"logo"` from `"img_logo"` read well: `String.slice(name, 4)`, no
 separate `String.length(name)` call needed just to mean "to the end."
@@ -308,9 +308,9 @@ stringSlice state args =
 `nonNegativeIndex`, below) before ever calling Elm's own `String.slice`,
 then resolves an omitted `end` to `string`'s own length and clamps both
 bounds into `[0, String.length string]`. Can't reuse
-`Zak.Interpreter`'s own private `wholeNumberIndex` (the equivalent check
-`Array.get`'s bounds-checking already does) — `Zak.Interpreter` is what
-imports `Zak.String`'s `natives` in the first place, so importing it back
+`Zak.Internal.Interpreter`'s own private `wholeNumberIndex` (the equivalent check
+`Array.get`'s bounds-checking already does) — `Zak.Internal.Interpreter` is what
+imports `Zak.Internal.Library.String`'s `natives` in the first place, so importing it back
 here would be circular; a small local duplicate is cheaper than a
 shared-module refactor for one function.
 -}
@@ -504,7 +504,7 @@ order each appears. Only ever called after `stringFormat` has already
 confirmed `args`' length matches `countPlaceholders format` exactly, so
 every `[]` branch below (a placeholder found with no argument left to
 consume) is structurally unreachable — an `InternalError`, not a made-up
-value, the same convention `Zak.Interpreter`'s own `signalValue` uses for
+value, the same convention `Zak.Internal.Interpreter`'s own `signalValue` uses for
 its equally impossible cases.
 -}
 substituteFormat : List Char -> List Value -> Result RuntimeError String

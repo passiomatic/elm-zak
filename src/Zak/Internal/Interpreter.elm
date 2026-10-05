@@ -1,4 +1,4 @@
-module Zak.Interpreter exposing
+module Zak.Internal.Interpreter exposing
     ( Error(..)
     , run
     , runExpr
@@ -13,8 +13,8 @@ module Zak.Interpreter exposing
     , allocCell
     )
 
-{-| Evaluates a `Zak.AST` tree produced by `Zak.Parser`, against the
-runtime value model `Zak.Runtime` defines. There are two tiers of
+{-| Evaluates a `Zak.Internal.AST` tree produced by `Zak.Internal.Parser`, against the
+runtime value model `Zak.Internal.Runtime` defines. There are two tiers of
 unconditional built-ins, for two different reasons:
 
 `Array`/`Table` are unconditional in *every* entry point below, including
@@ -43,15 +43,15 @@ import Array exposing (Array)
 import Dict exposing (Dict)
 import Random
 import Set
-import Zak.AST exposing (AssignTarget(..), BinaryOp(..), Block, Expr(..), PathSegment(..), Position, PositionedStatement, Statement(..), UnaryOp(..))
-import Zak.Debug as ZakDebug
-import Zak.ErrorMessage as ErrorMessage
-import Zak.Globals as Globals
-import Zak.Math as Math
-import Zak.Parser as Parser
-import Zak.Random as ZakRandom
-import Zak.Thread as Thread
-import Zak.Runtime
+import Zak.Internal.AST exposing (AssignTarget(..), BinaryOp(..), Block, Expr(..), PathSegment(..), Position, PositionedStatement, Statement(..), UnaryOp(..))
+import Zak.Internal.Library.Debug as ZakDebug
+import Zak.Internal.ErrorMessage as ErrorMessage
+import Zak.Internal.Library.Globals as Globals
+import Zak.Internal.Library.Math as Math
+import Zak.Internal.Parser as Parser
+import Zak.Internal.Library.Random as ZakRandom
+import Zak.Internal.Library.Thread as Thread
+import Zak.Internal.Runtime
     exposing
         ( Effect(..)
         , Env(..)
@@ -69,11 +69,11 @@ import Zak.Runtime
         , mapOutcomeResult
         , requireDone
         )
-import Zak.String as ZakString
+import Zak.Internal.Library.String as ZakString
 
 
 {-| `Value`, `RuntimeError`, `NativeValue`, `Env`, `State`, `Signal`,
-`Outcome`, `WaitCondition`, `ThreadId`, `Thread` all live in `Zak.Runtime`
+`Outcome`, `WaitCondition`, `ThreadId`, `Thread` all live in `Zak.Internal.Runtime`
 now (imported above) — see that module's own doc for why. `Error` stays
 here: it's only ever the return type of `run`/`runExpr`/`runIncremental`
 below, never something a native module needs.
@@ -200,7 +200,7 @@ extended to the whole loaded world.
 
 A top-level script suspending at all (e.g. calling `Thread.wait_for`
 directly, not from inside a `Thread.start`-spawned body) is
-`SuspendedNotAllowed` — a root-VM-can't-suspend constraint (see `Zak.Runtime.Outcome`'s doc): only
+`SuspendedNotAllowed` — a root-VM-can't-suspend constraint (see `Zak.Internal.Runtime.Outcome`'s doc): only
 `Thread.start`/`Thread.start_global` ever let a
 script's own statements actually run as a suspend-capable thread, and
 those two natives fully absorb whatever their spawned body
@@ -408,8 +408,8 @@ needs to share implementation with any dedicated syntax, so there's no
 instead — they're unconditional here purely as a design choice about
 what a "real program" (`run`/`initialWorld`/`runIncremental`) should be
 able to assume, deliberately not extended to `runExpr` (see that
-function's own doc). Precedence mirrors `Zak.Math`/`Zak.Globals`/
-`Zak.String`/`Zak.Debug`/`Zak.Random`'s own declaration order; none of
+function's own doc). Precedence mirrors `Zak.Internal.Library.Math`/`Zak.Internal.Library.Globals`/
+`Zak.Internal.Library.String`/`Zak.Internal.Library.Debug`/`Zak.Internal.Library.Random`'s own declaration order; none of
 the five share any keys, so the order doesn't actually matter today.
 -}
 stdlibNatives : Dict String NativeValue
@@ -421,18 +421,18 @@ stdlibNatives =
 
 
 {-| One `Thread` namespace table holding all four threading primitives: `wait_for`/`join`
-(`Zak.Thread`, neither of which needs to call back
+(`Zak.Internal.Library.Thread`, neither of which needs to call back
 into this module) plus `start`/`start_global` (defined
 directly below, since spawning a thread means running its closure
 argument via `callFunction`/`execBlock` — exactly the kind of sharing
 that keeps `Array`/`Table`'s own natives living in this module too, per
-this module's own top-of-file doc; putting these two in `Zak.Thread`
-instead would need `Zak.Thread` to import `Zak.Interpreter`, and
-`Zak.Interpreter` already imports `Zak.Thread` for the other two — a
+this module's own top-of-file doc; putting these two in `Zak.Internal.Library.Thread`
+instead would need `Zak.Internal.Library.Thread` to import `Zak.Internal.Interpreter`, and
+`Zak.Internal.Interpreter` already imports `Zak.Internal.Library.Thread` for the other two — a
 real circular import, not a style preference).
-The wrapping happens here, one level up from `Zak.Thread.natives`
+The wrapping happens here, one level up from `Zak.Internal.Library.Thread.natives`
 itself, specifically so it covers all four together — wrapping only
-`Zak.Thread.natives` would leave `start`/`start_global`
+`Zak.Internal.Library.Thread.natives` would leave `start`/`start_global`
 stranded outside the namespace, since they're merged in from a different
 module entirely.
 
@@ -457,7 +457,7 @@ threadNatives =
 `closure` (called with zero arguments) as an independent, suspend-capable
 thread: its body runs *immediately*, synchronously, right here, up to its
 own first suspend point or completion — *before* this call itself returns anything. If the body suspends partway
-through, the resulting `Thread` (see `Zak.Runtime`'s own doc) is
+through, the resulting `Thread` (see `Zak.Internal.Runtime`'s own doc) is
 registered under a freshly-allocated id in `state.threads`, to be resumed
 later by `tick`; if the body runs to completion without ever suspending,
 nothing gets registered at all — there's nothing left to resume. Either
@@ -526,7 +526,7 @@ the `StillWaiting` branch would write a stopped thread straight back in,
 or `ReadyToResume` would run it. The opposite case is deliberate: a
 thread that stops *itself* (or its caller) while being resumed here is
 re-registered at its next suspend, which is exactly what makes
-`Thread.stop` a no-op on a running thread (see `Zak.Thread.stop`).
+`Thread.stop` a no-op on a running thread (see `Zak.Internal.Library.Thread.stop`).
 
 **Known, confirmed latency: `Thread.join` can resolve one full tick later
 than the thread it's joining actually finishes, depending on thread-id
@@ -615,8 +615,8 @@ stopLocalThreads state =
 
 {-| Hands back every `Effect` queued in `state.pendingEffects` since the
 last `drainEffects` call, oldest first, and clears the queue. Two kinds
-share the queue (see `Zak.Runtime`'s `Effect`): a `Log` from a
-`Debug.log*` call (`Zak.Debug`) or an interpreter warning, and an
+share the queue (see `Zak.Internal.Runtime`'s `Effect`): a `Log` from a
+`Debug.log*` call (`Zak.Internal.Library.Debug`) or an interpreter warning, and an
 `Effect` from a host-specific native (defined by the embedder, outside
 this package entirely, passed in as one of `initialWorld`'s own
 `natives`). One queue keeps their relative order.
@@ -629,7 +629,7 @@ after every `run`/`runIncremental`/`call`/`tick` that could have run a
 native, and turn each item into its own `Cmd` (a `Log` into a
 `console.*` call via a port, say) — nothing in this module does that
 itself, on purpose, and it never inspects an `Effect`'s name or arguments
-(see `Zak.Runtime`'s own `pendingEffects` doc for why).
+(see `Zak.Internal.Runtime`'s own `pendingEffects` doc for why).
 -}
 drainEffects : State -> ( List Effect, State )
 drainEffects state =
@@ -768,7 +768,7 @@ resolveNative path state native =
 
         NativeZakExpr source ->
             -- `source` is fixed Zak source written alongside a native
-            -- (e.g. in Zak.Math, or by the host), not script input. If it
+            -- (e.g. in Zak.Internal.Library.Math, or by the host), not script input. If it
             -- fails to parse or evaluate, that native is left undefined
             -- (`Nothing`), and a `LogError` naming it is queued, rather
             -- than threading another error case through every caller of
@@ -847,7 +847,7 @@ execBlock parentEnv state statements =
 
 
 {-| Runs each statement in turn, tagging any `RuntimeError` that comes out
-of it with *that statement's own* position (`Zak.Runtime.WithPosition`, via
+of it with *that statement's own* position (`Zak.Internal.Runtime.WithPosition`, via
 `tagPosition` below) before it propagates any further — the one place in
 this whole module position-tagging happens at all. Because this function
 is exactly what runs recursively for every nested block too (an `if`
@@ -907,7 +907,7 @@ tagPosition position error =
 suspend, so it just runs to `Done` immediately, same as before this module
 supported suspension at all. Only a bare top-level call statement can
 actually preserve and propagate a `Suspended` result — see
-`Zak.Runtime.Outcome`'s own doc for why that's the one place this pass
+`Zak.Internal.Runtime.Outcome`'s own doc for why that's the one place this pass
 wires it up, and `evalExpr`'s `Call` case (used by every *other* case
 here, via `evalExpr`) for what happens if a suspending native is called
 from anywhere else instead (a `SuspendedNotAllowed` error, not silent
@@ -1035,7 +1035,7 @@ execWhile env state condExpr body =
 {-| `let _ = expr` / `const _ = expr`: evaluates `expr` for its effects
 and throws the value away. Nothing is bound, so repeating it in the same
 scope is never `AlreadyDefined`, and the parser already rejects any read
-of `_` (`Zak.Parser.rejectThrowaway`).
+of `_` (`Zak.Internal.Parser.rejectThrowaway`).
 -}
 discard : Env -> State -> Expr -> Result RuntimeError ( Outcome Signal, State )
 discard env state valueExpr =
@@ -1142,7 +1142,7 @@ be in-bounds, though, since arrays don't grow via assignment (only via
 assignment's own base can be *any* expression, not just a name —
 `current_player().health = 100` resolves `current_player()` like any
 other call before writing through it (see `AssignTarget`'s own doc in
-`Zak.AST`). For the plain `Name` case this is
+`Zak.Internal.AST`). For the plain `Name` case this is
 no behavior change at all: `evalExpr`'s own `Name` branch is exactly
 `lookupVar` plus the same `UndefinedName` wrapping this used to do by
 hand.
@@ -1498,7 +1498,7 @@ both deliberate:
     shared instance mutated in place across all of them — avoiding the
     classic mutable-default-argument gotcha.
 
-The `Nothing` branch is unreachable in practice: `Zak.Parser`'s
+The `Nothing` branch is unreachable in practice: `Zak.Internal.Parser`'s
 trailing-only-defaults rule guarantees every parameter past a supplied
 argument has a default. Falls back to `VNil` rather than crashing if
 that guarantee were somehow ever violated.
@@ -1540,7 +1540,7 @@ isRequiredParam ( _, default ) =
 {-| Calling a plain `VNative` or a `VFunction` whose body never suspends
 both just produce `Done value` immediately, same as before this module
 supported suspension at all — the only genuinely new case is `VNativeThread`
-(`wait_for`/`join`, see `Zak.Thread`),
+(`wait_for`/`join`, see `Zak.Internal.Library.Thread`),
 which can hand back `Suspended` directly, and a `VFunction` whose *body*
 suspends (because it itself calls one of those, as its own top-level
 statement — see `execStatement`'s `ExprStatement (Call ...)` case), whose
@@ -1976,7 +1976,7 @@ shadowsConst (Env _ parent) name state =
 
 {-| Called right after `defineVar` has already succeeded for `name` in
 `env`'s own frame — queues a `LogWarning` (the exact mechanism
-`Debug.log_warning(message)` itself uses, see `Zak.Debug.logNative`) if
+`Debug.log_warning(message)` itself uses, see `Zak.Internal.Library.Debug.logNative`) if
 that new binding shadows a `const` from an outer scope, e.g. a typo'd
 `let true = ...` at the top level shadowing the const-marked `true` in
 frame 0. A warning, not an error: the binding still succeeds either way,
@@ -2320,7 +2320,7 @@ mapValues state fn values =
 
         first :: rest ->
             -- `fn` suspending mid-map isn't supported in this pass (see
-            -- `Zak.Runtime.requireDone`'s own doc) — a script that tries
+            -- `Zak.Internal.Runtime.requireDone`'s own doc) — a script that tries
             -- gets a clear `SuspendedNotAllowed` error rather than a
             -- partially-applied map silently going wrong.
             callFunction state fn [ first ]

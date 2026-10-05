@@ -1,4 +1,4 @@
-module Zak.Math exposing (natives)
+module Zak.Internal.Library.Math exposing (natives)
 
 {-| Math functions under one `Math` namespace table (`Math.cos(1)`,
 `Math.abs(-1)`, ...) rather than flooding the global scope with each name.
@@ -14,7 +14,7 @@ it just happens to sit inside a namespace instead of the global scope.
 `abs`, they're still plain `NativeFunction`s (`binaryNumber min`/
 `binaryNumber max`, the same helper `atan2` already uses), not
 `NativeZakExpr`. Reason: Zak's own `<` (`orderedCompare` in
-`Zak.Interpreter`) already accepts strings, not just numbers, so a pure
+`Zak.Internal.Interpreter`) already accepts strings, not just numbers, so a pure
 `if a < b: return a else return b end` snippet would silently make
 `Math.min`/`Math.max` the one Math function that also works on strings —
 inconsistent with every sibling here, all of which `TypeError` on
@@ -46,21 +46,21 @@ this exact behavior rather than reimplementing rounding some other way.
 each has a real domain restriction (`sqrt`: no negatives; `acos`/`asin`:
 `[-1, 1]` only) where plain `Basics.sqrt`/`acos`/`asin` would silently
 return `NaN` instead of failing. Out-of-domain input is a real
-`DomainError` for all three, matching `Zak.Interpreter.checkedDivide`'s
+`DomainError` for all three, matching `Zak.Internal.Interpreter.checkedDivide`'s
 own "guard the domain, don't let a `NaN`/`Infinity` leak into a script's
 later arithmetic" precedent for `/`/`//`. See `domainChecked`'s own doc,
 below.
 
 Exposes `natives`, a single `"Math"` namespace entry — a fragment of the
-`Dict String NativeValue` `Zak.Interpreter` merges in automatically (along
-with `Zak.String`/`Zak.Debug`/`Zak.Globals`) for `run`/`initialWorld`/
+`Dict String NativeValue` `Zak.Internal.Interpreter` merges in automatically (along
+with `Zak.Internal.Library.String`/`Zak.Internal.Library.Debug`/`Zak.Internal.Library.Globals`) for `run`/`initialWorld`/
 `runIncremental`. Nothing needs to import or merge this by hand —
 `runExpr` is the one entry point that deliberately does *not* include it
-(see `Zak.Interpreter`'s own module doc for why).
+(see `Zak.Internal.Interpreter`'s own module doc for why).
 -}
 
 import Dict exposing (Dict)
-import Zak.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..))
+import Zak.Internal.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..))
 
 
 natives : Dict String NativeValue
@@ -100,7 +100,7 @@ natives =
 native: checks arity and argument type, then calls straight through. Takes
 (and passes through unchanged) the `State` every `NativeFunction` now
 threads — Math's own functions never touch the heap, but the signature is
-shared with natives that do (see `Zak.Interpreter`'s `Array.*`).
+shared with natives that do (see `Zak.Internal.Interpreter`'s `Array.*`).
 -}
 unaryNumber : (Float -> Float) -> (State -> List Value -> Result RuntimeError ( Value, State ))
 unaryNumber f state args =
@@ -126,7 +126,7 @@ real, valid `Float` — Elm has no separate "this computation failed"
 signal at that level), which would otherwise flow on into the caller's
 own later arithmetic as a value that famously isn't even equal to itself
 (`NaN == NaN` is `False`) — the exact class of surprising-Zak-value-not-
-obviously-wrong-until-much-later bug `Zak.Interpreter.checkedDivide`
+obviously-wrong-until-much-later bug `Zak.Internal.Interpreter.checkedDivide`
 already guards `/`/`//` against for a zero divisor (see that function's
 own doc). `sqrt`/`acos`/`asin` (below) get the same treatment here,
 sharing this one check rather than each hand-rolling it.
@@ -171,7 +171,7 @@ asinNative =
 
 {-| Same as `unaryNumber`, for a two-argument `Float -> Float -> Float`
 function like `atan2`. Checks the first argument's type before the
-second's, matching `Zak.Interpreter`'s own `numberOp` convention.
+second's, matching `Zak.Internal.Interpreter`'s own `numberOp` convention.
 -}
 binaryNumber : (Float -> Float -> Float) -> (State -> List Value -> Result RuntimeError ( Value, State ))
 binaryNumber f state args =

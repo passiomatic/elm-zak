@@ -3,11 +3,11 @@ module Test.Zak.Array exposing (suite)
 import Dict
 import Expect
 import Test exposing (Test, describe, test)
-import Zak.Interpreter as I exposing (Error(..))
-import Zak.Runtime exposing (RuntimeError(..), Value(..))
+import Zak.Internal.Interpreter as I exposing (Error(..))
+import Zak.Internal.Runtime exposing (RuntimeError(..), Value(..))
 
 
-{-| `Array` is seeded by `Zak.Interpreter` itself now (see that module's
+{-| `Array` is seeded by `Zak.Internal.Interpreter` itself now (see that module's
 own doc), so no natives need passing in here at all — kept as a named
 helper anyway, matching every other suite's convention.
 -}

@@ -3,12 +3,12 @@ module Test.Zak.Math exposing (suite)
 import Dict
 import Expect
 import Test exposing (Test, describe, test)
-import Zak.Interpreter as I exposing (Error(..))
-import Zak.Runtime as Runtime exposing (RuntimeError(..), Value(..))
+import Zak.Internal.Interpreter as I exposing (Error(..))
+import Zak.Internal.Runtime as Runtime exposing (RuntimeError(..), Value(..))
 
 
-{-| `Math` is seeded by `Zak.Interpreter.run` itself now, automatically —
-no natives need passing in here at all. See `Zak.Interpreter`'s own doc
+{-| `Math` is seeded by `Zak.Internal.Interpreter.run` itself now, automatically —
+no natives need passing in here at all. See `Zak.Internal.Interpreter`'s own doc
 for why `run` gets this and `runExpr` deliberately doesn't.
 
 Strips any `WithPosition` a `RuntimeError` comes back wrapped in — this
@@ -51,7 +51,7 @@ expectNumber expected result =
 
 suite : Test
 suite =
-    describe "Zak.Math"
+    describe "Zak.Internal.Library.Math"
         [ describe "cos" <|
             [ test "cos(0) is 1" <| \_ -> run "return Math.cos(0)" |> expectNumber 1
             , test "cos(pi) is -1" <| \_ -> run "return Math.cos(Math.pi)" |> expectNumber -1

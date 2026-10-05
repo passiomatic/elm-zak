@@ -3,11 +3,11 @@ module Test.Zak.Table exposing (suite)
 import Dict
 import Expect
 import Test exposing (Test, describe, test)
-import Zak.Interpreter as I exposing (Error(..))
-import Zak.Runtime exposing (RuntimeError(..), Value(..))
+import Zak.Internal.Interpreter as I exposing (Error(..))
+import Zak.Internal.Runtime exposing (RuntimeError(..), Value(..))
 
 
-{-| `Table` is seeded by `Zak.Interpreter` itself (see that module's own
+{-| `Table` is seeded by `Zak.Internal.Interpreter` itself (see that module's own
 doc), same as `Array` — no natives need passing in here at all.
 -}
 run : String -> Result Error Value

@@ -1,15 +1,15 @@
-module Zak.Random exposing (natives)
+module Zak.Internal.Library.Random exposing (natives)
 
 {-| `Random.number`/`Random.pick`/`Random.odds` — the random functions,
 under one `Random` namespace table, the same "family of
-related built-ins gets its own file/namespace" shape `Zak.Math`/
-`Zak.String`/`Zak.Debug` already follow.
+related built-ins gets its own file/namespace" shape `Zak.Internal.Library.Math`/
+`Zak.Internal.Library.String`/`Zak.Internal.Library.Debug` already follow.
 
 Built directly on `elm/random`'s own real primitives (`Random.float`/
 `Random.uniform`/`Random.weighted`), not reimplemented — but the names
 below are this module's own, not copied from `elm/random`'s naming:
 Zak calls its numeric type `"number"` (`type(1)` → `"number"`,
-`Zak.Globals`), never `"float"`, so `Random.number` is used in place of
+`Zak.Internal.Library.Globals`), never `"float"`, so `Random.number` is used in place of
 what would otherwise read as `Random.float` and leak Elm-internal
 vocabulary into Zak's own.
 
@@ -17,13 +17,13 @@ Every function here reads and updates `State.randomSeed` (`Random.step
 generator state.randomSeed`, storing the resulting seed back) — the same
 "thread a running value through `State`, one call at a time" shape
 `nextId`/`nextThreadId` already establish, just for a `Random.Seed`
-instead of a counter. `Zak.Interpreter.seedState` seeds it with a fixed,
+instead of a counter. `Zak.Internal.Interpreter.seedState` seeds it with a fixed,
 deterministic default (`Random.initialSeed 0`), same as every other
 `State` field there; real entropy is the embedder's own job to
 supply, not this module's.
 
 Exposes `natives`, a single `"Random"` namespace entry — folded into
-`Zak.Interpreter.stdlibNatives`, the same tier `Math`/`String`/`Debug`
+`Zak.Internal.Interpreter.stdlibNatives`, the same tier `Math`/`String`/`Debug`
 already sit in: unconditional in `run`/`initialWorld`/`runIncremental`,
 absent from `runExpr` (see that function's own doc for why).
 -}
@@ -31,7 +31,7 @@ absent from `runExpr` (see that function's own doc for why).
 import Array exposing (Array)
 import Dict exposing (Dict)
 import Random
-import Zak.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..))
+import Zak.Internal.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..))
 
 
 natives : Dict String NativeValue

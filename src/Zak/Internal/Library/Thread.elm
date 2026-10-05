@@ -1,18 +1,18 @@
-module Zak.Thread exposing (natives)
+module Zak.Internal.Library.Thread exposing (natives)
 
 {-| `wait_for`/`join` — the two primitives that actually suspend the
 *calling* thread — plus `stop`, kept in their own module since, unlike `start`/`start_global`, none needs
-to call back into `Zak.Interpreter` (no `callFunction`/`execBlock`
+to call back into `Zak.Internal.Interpreter` (no `callFunction`/`execBlock`
 involved) — they just construct a `Suspended` value directly and hand it
 back, so they're free of the circular-import constraint that keeps
-`start`/`start_global` living in `Zak.Interpreter` itself (see that
+`start`/`start_global` living in `Zak.Internal.Interpreter` itself (see that
 module's own doc for the full reasoning).
 
 Deliberately doesn't have a frame-counted `wait_frames(n)`-style sibling:
 `wait_for(seconds)` covers waiting, so a whole-number, tick-counted wait
 isn't a first-class primitive.
 
-Module itself is named `Zak.Thread` to match the Zak-visible namespace it
+Module itself is named `Zak.Internal.Library.Thread` to match the Zak-visible namespace it
 feeds directly: `Thread.wait_for(...)`, `Thread.start(...)`, etc.
 
 `wait_while` (below) lives here too, even though it's a `NativeZakExpr`
@@ -24,16 +24,16 @@ this part of the `Thread` namespace" would be organizing around an
 implementation accident, not what a reader of this namespace actually
 wants grouped together.
 
-Exposes `natives`, merged by `Zak.Interpreter` alongside its own
+Exposes `natives`, merged by `Zak.Internal.Interpreter` alongside its own
 `start`/`start_global` into one `Thread` namespace table
 (`Thread.wait_for(...)`, `Thread.start(...)`, ...) — see
-`Zak.Interpreter`'s own `threadNatives` doc for why that wrapping has
+`Zak.Internal.Interpreter`'s own `threadNatives` doc for why that wrapping has
 to happen there, one level up from `natives` here, rather than in this
 module.
 -}
 
 import Dict exposing (Dict)
-import Zak.Runtime exposing (NativeValue(..), Outcome(..), RuntimeError(..), State, Value(..), WaitCondition(..))
+import Zak.Internal.Runtime exposing (NativeValue(..), Outcome(..), RuntimeError(..), State, Value(..), WaitCondition(..))
 
 
 natives : Dict String NativeValue
@@ -58,21 +58,21 @@ forever).
 
 **Deliberately host-agnostic.** Host-specific waits (on whatever state
 an embedder's own natives expose) belong to the embedder, built on
-`wait_while`, not to `Zak.Thread` (core language) — and an embedder's
+`wait_while`, not to `Zak.Internal.Library.Thread` (core language) — and an embedder's
 natives can't contribute to this same `"Thread"` namespace table anyway
-(`Zak.Interpreter`'s own natives-merge is a shallow, first-argument-wins
+(`Zak.Internal.Interpreter`'s own natives-merge is a shallow, first-argument-wins
 `Dict.union`). Rather than build cross-module merge machinery just to get
 shorter names, this ships the one primitive that's genuinely
 core-language (a predicate is just a value, no host knowledge needed to
 call one), and leaves shorter convenience wrappers to the embedder.
 
 **`Thread.wait_for(0)` inside the loop, not some smaller/larger interval**
-— this resumes on the very next tick (`Zak.Interpreter.tick`'s own
+— this resumes on the very next tick (`Zak.Internal.Interpreter.tick`'s own
 `elapsed + dt >= seconds` check is immediately true once `seconds = 0`),
 giving real per-tick polling, the tightest cadence available.
 
 Implemented as a `NativeZakExpr` (the same "don't implement what the
-language can already express" technique `Zak.Math.abs` already uses),
+language can already express" technique `Zak.Internal.Library.Math.abs` already uses),
 not a raw Elm `NativeFunction`/`NativeThreadFunction` — `while` +
 `Thread.wait_for` are both already real, tested primitives (including
 suspending from inside a `while` loop body and resuming mid-iteration
@@ -96,7 +96,7 @@ waitWhileSource =
 
 
 {-| `Thread.wait_for(seconds)` — suspend the current thread until at least
-`seconds` of elapsed tick time (summed `dt` across `Zak.Interpreter.tick`
+`seconds` of elapsed tick time (summed `dt` across `Zak.Internal.Interpreter.tick`
 calls) have passed. `seconds` may be fractional.
 -}
 waitFor : State -> List Value -> Result RuntimeError ( Outcome Value, State )
@@ -130,7 +130,7 @@ than a hard failure) — matching the spirit of `Array.get_default`'s
 Known characteristic (bounded, not a bug that hangs anything):
 resolving this wait condition can lag the joined thread's own actual
 completion by one extra `tick` depending on thread-id ordering — see
-`Zak.Interpreter.tick`'s own doc for the full mechanism and why it's left
+`Zak.Internal.Interpreter.tick`'s own doc for the full mechanism and why it's left
 as is.
 -}
 join : State -> List Value -> Result RuntimeError ( Outcome Value, State )
@@ -171,7 +171,7 @@ the one whose body just called `Thread.start` — isn't affected: to end
 itself, a thread returns from its own closure. There's no special case
 for this; it falls out of the scheduler. During a thread's first,
 synchronous run inside `Thread.start` it isn't in `state.threads` yet, so
-there's nothing to remove; while `Zak.Interpreter.tick` is resuming it,
+there's nothing to remove; while `Zak.Internal.Interpreter.tick` is resuming it,
 the removal is overwritten when `tick` re-registers the thread at its next
 suspend (or removes it anyway once it's done).
 -}

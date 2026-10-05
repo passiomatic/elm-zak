@@ -1,4 +1,4 @@
-module Zak.Lexer exposing (blankSpace, identifier, keyword, newline, number, reservedWords, spaces, string, symbol)
+module Zak.Internal.Lexer exposing (blankSpace, identifier, keyword, newline, number, reservedWords, spaces, string, symbol)
 
 {-| Low-level lexeme parsers for Zak source text.
 
@@ -113,7 +113,7 @@ or enforces either meaning). `!` is never part of an identifier: it's
 reserved for the `!=` operator, so `done!=x` lexes as `done` then `!=`,
 never as a name `done!` followed by `=`. A bare `_` lexes as an ordinary
 identifier too; its "throwaway" meaning (bindable, never readable) is
-given to it by the parser (`Zak.Parser.rejectThrowaway`) and the interpreter,
+given to it by the parser (`Zak.Internal.Parser.rejectThrowaway`) and the interpreter,
 not here. Cannot be one of the `reservedWords`.
 
 Built by hand rather than with `P.variable` (unlike most of this module):
@@ -261,7 +261,7 @@ until none of them match anymore. Unlike `spaces` above (horizontal only,
 stops dead at a newline), this is for the specific places a newline
 boundary is already insignificant on its own terms: skipping further
 blank/comment lines after the one mandatory newline (`newline` above), and
-the leading/trailing edges of a block (see `Zak.Parser.block`). Looping is
+the leading/trailing edges of a block (see `Zak.Internal.Parser.block`). Looping is
 necessary, not just a style choice: a comment only eats up to its own
 newline, so after one is chomped there may still be more blank lines or
 comments to skip before the next real token.

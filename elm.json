@@ -6,8 +6,8 @@
     "version": "1.0.0",
     "exposed-modules": [
         "Zak.Helpers",
-        "Zak.Interpreter",
-        "Zak.Runtime"
+        "Zak.Internal.Interpreter",
+        "Zak.Internal.Runtime"
     ],
     "elm-version": "0.19.0 <= v < 0.20.0",
     "dependencies": {

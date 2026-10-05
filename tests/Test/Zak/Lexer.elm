@@ -3,7 +3,7 @@ module Test.Zak.Lexer exposing (suite)
 import Expect
 import Parser as P
 import Test exposing (Test, describe, test)
-import Zak.Lexer as L
+import Zak.Internal.Lexer as L
 
 
 {-| Table-driven positive/negative case runner, following the "Tiny
@@ -42,7 +42,7 @@ floatEqual =
 
 suite : Test
 suite =
-    describe "Zak.Lexer"
+    describe "Zak.Internal.Lexer"
         [ describe "number" <|
             List.map (testValue floatEqual (P.run L.number))
                 [ ( "1", Just 1.0 )
@@ -202,9 +202,9 @@ suite =
         -- of its own: `symbol "="` happily matches just the first `=` of
         -- "==", leaving the second one unconsumed (P.run doesn't require
         -- consuming the whole input). This is exactly why the future
-        -- Zak.Parser will need to try longer operators (like "==") before
+        -- Zak.Internal.Parser will need to try longer operators (like "==") before
         -- their shorter prefixes (like "=") wherever both are possible at
-        -- a given position — `Zak.Lexer` alone doesn't resolve that.
+        -- a given position — `Zak.Internal.Lexer` alone doesn't resolve that.
         , describe "symbol \"=\" against a longer operator" <|
             List.map (testValue Expect.equal (P.run (L.symbol "=")))
                 [ ( "=", Just () )

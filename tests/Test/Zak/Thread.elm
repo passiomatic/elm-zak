@@ -5,7 +5,7 @@ module Test.Zak.Thread exposing (suite)
 synchronously to the first suspend point, never block the caller),
 `Thread.wait_for`/`Thread.join`
 (the two primitives that actually suspend — there's no frame-counted
-yield), and `Zak.Interpreter.tick` (the once-per-frame scheduler step
+yield), and `Zak.Internal.Interpreter.tick` (the once-per-frame scheduler step
 that resumes them). Uses
 `initialWorld`/`runIncremental` directly (not the simpler `run`)
 specifically to get at the returned `State` afterward — inspecting
@@ -18,8 +18,8 @@ returns, before any later `tick` has run.
 import Dict
 import Expect
 import Test exposing (Test, describe, test)
-import Zak.Interpreter as I exposing (tick)
-import Zak.Runtime as Runtime exposing (NativeValue(..), RuntimeError(..), Value(..))
+import Zak.Internal.Interpreter as I exposing (tick)
+import Zak.Internal.Runtime as Runtime exposing (NativeValue(..), RuntimeError(..), Value(..))
 
 
 {-| Runs `source` against a fresh world (no caller-supplied natives — the
@@ -70,7 +70,7 @@ readTableField state table field =
 
 suite : Test
 suite =
-    describe "Zak.Thread (Thread.start/start_global/wait_for/join/stop/tick)"
+    describe "Zak.Internal.Library.Thread (Thread.start/start_global/wait_for/join/stop/tick)"
         [ test "start runs its closure synchronously up to its first suspend, without blocking the caller" <|
             \_ ->
                 -- `log.value` tables execution order: the spawned thread's

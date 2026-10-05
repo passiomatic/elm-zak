@@ -4,7 +4,7 @@ import Dict
 import Expect
 import Test exposing (Test, describe, test)
 import Zak.Helpers as H
-import Zak.Interpreter as I
+import Zak.Internal.Interpreter as I
 
 
 {-| The message a user actually sees for `source`, or `""` if it runs.

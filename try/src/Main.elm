@@ -21,12 +21,12 @@ import Html.Attributes exposing (placeholder, style, value)
 import Html.Events exposing (onClick, onInput)
 import Set exposing (Set)
 import Zak.Helpers
-import Zak.Interpreter as Interpreter exposing (Error)
-import Zak.Runtime exposing (Effect(..), LogLevel(..), State, Value(..))
+import Zak.Internal.Interpreter as Interpreter exposing (Error)
+import Zak.Internal.Runtime exposing (Effect(..), LogLevel(..), State, Value(..))
 
 
 {-| The one JS-facing effect this tool has: hand every `Log` drained
-this call (`State.pendingEffects`, via `Zak.Interpreter.drainEffects`) to
+this call (`State.pendingEffects`, via `Zak.Internal.Interpreter.drainEffects`) to
 the real browser console, in the order the script actually logged them.
 
 **One port call carrying the whole ordered list, deliberately, not one
@@ -45,7 +45,7 @@ guarantee can actually be made to hold.
 (`"log"`/`"debug"`/`"info"`/`"warn"`/`"error"` — see `consoleMethod`),
 not a Zak-level name, so the JS side can stay a one-liner per entry:
 `console[entry.level](entry.message)`. This is genuinely the *only* way a
-`Log` ever becomes a real console call — see `Zak.Runtime`'s own
+`Log` ever becomes a real console call — see `Zak.Internal.Runtime`'s own
 `pendingEffects` doc for why no native function could ever do this
 itself, no matter what it stashed in `State`.
 -}
@@ -187,7 +187,7 @@ update msg model =
 
         Tick deltaMs ->
             -- Advances every currently-suspended thread by one scheduler
-            -- step (see `Zak.Interpreter.tick`'s own doc) -- `result`'s own
+            -- step (see `Zak.Internal.Interpreter.tick`'s own doc) -- `result`'s own
             -- `Value` (the top-level script's return value, captured the
             -- moment it returned) never changes here, only `State`, so a
             -- resumed thread's effects only ever become visible through
@@ -198,7 +198,7 @@ update msg model =
             -- real console call the same way `ClickedRun` already does.
             -- Per-thread runtime errors from a bad resume are silently
             -- dropped for now (a `NativeThreadFunction`'s two natives
-            -- can't actually raise one in practice -- see `Zak.Thread`'s
+            -- can't actually raise one in practice -- see `Zak.Internal.Library.Thread`'s
             -- own doc) rather than surfacing a second, parallel error
             -- channel alongside `result`'s own.
             case model.result of
@@ -482,7 +482,7 @@ end
 
 {-| Recursively renders `value`'s actual contents using `state`'s heap.
 `VArray`/`VTable` are just opaque heap ids on their own (see `Value`'s own
-doc in `Zak.Runtime`) — `Debug.toString` alone would only ever show
+doc in `Zak.Internal.Runtime`) — `Debug.toString` alone would only ever show
 `VArray 7`, never `[2, 4, 6, 8, 10]`. Rendering them meaningfully needs the
 `State` they were produced against, which is why `ClickedRun` below reaches
 for `Interpreter.initialWorld`/`runIncremental` (the same pair `run` itself
@@ -493,7 +493,7 @@ Cycle-guarded via `seen` — the ids currently being rendered on the path
 from the root, not "ever seen anywhere" (so `[a, a]`, the same table
 twice but not circular, still renders both) — because a genuinely
 self-referential array (`Array.push(a, a)`) is completely legal Zak, and
-this tool lets you type anything. `Zak.String`'s own `String.from` sidesteps
+this tool lets you type anything. `Zak.Internal.Library.String`'s own `String.from` sidesteps
 this by not recursing into `Array`/`Table` at all; this tool can afford to
 recurse, since it's for interactive exploration.
 -}

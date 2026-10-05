@@ -1,22 +1,22 @@
-module Zak.ErrorMessage exposing (describeRuntimeError, describeRuntimeErrorAt, formatRuntimeError, formatSyntaxError)
+module Zak.Internal.ErrorMessage exposing (describeRuntimeError, describeRuntimeErrorAt, formatRuntimeError, formatSyntaxError)
 
 {-| Error text: a syntax error or a `RuntimeError` as a message a person
 can read, with the source line and a `^` under the column when there's
-source to show. Imports nothing from `Zak.Interpreter`, so the
+source to show. Imports nothing from `Zak.Internal.Interpreter`, so the
 interpreter itself can use it (to log a broken `NativeZakExpr`, say);
 `Zak.Helpers.formatError` is the one piece that needs the interpreter's
 own `Error` type, and lives there instead.
 -}
 
 import Parser exposing (DeadEnd, Problem(..))
-import Zak.AST exposing (Position)
-import Zak.Runtime exposing (RuntimeError(..), Value(..))
+import Zak.Internal.AST exposing (Position)
+import Zak.Internal.Runtime exposing (RuntimeError(..), Value(..))
 
 
 {-| A `RuntimeError` reaching here is usually `WithPosition`-tagged in
 practice: every statement `execStatements` executes (and so everything
 run through `runIncremental`) gets tagged on its way out (see that
-function's own doc in `Zak.Interpreter`) — only `runExpr` deliberately
+function's own doc in `Zak.Internal.Interpreter`) — only `runExpr` deliberately
 never tags a position. A caller that runs a second, synthesized snippet
 (say `"return main()"`) against the same state gets positions relative to
 that snippet, not to `source` — `errorBlock` below still renders them
@@ -184,7 +184,7 @@ after only a character or two). The `DeadEnd`(s) that got *furthest*
 into the input before giving up are the ones actually worth showing;
 picking the single deepest `(row, col)` and keeping only the `DeadEnd`s
 that reached it is `elm/parser`'s own documented technique for this
-(see the "Tiny Interpreters" series `Zak.Parser`'s own doc already cites),
+(see the "Tiny Interpreters" series `Zak.Internal.Parser`'s own doc already cites),
 not something invented here.
 -}
 formatSyntaxError : String -> List DeadEnd -> String
@@ -229,7 +229,7 @@ deepestDeadEnds deadEnds =
                 )
 
 
-{-| A custom `Zak.Parser`/`Zak.Lexer` message (`P.problem "..."`, e.g.
+{-| A custom `Zak.Internal.Parser`/`Zak.Internal.Lexer` message (`P.problem "..."`, e.g.
 "break can only appear inside a while/for loop body") is already a
 complete, specific sentence — shown as-is, in preference to whatever
 generic `ExpectingSymbol`/`ExpectingKeyword` alternatives failed
@@ -275,7 +275,7 @@ describeProblems problems =
 directly after "expected " in `describeProblems` above. Zak's own
 lexer/parser only ever actually produces `ExpectingSymbol`/
 `ExpectingKeyword`/`UnexpectedChar`/`ExpectingEnd`/`Problem` in
-practice (see `Zak.Lexer`/`Zak.Parser`'s own combinator choices — no
+practice (see `Zak.Internal.Lexer`/`Zak.Internal.Parser`'s own combinator choices — no
 `P.int`/`P.float`/`P.variable` anywhere in either), but this still
 covers every constructor `elm/parser`'s own `Problem` type has, so this
 stays exhaustive rather than silently going generic if a future change
@@ -332,7 +332,7 @@ expectationText problem =
 funnel through: a header naming what kind of error this is and where, the
 exact source line at `position.row` with a `^` under `position.col`, and
 `message` underneath. `position.row`/`.col` are both 1-based, matching
-`elm/parser`'s own convention (and `Zak.Parser.position`'s, which reads
+`elm/parser`'s own convention (and `Zak.Internal.Parser.position`'s, which reads
 them straight from it) — subtracted back down to 0-based only where this
 needs to index into `sourceLines`.
 -}

@@ -1,17 +1,17 @@
-module Zak.Debug exposing (natives)
+module Zak.Internal.Library.Debug exposing (natives)
 
 {-| Logging (`Debug.log`/`Debug.log_debug`/`Debug.log_info`/
 `Debug.log_warning`/`Debug.log_error`) plus `Debug.assert`, grouped under
 one `Debug` namespace table — these used to be five bare globals living
-in `Zak.Globals` alongside the unrelated `type`. Regrouped here once
+in `Zak.Internal.Library.Globals` alongside the unrelated `type`. Regrouped here once
 there were enough of them, and enough of a shared theme ("things a script
 does purely to help a human debugging it, never anything the script's own
 logic depends on"), to actually be a category — the same "namespaced
 built-ins get their own file because each is its own bounded, growing
-family" reasoning `Zak.Math`/`Zak.String` already follow, not something
-`Zak.Globals`' remaining bare globals (just `type`) still need.
+family" reasoning `Zak.Internal.Library.Math`/`Zak.Internal.Library.String` already follow, not something
+`Zak.Internal.Library.Globals`' remaining bare globals (just `type`) still need.
 
-**`Zak.Debug`, not Elm's own `Debug` module — same name, nothing else in
+**`Zak.Internal.Library.Debug`, not Elm's own `Debug` module — same name, nothing else in
 common.** Worth being explicit about, since the coincidence is closer
 now than it used to be: this used to be one function (`print`) that
 *internally* called Elm's own `Debug.log` before that was replaced (see
@@ -24,15 +24,15 @@ Elm's own `Debug.log` remains exactly as incompatible with
 that still contains it). Two unrelated things, at two completely
 different levels, that happen to share a name.
 
-Exposes `natives`, merged in automatically by `Zak.Interpreter` (along
-with `Zak.Math`/`Zak.String`) for `run`/`initialWorld`/`runIncremental` —
+Exposes `natives`, merged in automatically by `Zak.Internal.Interpreter` (along
+with `Zak.Internal.Library.Math`/`Zak.Internal.Library.String`) for `run`/`initialWorld`/`runIncremental` —
 nothing needs to import or merge this by hand. `runExpr` is the one entry
 point that deliberately does *not* include it.
 -}
 
 import Dict exposing (Dict)
-import Zak.Runtime exposing (Effect(..), LogLevel(..), NativeValue(..), RuntimeError(..), State, Value(..))
-import Zak.String
+import Zak.Internal.Runtime exposing (Effect(..), LogLevel(..), NativeValue(..), RuntimeError(..), State, Value(..))
+import Zak.Internal.Library.String
 
 
 natives : Dict String NativeValue
@@ -55,7 +55,7 @@ natives =
 `Debug.log_warning(value)`/`Debug.log_error(value)` — one native,
 parameterized over which `LogLevel` it tags its message with, since the
 five differ in nothing else: any value is accepted and turned into its
-message through `Zak.String.displayString` — the exact rendering
+message through `Zak.Internal.Library.String.displayString` — the exact rendering
 `String.from` and `%s` already use, so a logged value always reads the
 same as it would once converted by hand (`Array`/`Table`/function values
 included, as the same fixed `<array>`/`<table>`/`<function>`
@@ -73,14 +73,14 @@ ship in a real embedder. The deeper problem it papered over — every native
 function's signature (`State -> List Value -> Result RuntimeError (
 Value, State )`) is a pure transformation of interpreter state, with no
 channel at all to communicate anything to the outside world — is what
-`State.pendingEffects` (`Zak.Runtime`) now actually solves: this native's
+`State.pendingEffects` (`Zak.Internal.Runtime`) now actually solves: this native's
 *entire* job is appending one `Log` to that queue and returning, still
 fully pure. Turning a queued `Log` into a real `console.log`/
 `console.debug`/`console.info`/`console.warn`/`console.error` call is
-`Zak.Interpreter.drainEffects` and, past that, the embedder's own job
+`Zak.Internal.Interpreter.drainEffects` and, past that, the embedder's own job
 (e.g. via a port) — never this module's, and never anything a native
 function could do directly no matter what it stashed in `State` (see
-`pendingEffects`'s own doc in `Zak.Runtime` for why this needed genuinely
+`pendingEffects`'s own doc in `Zak.Internal.Runtime` for why this needed genuinely
 different machinery than `Thread`'s `state.threads`, not just a
 same-shaped copy of it).
 -}
@@ -88,7 +88,7 @@ logNative : LogLevel -> State -> List Value -> Result RuntimeError ( Value, Stat
 logNative level state args =
     case args of
         [ value ] ->
-            Ok ( VNil, { state | pendingEffects = state.pendingEffects ++ [ Log level (Zak.String.displayString value) ] } )
+            Ok ( VNil, { state | pendingEffects = state.pendingEffects ++ [ Log level (Zak.Internal.Library.String.displayString value) ] } )
 
         _ ->
             Err (WrongArgCount { expected = 1, got = List.length args })
@@ -105,7 +105,7 @@ real, specific message, just a default one, not silence or a generic
 native in the language enforces exactly one arity via `WrongArgCount` —
 this is the first genuine 1-or-2 case, so the `[]`/`_` branches below
 report whichever bound was actually violated (`expected = 1` for too few,
-`expected = 2` for too many), the same convention `Zak.Interpreter`'s
+`expected = 2` for too many), the same convention `Zak.Internal.Interpreter`'s
 `callFunction` already established for a Zak-*defined* function with
 default parameters (`function(a, b=1): ... end`, `min`/`max` arity
 instead of one exact count) — this is that same rule, just needed by a

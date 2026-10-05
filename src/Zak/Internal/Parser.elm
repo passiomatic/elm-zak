@@ -1,4 +1,4 @@
-module Zak.Parser exposing
+module Zak.Internal.Parser exposing
     ( Error
     , parseProgram
     , parseExpr
@@ -8,17 +8,17 @@ module Zak.Parser exposing
     , expr
     )
 
-{-| Turns Zak source text into a `Zak.AST` tree, following the "Tiny
+{-| Turns Zak source text into a `Zak.Internal.AST` tree, following the "Tiny
 Interpreters" convention (<https://blog.tinyinterpreters.dev/posts/>):
 single-pass, directly over the raw string via `elm/parser` combinators, using
-`Zak.Lexer`'s lexeme primitives. Private functions mirror the grammar rules
+`Zak.Internal.Lexer`'s lexeme primitives. Private functions mirror the grammar rules
 one-to-one; the exceptions are noted where they diverge.
 -}
 
 import Parser as P exposing ((|.), (|=), Parser)
 import Set exposing (Set)
-import Zak.AST exposing (AssignTarget(..), BinaryOp(..), Block, Expr(..), PathSegment(..), Position, PositionedStatement, Statement(..), UnaryOp(..))
-import Zak.Lexer as L
+import Zak.Internal.AST exposing (AssignTarget(..), BinaryOp(..), Block, Expr(..), PathSegment(..), Position, PositionedStatement, Statement(..), UnaryOp(..))
+import Zak.Internal.Lexer as L
 
 
 type alias Error =
@@ -124,7 +124,7 @@ same state a `DeadEnd` reads from on a *syntax* error (`P.getRow`/
 assumed) — so this is a free read of state already being maintained, not
 new tracking machinery. `P.getPosition` returns the raw `(Int, Int)` pair
 `elm/parser` itself uses; mapped here into Zak's own named `Position`
-record so `Zak.AST` doesn't need to know `elm/parser`'s tuple convention.
+record so `Zak.Internal.AST` doesn't need to know `elm/parser`'s tuple convention.
 -}
 position : Parser Position
 position =
@@ -195,7 +195,7 @@ ifStmt insideLoop =
   - `else:` — a plain final block.
   - nothing at all — `Nothing`.
 
-No new `Zak.AST` node and no `Zak.Interpreter` change needed for any of
+No new `Zak.Internal.AST` node and no `Zak.Internal.Interpreter` change needed for any of
 this: `else if` is pure parser sugar over the `If Expr Block (Maybe
 Block)` shape that already exists — it was always able to represent a
 chain, once nested this way, the same way hand-writing nested `if`/`else`
@@ -346,7 +346,7 @@ the one change is what counts as a valid *base*. A `Name` is always valid
 Anything else (a `Call`, a parenthesized expression, ...) is valid only
 once there's at least one segment to actually write through — a call is
 allowed as an assignment's base, but there's still nothing to assign *to*
-for a bare `f() = 1` (see `AssignTarget`'s own doc in `Zak.AST` for the
+for a bare `f() = 1` (see `AssignTarget`'s own doc in `Zak.Internal.AST` for the
 full rationale).
 -}
 exprToAssignTarget : Expr -> Maybe AssignTarget
@@ -798,7 +798,7 @@ multi-line literal like
     })
 
 parses. This is deliberately *not* what `L.spaces` (plain horizontal
-whitespace, stops dead at a newline — see `Zak.Lexer`'s own doc) already
+whitespace, stops dead at a newline — see `Zak.Internal.Lexer`'s own doc) already
 gives every other lexeme for free: a newline is still the significant
 statement separator everywhere outside a `(`/`[`/`{` — only inside one,
 where there's no such ambiguity (we're unambiguously still mid-expression

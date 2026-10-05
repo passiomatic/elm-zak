@@ -3,12 +3,12 @@ module Test.Zak.String exposing (suite)
 import Dict
 import Expect
 import Test exposing (Test, describe, test)
-import Zak.Interpreter as I exposing (Error(..))
-import Zak.Runtime exposing (RuntimeError(..), Value(..))
-import Zak.String as ZakString
+import Zak.Internal.Interpreter as I exposing (Error(..))
+import Zak.Internal.Runtime exposing (RuntimeError(..), Value(..))
+import Zak.Internal.Library.String as ZakString
 
 
-{-| `String` is seeded by `Zak.Interpreter.run` itself now, automatically
+{-| `String` is seeded by `Zak.Internal.Interpreter.run` itself now, automatically
 — no natives need passing in here at all.
 -}
 run : String -> Result Error Value
@@ -17,7 +17,7 @@ run =
 
 
 {-| `runExpr` deliberately does *not* auto-include `String` (see
-`Zak.Interpreter`'s own doc) — so unlike `run` above, this still has to
+`Zak.Internal.Interpreter`'s own doc) — so unlike `run` above, this still has to
 pass `ZakString.natives` in by hand to exercise `String.from` here.
 -}
 runExpr : String -> Result Error Value
@@ -27,7 +27,7 @@ runExpr =
 
 suite : Test
 suite =
-    describe "Zak.String (from, length, is_empty, reverse, upper, lower, replace, slice, append)"
+    describe "Zak.Internal.Library.String (from, length, is_empty, reverse, upper, lower, replace, slice, append)"
         [ describe "from (accepts any value — the only possible error is arity)" <|
             [ test "a string comes back unquoted, unchanged" <|
                 \_ -> runExpr "String.from(\"hi\")" |> Expect.equal (Ok (VString "hi"))

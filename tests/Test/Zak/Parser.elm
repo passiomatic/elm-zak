@@ -2,8 +2,8 @@ module Test.Zak.Parser exposing (suite)
 
 import Expect
 import Test exposing (Test, describe, test)
-import Zak.AST exposing (AssignTarget(..), BinaryOp(..), Block, Expr(..), PathSegment(..), Position, Statement(..), UnaryOp(..))
-import Zak.Parser as P
+import Zak.Internal.AST exposing (AssignTarget(..), BinaryOp(..), Block, Expr(..), PathSegment(..), Position, Statement(..), UnaryOp(..))
+import Zak.Internal.Parser as P
 
 
 {-| Table-driven positive/negative case runner (same convention as
@@ -254,7 +254,7 @@ normalizeExpr expression =
 
 suite : Test
 suite =
-    describe "Zak.Parser"
+    describe "Zak.Internal.Parser"
         [ describe "expr: literals" <|
             List.map (testValue identity P.parseExpr)
                 [ ( "1", Just (NumberLiteral 1) )
@@ -277,7 +277,7 @@ suite =
                 , ( "[1, 2, 3]", Just (ArrayLiteral [ NumberLiteral 1, NumberLiteral 2, NumberLiteral 3 ]) )
 
                 -- no trailing comma anywhere, by design — see
-                -- `Zak.Parser.commaSeparated`'s own doc for why
+                -- `Zak.Internal.Parser.commaSeparated`'s own doc for why
                 , ( "[1, 2, 3,]", Nothing )
                 , ( "{}", Just (TableLiteral []) )
                 , ( "{ x = 1 }", Just (TableLiteral [ ( "x", NumberLiteral 1 ) ]) )
@@ -328,7 +328,7 @@ suite =
 
                 -- non-associative: parseExpr stops after the first
                 -- comparison and leaves "== c" unconsumed, same "prefix
-                -- parse" behavior as Zak.Lexer's own tests (e.g. "1.0abc").
+                -- parse" behavior as Zak.Internal.Lexer's own tests (e.g. "1.0abc").
                 -- The program-level test below confirms this is a hard
                 -- error once full consumption is required.
                 , ( "a == b == c", Just (Binary Eq (Name "a") (Name "b")) )
@@ -476,7 +476,7 @@ suite =
                 , ( "let if = 5", Nothing )
 
                 -- a trailing "?" is a legal identifier character (see
-                -- Zak.Lexer's "identifier" tests) — must flow through the
+                -- Zak.Internal.Lexer's "identifier" tests) — must flow through the
                 -- parser end to end, not just the raw lexeme
                 , ( "let empty? = true", Just [ Let "empty?" (Name "true") ] )
 

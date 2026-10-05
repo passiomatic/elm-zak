@@ -1,14 +1,14 @@
 module Test.Zak.Random exposing (suite)
 
-{-| `Random` is seeded by `Zak.Interpreter.run` itself now, automatically —
-no natives need passing in here at all, the same as `Zak.Math`/
-`Zak.String`/`Zak.Debug` already are. See `Zak.Interpreter`'s own doc for
+{-| `Random` is seeded by `Zak.Internal.Interpreter.run` itself now, automatically —
+no natives need passing in here at all, the same as `Zak.Internal.Library.Math`/
+`Zak.Internal.Library.String`/`Zak.Internal.Library.Debug` already are. See `Zak.Internal.Interpreter`'s own doc for
 why `run` gets this and `runExpr` deliberately doesn't (exercised
 directly below, in the one describe block that does need its own
 `runExpr` helper).
 
 `Random.number`/`Random.odds` draw from `state.randomSeed`, which
-`Zak.Interpreter.seedState` always starts at the exact same fixed
+`Zak.Internal.Interpreter.seedState` always starts at the exact same fixed
 default (`Random.initialSeed 0`) — so within a single `run` call, results
 are deterministic and reproducible, but no individual draw's exact value
 is asserted here (that would pin down `elm/random`'s own internal
@@ -20,9 +20,9 @@ element, and the two probability-1/probability-0 edges of `odds`.
 import Dict
 import Expect
 import Test exposing (Test, describe, test)
-import Zak.Interpreter as I exposing (Error(..))
-import Zak.Random as Random
-import Zak.Runtime as Runtime exposing (RuntimeError(..), Value(..))
+import Zak.Internal.Interpreter as I exposing (Error(..))
+import Zak.Internal.Library.Random as Random
+import Zak.Internal.Runtime as Runtime exposing (RuntimeError(..), Value(..))
 
 
 run : String -> Result Error Value
@@ -42,7 +42,7 @@ dropRuntimePosition error =
 
 suite : Test
 suite =
-    describe "Zak.Random"
+    describe "Zak.Internal.Library.Random"
         [ describe "Random.number" <|
             [ test "stays within [start, end] across many draws in one script" <|
                 \_ ->
@@ -126,7 +126,7 @@ suite =
                     I.runExpr Dict.empty "Random.number(1, 10)"
                         |> Result.mapError dropRuntimePosition
                         |> Expect.equal (Err (RuntimeError (UndefinedName "Random")))
-            , test "runExpr, given Zak.Random.natives explicitly, does have it" <|
+            , test "runExpr, given Zak.Internal.Library.Random.natives explicitly, does have it" <|
                 \_ ->
                     I.runExpr Random.natives "Random.number(5, 5)"
                         |> Result.mapError dropRuntimePosition

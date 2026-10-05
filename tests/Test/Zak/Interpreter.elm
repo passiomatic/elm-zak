@@ -3,9 +3,9 @@ module Test.Zak.Interpreter exposing (suite)
 import Dict exposing (Dict)
 import Expect
 import Test exposing (Test, describe, test)
-import Zak.Interpreter as I exposing (Error(..))
+import Zak.Internal.Interpreter as I exposing (Error(..))
 import Zak.Helpers
-import Zak.Runtime as Runtime exposing (Effect(..), LogLevel(..), NativeValue(..), RuntimeError(..), Value(..))
+import Zak.Internal.Runtime as Runtime exposing (Effect(..), LogLevel(..), NativeValue(..), RuntimeError(..), Value(..))
 
 
 {-| `I.run`, with any `WithPosition` a `RuntimeError` comes back wrapped in
@@ -14,7 +14,7 @@ case produces, the same as before position-tracking existed; *where* it
 happened has its own dedicated describe block below
 ("position tracking"), not re-asserted at every other call site.
 `I.runExpr` deliberately isn't wrapped the same way — it never gets
-`WithPosition` in the first place, per `Zak.Interpreter`'s own doc.
+`WithPosition` in the first place, per `Zak.Internal.Interpreter`'s own doc.
 -}
 run : Dict String NativeValue -> String -> Result Error Value
 run natives source =
@@ -62,7 +62,7 @@ noNatives =
 
 suite : Test
 suite =
-    describe "Zak.Interpreter"
+    describe "Zak.Internal.Interpreter"
         [ describe "runExpr: literals" <|
             List.map (testValue (I.runExpr noNatives))
                 [ ( "1", Just (VNumber 1) )
@@ -1088,7 +1088,7 @@ return counter_a()"""
                   )
 
                 -- a "?"-suffixed name works as a definition *and* a call,
-                -- not just the former -- pins the Zak.Lexer.keyword fix
+                -- not just the former -- pins the Zak.Internal.Lexer.keyword fix
                 -- end to end (lex -> parse -> eval), not just at the
                 -- parser level: "function?" used to fail to parse as a
                 -- call, reading as the bare "function" keyword plus a

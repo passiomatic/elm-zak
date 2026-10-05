@@ -1,27 +1,27 @@
-module Zak.Globals exposing (natives)
+module Zak.Internal.Library.Globals exposing (natives)
 
 {-| Bare global functions — not grouped into a namespace at all, because
 none of them belong to any particular category. Just `type` for now:
 logging (`print`/`debug`/`info`/`warning`/`error`, as they used to be
 called) used to live here too, for the same "no better home" reason, but
-moved out into its own `Zak.Debug` namespace once there were enough of
+moved out into its own `Zak.Internal.Library.Debug` namespace once there were enough of
 them, and enough of a shared theme, to actually be a category — the same
 "namespaced built-ins get their own file because each is its own
-bounded, growing family" reasoning `Zak.Math`/`Zak.String`/`Zak.Debug`
+bounded, growing family" reasoning `Zak.Internal.Library.Math`/`Zak.Internal.Library.String`/`Zak.Internal.Library.Debug`
 already follow. `type` alone doesn't have that — it's not part of a
 family, it's just "the one thing with nowhere else to go" — so a single
 ungrouped-globals module still earns its keep for it, the same way it
 would for any future addition that turns out not to fit an existing
 namespace either.
 
-Exposes `natives`, merged in automatically by `Zak.Interpreter` (along
-with `Zak.Math`/`Zak.String`/`Zak.Debug`) for `run`/`initialWorld`/
+Exposes `natives`, merged in automatically by `Zak.Internal.Interpreter` (along
+with `Zak.Internal.Library.Math`/`Zak.Internal.Library.String`/`Zak.Internal.Library.Debug`) for `run`/`initialWorld`/
 `runIncremental` — nothing needs to import or merge this by hand.
 `runExpr` is the one entry point that deliberately does *not* include it.
 -}
 
 import Dict exposing (Dict)
-import Zak.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..))
+import Zak.Internal.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..))
 
 
 natives : Dict String NativeValue

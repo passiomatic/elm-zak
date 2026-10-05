@@ -3,12 +3,12 @@ module Test.Zak.Debug exposing (suite)
 import Dict
 import Expect
 import Test exposing (Test, describe, test)
-import Zak.Debug as ZakDebug
-import Zak.Interpreter as I exposing (Error(..))
-import Zak.Runtime as Runtime exposing (Effect(..), LogLevel(..), NativeValue(..), RuntimeError(..), State, Value(..))
+import Zak.Internal.Library.Debug as ZakDebug
+import Zak.Internal.Interpreter as I exposing (Error(..))
+import Zak.Internal.Runtime as Runtime exposing (Effect(..), LogLevel(..), NativeValue(..), RuntimeError(..), State, Value(..))
 
 
-{-| `Debug` is seeded by `Zak.Interpreter.run` itself now, automatically —
+{-| `Debug` is seeded by `Zak.Internal.Interpreter.run` itself now, automatically —
 no natives need passing in here at all.
 
 Strips any `WithPosition` a `RuntimeError` comes back wrapped in
@@ -34,7 +34,7 @@ dropRuntimePosition error =
 
 
 {-| `runExpr` deliberately does *not* auto-include `Debug` (see
-`Zak.Interpreter`'s own doc) — so unlike `run` above, this still has to
+`Zak.Internal.Interpreter`'s own doc) — so unlike `run` above, this still has to
 pass `ZakDebug.natives` in by hand to exercise it here.
 -}
 runExpr : String -> Result Error Value
@@ -73,7 +73,7 @@ logMessages effects =
 
 suite : Test
 suite =
-    describe "Zak.Debug (log, log_debug, log_info, log_warning, log_error, assert)" <|
+    describe "Zak.Internal.Library.Debug (log, log_debug, log_info, log_warning, log_error, assert)" <|
         [ describe "log" <|
             [ test "logging a string returns nil" <|
                 \_ -> run "return Debug.log(\"Hi there!\")" |> Expect.equal (Ok VNil)
@@ -96,7 +96,7 @@ suite =
                     run "return Debug.log_warning(\"a\", \"b\")"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 2 })))
             ]
-        , describe "logging queues a Log in state.pendingEffects, drained via Zak.Interpreter.drainEffects — no Debug.log anywhere in this module's own Elm code" <|
+        , describe "logging queues a Log in state.pendingEffects, drained via Zak.Internal.Interpreter.drainEffects — no Debug.log anywhere in this module's own Elm code" <|
             [ test "log tags its entry LogPrint" <|
                 \_ ->
                     case runWithState "Debug.log(\"hi\")\nreturn nil" of

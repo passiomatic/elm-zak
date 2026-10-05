@@ -3,12 +3,12 @@ module Test.Zak.Globals exposing (suite)
 import Dict
 import Expect
 import Test exposing (Test, describe, test)
-import Zak.Globals as Globals
-import Zak.Interpreter as I exposing (Error(..))
-import Zak.Runtime as Runtime exposing (RuntimeError(..), Value(..))
+import Zak.Internal.Library.Globals as Globals
+import Zak.Internal.Interpreter as I exposing (Error(..))
+import Zak.Internal.Runtime as Runtime exposing (RuntimeError(..), Value(..))
 
 
-{-| The bare global `type` is seeded by `Zak.Interpreter.run` itself now,
+{-| The bare global `type` is seeded by `Zak.Internal.Interpreter.run` itself now,
 automatically — no natives need passing in here at all.
 
 Strips any `WithPosition` a `RuntimeError` comes back wrapped in
@@ -34,7 +34,7 @@ dropRuntimePosition error =
 
 
 {-| `runExpr` deliberately does *not* auto-include `type` (see
-`Zak.Interpreter`'s own doc) — so unlike `run` above, this still has to
+`Zak.Internal.Interpreter`'s own doc) — so unlike `run` above, this still has to
 pass `Globals.natives` in by hand to exercise it here.
 -}
 runExpr : String -> Result Error Value
@@ -44,7 +44,7 @@ runExpr =
 
 suite : Test
 suite =
-    describe "Zak.Globals"
+    describe "Zak.Internal.Library.Globals"
         [ describe "type (a pure classification — the only possible error is arity)" <|
             [ test "string" <| \_ -> runExpr "type(\"hi\")" |> Expect.equal (Ok (VString "string"))
             , test "number" <| \_ -> runExpr "type(1)" |> Expect.equal (Ok (VString "number"))
@@ -57,7 +57,7 @@ suite =
                         ()
             , test "nil" <| \_ -> runExpr "type(nil)" |> Expect.equal (Ok (VString "nil"))
             , test "array" <| \_ -> runExpr "type([1, 2, 3])" |> Expect.equal (Ok (VString "array"))
-            , test "table — not \"record\" (see Zak.Globals's own doc for why)" <|
+            , test "table — not \"record\" (see Zak.Internal.Library.Globals's own doc for why)" <|
                 \_ -> runExpr "type({ x = 1 })" |> Expect.equal (Ok (VString "table"))
             , test "function" <|
                 \_ -> runExpr "type(function(): end)" |> Expect.equal (Ok (VString "function"))
