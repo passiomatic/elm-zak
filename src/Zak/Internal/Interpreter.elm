@@ -3,6 +3,7 @@ module Zak.Internal.Interpreter exposing
     , run
     , runExpr
     , initialWorld
+    , worldEnv
     , runIncremental
     , include
     , tick
@@ -185,6 +186,15 @@ initialWorld natives =
             allocCell (initialStateFull natives)
     in
     ( Env frameId (Just globalEnv), { state1 | globalFrameId = frameId } )
+
+
+{-| The `Env` `initialWorld` returned for `state`'s world: its top-level
+frame, under `globalEnv`. Lets a caller that only kept the `State` run
+more source into the same world.
+-}
+worldEnv : State -> Env
+worldEnv state =
+    Env state.globalFrameId (Just globalEnv)
 
 
 {-| Runs one more script's top-level statements into an existing world

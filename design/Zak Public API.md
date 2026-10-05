@@ -116,6 +116,8 @@ errorToString : String -> Error -> String
 - **`include`, not `import_`.** It works like a C include: it runs the file's source into the same global scope, with no module object and no aliasing. Like today's `importSource`, it skips a path that was already included, which also guards against cycles. So it's really an "include once". The two `ImportNotFound`/`ImportParseError` constructors become `IncludeNotFound`/`IncludeParseError`, since `RuntimeError(..)` is now public.
 - **`include` versus `run`.** Both run source into a world. `include` is for natives: it remembers paths, and fails with a `RuntimeError`, like any other native. `run` is for the host: it fails with an `Error`, which can also be a syntax error.
 - **`include` takes two `String`s in a row** (path, then source). They're easy to swap by mistake, but it has one caller in the game. A record isn't worth it yet.
+- **`getGlobal` and `setGlobal` resolve a name the way a top-level script line would.** A world has two global frames: the natives' frame `0`, and the world's own frame under it, which holds the scripts' top-level `let`s. `getGlobal` looks in the world's frame first, then frame `0`. `setGlobal` changes the global wherever it's defined, natives included, like a top-level `name = value`. A name that isn't defined anywhere becomes a new global in the world's frame, like a `let`. This matters for `nativeExpression`: it closes over frame `0`, so it sees natives but not the scripts' globals. A host that wants a native expression to read a global it sets declares that global as a native (`nativeConstant Nil`) first. The game's `_current_actor` and `_current_scene`, read by `Actor.current()` and `Scene.current()`, work this way.
+- **`errorToString` with `""` as the source gives one line,** such as `Runtime error at line 3, column 7: “x” is not defined`. That covers errors with no source to show, such as those from `tick`, so there's no separate function for them.
 - **`call` is the only way to call a function.** The host gets the function first, with `getGlobal` or `getField`, then calls it. A `callGlobal` shortcut would favor one of the two places functions come from: the game calls globals (`Engine.Actor.callGlobal`/`queryGlobal`) and table fields (`Engine.Scene.zakHook`'s `enter`/`exit`, verbs through `callVerb`). A missing function is a `Maybe` the host handles, which the game already does, with its own message.
 - **`emitEffect` queues `Effect name args`** for the host, which takes it back with `takeEffects`. The two names pair up, and the name says what's emitted. It replaces the game's `Engine.Load.pushEffect`. A `Table` or `Array` argument is queued as a reference, not a copy: the host sees its contents as they are when it handles the effect, not as they were when it was emitted.
 - **No console mapping.** Today's `Zak.Helpers.toConsoleEntry` maps a `LogLevel` to a browser `console` method name (`LogWarning` to `"warn"`, and so on). It's dropped: it would tie a package that makes no assumptions about its host to a browser API, and a host that needs it can write the five-case `case` on `LogLevel(..)` itself.
@@ -277,7 +279,7 @@ Today all 12 modules live side by side in `src/Zak/`, and 3 of them are exposed.
 | `Zak.Runtime` | `Zak.Internal.Runtime` | The runtime model: the internal `Value` and `RuntimeError`, `State`, `NativeValue`, the heaps, the effect queue, the thread types, `Signal`/`Outcome` |
 | `Zak.Interpreter` | `Zak.Internal.Interpreter` | Evaluation, calls, the thread scheduler (`tick`), `include`, the `Array`/`Table` built-ins and `Thread.start`. It keeps `runOnce` and `runExpr` for elm-zak's own tests |
 | `Zak.Debug`, `Zak.Globals`, `Zak.Math`, `Zak.Random`, `Zak.String`, `Zak.Thread` | `Zak.Internal.Library.*` | The standard library: one module per built-in table (plus `Globals` for `type`) |
-| `Zak.Helpers` | `Zak.Internal.ErrorMessage` | Error text, behind `Zak.errorToString`. The console mapping (`toConsoleEntry`) is dropped |
+| `Zak.Helpers` | `Zak.Internal.ErrorMessage` | Error text, behind `Zak.errorToString`. The console mapping (`toConsoleEntry`) is dropped. `Zak.Helpers` stays, unexposed, as a shim around it until the game no longer uses it |
 
 ### Who imports whom
 
@@ -285,9 +287,9 @@ Each module imports only modules from the rows above it:
 
 1. `Zak.Internal.AST`, `Zak.Internal.Lexer`, `Zak.Internal.Parser`
 2. `Zak.Internal.Runtime`
-3. `Zak.Internal.Library.*`
-4. `Zak.Internal.Interpreter`
-5. `Zak.Internal.ErrorMessage`
+3. `Zak.Internal.ErrorMessage`: below the interpreter, so it can log a broken `nativeExpression`
+4. `Zak.Internal.Library.*`
+5. `Zak.Internal.Interpreter`
 6. **`Zak`**
 
 ### The shared types exist twice

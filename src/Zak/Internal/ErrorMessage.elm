@@ -331,22 +331,28 @@ expectationText problem =
 {-| The shared rendering both `formatRuntimeError` and `formatSyntaxError`
 funnel through: a header naming what kind of error this is and where, the
 exact source line at `position.row` with a `^` under `position.col`, and
-`message` underneath. `position.row`/`.col` are both 1-based, matching
+`message` underneath — or, when `source` is `""` (there's no text to
+show, as for an error inside a thread), the same on one line.
+`position.row`/`.col` are both 1-based, matching
 `elm/parser`'s own convention (and `Zak.Internal.Parser.position`'s, which reads
 them straight from it) — subtracted back down to 0-based only where this
 needs to index into `sourceLines`.
 -}
 errorBlock : String -> Position -> String -> String -> String
 errorBlock kind position source message =
-    kind
-        ++ " at line "
-        ++ String.fromInt position.row
-        ++ ", column "
-        ++ String.fromInt position.col
-        ++ ":\n\n"
-        ++ sourceLineSnippet source position
-        ++ "\n\n"
-        ++ message
+    if String.isEmpty source then
+        kind ++ " at line " ++ String.fromInt position.row ++ ", column " ++ String.fromInt position.col ++ ": " ++ message
+
+    else
+        kind
+            ++ " at line "
+            ++ String.fromInt position.row
+            ++ ", column "
+            ++ String.fromInt position.col
+            ++ ":\n\n"
+            ++ sourceLineSnippet source position
+            ++ "\n\n"
+            ++ message
 
 
 {-| The one source line `position.row` names, indented under a caret
