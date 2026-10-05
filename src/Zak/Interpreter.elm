@@ -43,6 +43,7 @@ import Random
 import Set
 import Zak.AST exposing (AssignTarget(..), BinaryOp(..), Block, Expr(..), PathSegment(..), Position, PositionedStatement, Statement(..), UnaryOp(..))
 import Zak.Debug as ZakDebug
+import Zak.ErrorMessage as ErrorMessage
 import Zak.Globals as Globals
 import Zak.Math as Math
 import Zak.Parser as Parser
@@ -367,7 +368,7 @@ seedState : Dict String NativeValue -> State
 seedState natives =
     let
         ( resolvedNatives, state1 ) =
-            resolveNatives
+            resolveNatives ""
                 { heap = Dict.empty
                 , arrayHeap = Dict.empty
                 , constNames = Dict.empty
@@ -701,12 +702,15 @@ builtinNatives =
 {-| Resolves a whole `Dict String NativeValue` into the `Dict String Value`
 that actually gets seeded into a scope frame — threading `State` through so
 each `NativeNamespace` along the way can allocate its own heap cell.
+`prefix` is the dotted path of the namespace being resolved (`""` at the
+top, `"Math."` inside `Math`), so a broken native can be logged by its
+full name.
 -}
-resolveNatives : State -> Dict String NativeValue -> ( Dict String Value, State )
-resolveNatives state natives =
+resolveNatives : String -> State -> Dict String NativeValue -> ( Dict String Value, State )
+resolveNatives prefix state natives =
     Dict.foldl
         (\name native ( acc, st ) ->
-            case resolveNative st native of
+            case resolveNative (prefix ++ name) st native of
                 ( Just value, st1 ) ->
                     ( Dict.insert name value acc, st1 )
 
@@ -717,8 +721,8 @@ resolveNatives state natives =
         natives
 
 
-resolveNative : State -> NativeValue -> ( Maybe Value, State )
-resolveNative state native =
+resolveNative : String -> State -> NativeValue -> ( Maybe Value, State )
+resolveNative path state native =
     case native of
         NativeFunction fn ->
             ( Just (VNative fn), state )
@@ -729,7 +733,7 @@ resolveNative state native =
         NativeNamespace fields ->
             let
                 ( resolvedFields, state1 ) =
-                    resolveNatives state fields
+                    resolveNatives (path ++ ".") state fields
 
                 ( id, state2 ) =
                     allocCell state1
@@ -739,28 +743,42 @@ resolveNative state native =
         NativeZakExpr source ->
             -- `source` is fixed Zak source written alongside a native
             -- (e.g. in Zak.Math, or by the host), not script input. If it
-            -- fails to parse or evaluate, that native is simply left
-            -- undefined (`Nothing`): a script calling it gets the usual
-            -- `UndefinedName`, rather than threading another error case
-            -- through every caller of `run`/`runExpr` for a bug in the
-            -- native's own source. Evaluating a self-contained function
-            -- literal here (before frame 0 is fully populated) is safe:
-            -- it only captures `globalEnv`, it doesn't look anything up
-            -- in it until the function is actually called later.
+            -- fails to parse or evaluate, that native is left undefined
+            -- (`Nothing`), and a `LogError` naming it is queued, rather
+            -- than threading another error case through every caller of
+            -- `run`/`runExpr` for a bug in the native's own source.
+            -- Without the log, a script calling it would get a bare
+            -- `UndefinedName` with no hint about the cause. Evaluating a
+            -- self-contained function literal here (before frame 0 is
+            -- fully populated) is safe: it only captures `globalEnv`, it
+            -- doesn't look anything up in it until the function is
+            -- actually called later.
             case Parser.parseExpr source of
-                Err _ ->
-                    ( Nothing, state )
+                Err parserError ->
+                    ( Nothing, logBrokenNative path (ErrorMessage.formatSyntaxError source parserError) state )
 
                 Ok expr ->
                     case evalExpr globalEnv state expr of
                         Ok ( value, state1 ) ->
                             ( Just value, state1 )
 
-                        Err _ ->
-                            ( Nothing, state )
+                        Err runtimeError ->
+                            ( Nothing, logBrokenNative path (ErrorMessage.formatRuntimeError source runtimeError) state )
 
         NativeConstant value ->
             ( Just value, state )
+
+
+{-| Queues the `LogError` for a `NativeZakExpr` at `path` whose expression
+failed to parse or evaluate; `message` is the error's own text.
+-}
+logBrokenNative : String -> String -> State -> State
+logBrokenNative path message state =
+    { state
+        | pendingEffects =
+            state.pendingEffects
+                ++ [ Log LogError ("native “" ++ path ++ "” is left undefined, because its expression is broken.\n\n" ++ message) ]
+    }
 
 
 

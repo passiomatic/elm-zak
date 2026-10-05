@@ -889,6 +889,49 @@ return Array.length(seen)"""
                         )
                         "return one()"
                         |> Expect.equal (Ok (VNumber 1))
+            , test "a NativeZakExpr that doesn't parse queues one LogError naming it, with the syntax error and its line" <|
+                \_ ->
+                    let
+                        ( _, state ) =
+                            I.initialWorld (Dict.singleton "broken" (NativeZakExpr "function(:"))
+                    in
+                    case state.pendingEffects of
+                        [ Log LogError message ] ->
+                            Expect.all
+                                [ \_ -> message |> String.startsWith "native “broken” is left undefined, because its expression is broken.\n\nSyntax error at line 1" |> Expect.equal True
+                                , \_ -> message |> String.contains "    function(:\n" |> Expect.equal True
+                                ]
+                                ()
+
+                        other ->
+                            Expect.fail ("expected one LogError, got: " ++ Debug.toString other)
+            , test "a NativeZakExpr that fails to evaluate queues a LogError with the runtime error" <|
+                \_ ->
+                    let
+                        ( _, state ) =
+                            I.initialWorld (Dict.singleton "broken" (NativeZakExpr "not_defined_anywhere"))
+                    in
+                    state.pendingEffects
+                        |> Expect.equal [ Log LogError "native “broken” is left undefined, because its expression is broken.\n\nRuntime error: “not_defined_anywhere” is not defined" ]
+            , test "a broken NativeZakExpr inside a namespace is logged by its full dotted path" <|
+                \_ ->
+                    let
+                        ( _, state ) =
+                            I.initialWorld (Dict.singleton "Util" (NativeNamespace (Dict.singleton "triple" (NativeZakExpr "not_defined_anywhere"))))
+                    in
+                    case state.pendingEffects of
+                        [ Log LogError message ] ->
+                            message |> String.startsWith "native “Util.triple” is left undefined" |> Expect.equal True
+
+                        other ->
+                            Expect.fail ("expected one LogError, got: " ++ Debug.toString other)
+            , test "working natives queue nothing" <|
+                \_ ->
+                    let
+                        ( _, state ) =
+                            I.initialWorld (Dict.singleton "one" (NativeZakExpr "function(): return 1 end"))
+                    in
+                    state.pendingEffects |> Expect.equal []
             ]
         , describe "Runtime.mapOutcomeResult (mapOutcome for a mapping that can fail)" <|
             let
