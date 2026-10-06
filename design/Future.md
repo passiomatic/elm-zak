@@ -57,7 +57,7 @@ String.format("First %s, then %s", "this", "that")
 ```
 
 
-## 4. Multiple variables declarations on the same line
+## ❌ 4. Multiple variables declarations on the same line - REJECTED
 
 A really little thing, today this isn't allowed:
 
@@ -96,7 +96,7 @@ We currently don't have a way to return a value from a `if/else` construct. We h
 * Python: when-true `if` pred `else` when-false
 * Elm: `if` pred `then` when-true `else` when-false
  
-Python's version is stronger for Zak because we don't introduce new keywords and reads well.
+Python's version is stronger for Zak because we don't introduce new keywords and reads well. Elm version is clearer
 
 
 [q]: https://quirrel.io/doc/coming-from/squirrel.html
