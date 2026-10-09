@@ -1,7 +1,7 @@
 module Test.Zak.Thread exposing (suite)
 
 {-| Exercises the suspend/resume scheduler:
-`Thread.start`/`Thread.start_global` (spawn, run
+`Thread.start` and the host's `startThread` (spawn, run
 synchronously to the first suspend point, never block the caller),
 `Thread.wait_for`/`Thread.join`
 (the two primitives that actually suspend — there's no frame-counted
@@ -43,6 +43,30 @@ runWithState source =
     I.runIncremental env state source |> Result.mapError dropRuntimePosition
 
 
+{-| Runs each source in turn, the host setting the owner before each one
+(`setThreadOwner`), as a host running scripts for different owners would.
+-}
+runAs : List ( String, String ) -> Result I.Error ( Value, Runtime.State )
+runAs steps =
+    let
+        ( env, state0 ) =
+            I.initialWorld Dict.empty
+    in
+    List.foldl
+        (\( owner, source ) result ->
+            Result.andThen (\( _, state ) -> I.runIncremental env (I.setThreadOwner owner state) source) result
+        )
+        (Ok ( VNil, state0 ))
+        steps
+
+
+{-| The owner of each waiting thread, by id.
+-}
+owners : Runtime.State -> List String
+owners state =
+    state.threads |> Dict.values |> List.map (\(Runtime.Thread thread) -> thread.owner)
+
+
 dropRuntimePosition : I.Error -> I.Error
 dropRuntimePosition error =
     case error of
@@ -70,7 +94,7 @@ readTableField state table field =
 
 suite : Test
 suite =
-    describe "Zak.Internal.Library.Thread (Thread.start/start_global/wait_for/join/stop/tick)"
+    describe "Zak.Internal.Library.Thread (Thread.start/wait_for/join/stop/tick)"
         [ test "start runs its closure synchronously up to its first suspend, without blocking the caller" <|
             \_ ->
                 -- `log.value` tables execution order: the spawned thread's
@@ -566,7 +590,7 @@ return log"""
                                 Expect.fail ("expected WrongArgCount, got: " ++ Debug.toString other)
                     ]
                     ()
-        , describe "threadCount/stopLocalThreads (host-side thread control)" <|
+        , describe "owners (host-side thread control)" <|
             [ test "threadCount counts the threads waiting for tick, and drops back as they finish" <|
                 \_ ->
                     case runWithState "Thread.start(function(): Thread.wait_for(1.0) end)\nThread.start(function(): Thread.wait_for(2.0) end)\nreturn nil" of
@@ -583,11 +607,87 @@ return log"""
 
                         Err err ->
                             Expect.fail ("expected success, got: " ++ Debug.toString err)
-            , test "stopLocalThreads drops every Thread.start thread and keeps the Thread.start_global ones" <|
+            , test "code outside any thread starts threads under the owner the host set, \"\" before it sets one" <|
                 \_ ->
-                    case runWithState "Thread.start(function(): Thread.wait_for(1.0) end)\nThread.start_global(function(): Thread.wait_for(1.0) end)\nThread.start(function(): Thread.wait_for(1.0) end)\nreturn nil" of
-                        Ok ( _, state ) ->
-                            I.stopLocalThreads state |> .threads |> Dict.keys |> Expect.equal [ 1 ]
+                    runAs
+                        [ ( "", "Thread.start(function(): Thread.wait_for(1.0) end)" )
+                        , ( "level", "Thread.start(function(): Thread.wait_for(1.0) end)" )
+                        ]
+                        |> Result.map (Tuple.second >> owners)
+                        |> Expect.equal (Ok [ "", "level" ])
+            , test "a thread started by a thread gets its owner, before its first wait and after one, whatever the host's owner is by then" <|
+                \_ ->
+                    case
+                        runAs
+                            [ ( "level"
+                              , """Thread.start(function():
+    Thread.start(function(): Thread.wait_for(5.0) end)
+    Thread.wait_for(1.0)
+    Thread.start(function(): Thread.wait_for(5.0) end)
+    Thread.wait_for(5.0)
+end)"""
+                              )
+                            , ( "other", "return nil" )
+                            ]
+                    of
+                        Ok ( _, state0 ) ->
+                            let
+                                ( state1, _ ) =
+                                    tick 1.0 state0
+                            in
+                            ( owners state1, state1.currentOwner )
+                                |> Expect.equal ( [ "level", "level", "level" ], "other" )
+
+                        Err err ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString err)
+            , test "stopThreads stops an owner's threads, their descendants included, and keeps the other owners'" <|
+                \_ ->
+                    runAs
+                        [ ( "level", "Thread.start(function():\n    Thread.start(function(): Thread.wait_for(1.0) end)\n    Thread.wait_for(1.0)\nend)" )
+                        , ( "music", "Thread.start(function(): Thread.wait_for(1.0) end)" )
+                        ]
+                        |> Result.map (Tuple.second >> I.stopThreads "level" >> owners)
+                        |> Expect.equal (Ok [ "music" ])
+            , test "hasThreads tells whether an owner still has threads waiting" <|
+                \_ ->
+                    case runAs [ ( "level", "Thread.start(function(): Thread.wait_for(1.0) end)" ) ] of
+                        Ok ( _, state0 ) ->
+                            let
+                                ( state1, _ ) =
+                                    tick 1.0 state0
+                            in
+                            [ I.hasThreads "level" state0, I.hasThreads "music" state0, I.hasThreads "level" state1 ]
+                                |> Expect.equal [ True, False, False ]
+
+                        Err err ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString err)
+            , test "startThread runs the function as a thread of the given owner, up to its first wait, and restores the host's owner" <|
+                \_ ->
+                    case runAs [ ( "level", "let log = { value = \"\" }\nreturn function():\n    log.value = \"started\"\n    Thread.start(function(): Thread.wait_for(5.0) end)\n    Thread.wait_for(1.0)\nend" ) ] of
+                        Ok ( fn, state0 ) ->
+                            I.startThread "cutscene" fn [] state0
+                                |> Result.map (\( _, state1 ) -> ( owners state1, state1.currentOwner ))
+                                |> Expect.equal (Ok ( [ "cutscene", "cutscene" ], "level" ))
+
+                        Err err ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString err)
+            , test "startThread with a body that never waits leaves no thread behind" <|
+                \_ ->
+                    case runWithState "return function(): return 1 end" of
+                        Ok ( fn, state0 ) ->
+                            I.startThread "cutscene" fn [] state0
+                                |> Result.map (Tuple.second >> I.threadCount)
+                                |> Expect.equal (Ok 0)
+
+                        Err err ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString err)
+            , test "startThread reports an error raised before the first wait" <|
+                \_ ->
+                    case runWithState "return function(): return missing end" of
+                        Ok ( fn, state0 ) ->
+                            I.startThread "cutscene" fn [] state0
+                                |> Result.mapError dropRuntimePosition
+                                |> Expect.equal (Err (I.RuntimeError (UndefinedName "missing")))
 
                         Err err ->
                             Expect.fail ("expected success, got: " ++ Debug.toString err)
@@ -595,7 +695,7 @@ return log"""
                 \_ ->
                     let
                         leave =
-                            NativeFunction (\state _ -> Ok ( VNil, I.stopLocalThreads state ))
+                            NativeFunction (\state _ -> Ok ( VNil, I.stopThreads "" state ))
 
                         ( env, state0 ) =
                             I.initialWorld (Dict.singleton "leave" leave)
@@ -610,7 +710,7 @@ return log"""
                 \_ ->
                     let
                         leave =
-                            NativeFunction (\state _ -> Ok ( VNil, I.stopLocalThreads state ))
+                            NativeFunction (\state _ -> Ok ( VNil, I.stopThreads "" state ))
 
                         ( env, state0 ) =
                             I.initialWorld (Dict.singleton "leave" leave)

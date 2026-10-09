@@ -2,7 +2,7 @@ module Zak exposing
     ( World, init, run, call, tick, reseed
     , Value(..), TableRef, ArrayRef, FunctionRef
     , getGlobal, setGlobal, globals, newTable, getField, setField, fields, items
-    , threadCount, stopLocalThreads
+    , ThreadOwner, startThread, stopThreads, hasThreads, setThreadOwner, threadCount
     , Effect(..), LogLevel(..), emitEffect, takeEffects
     , Error, Problem(..), Position, errorProblem, errorPosition, errorToString
     , Native, nativeFunction, nativeTable, nativeExpression, nativeConstant, nativeInclude
@@ -53,7 +53,7 @@ second, so updates chain with `|>`.
 
 # Threads
 
-@docs threadCount, stopLocalThreads
+@docs ThreadOwner, startThread, stopThreads, hasThreads, setThreadOwner, threadCount
 
 
 # Effects
@@ -146,9 +146,8 @@ call fn args (World state) =
 is over. A thread that fails is dropped, and its error is returned; the
 errors come in the order the threads failed.
 
-See [`threadCount`](#threadCount) and
-[`stopLocalThreads`](#stopLocalThreads) for the other ways a host
-manages threads.
+See [`ThreadOwner`](#ThreadOwner) for the other ways a host manages
+threads.
 
 -}
 tick : Float -> World -> ( List Error, World )
@@ -421,31 +420,82 @@ items array (World state) =
 -- THREADS
 
 
+{-| Who a thread belongs to: a name the host picks. Zak defines none.
+
+Every thread has an owner. A thread a script starts with `Thread.start`
+gets the owner of the code that starts it, so the threads a thread
+starts are its owner's too, at any depth. The host stops them all at once
+with [`stopThreads`](#stopThreads).
+
+The code the host runs or calls directly ([`run`](#run), [`call`](#call))
+runs outside any thread, under the owner set with
+[`setThreadOwner`](#setThreadOwner): `""` until the host sets one.
+
+For example, a game can give each level its own owner, so leaving the
+level stops the threads its scripts started, and run what outlives a
+level (the music, say) under another one.
+
+-}
+type alias ThreadOwner =
+    String
+
+
+{-| Calls a function as a new thread owned by `owner`, and gives back
+its id, as `Thread.start` does. Like `Thread.start`, its body runs at
+once, up to its first wait, and [`tick`](#tick) resumes it from there. A
+body that never waits leaves no thread behind.
+
+The id is what `Thread.join` and `Thread.stop` take, so a native can start
+a thread under another owner and hand its id to a script to wait on:
+
+    Thread.join(start_as_cutscene(body))
+
+An error before the first wait comes back as an `Err`, and the world is
+left as it was.
+
+-}
+startThread : ThreadOwner -> Value -> List Value -> World -> Result Error ( Value, World )
+startThread owner fn args (World state) =
+    Interpreter.startThread owner (toInternal fn) (List.map toInternal args) state
+        |> Result.map (\( id, state1 ) -> ( fromInternal id, World state1 ))
+        |> Result.mapError Error
+
+
+{-| Stops every thread `owner` owns, including those its threads started.
+
+It takes effect at once: called from a native, it stops the threads that
+are waiting at that moment, and threads the script starts after the call
+keep running. Like `Thread.stop`, it doesn't stop the thread that's
+running when it's called.
+
+-}
+stopThreads : ThreadOwner -> World -> World
+stopThreads owner (World state) =
+    World (Interpreter.stopThreads owner state)
+
+
+{-| Whether any thread `owner` owns is waiting for [`tick`](#tick).
+-}
+hasThreads : ThreadOwner -> World -> Bool
+hasThreads owner (World state) =
+    Interpreter.hasThreads owner state
+
+
+{-| Sets the owner of the code the host runs or calls directly, so the
+threads that code starts belong to `owner`. Inside a thread, the thread's
+own owner applies instead.
+-}
+setThreadOwner : ThreadOwner -> World -> World
+setThreadOwner owner (World state) =
+    World (Interpreter.setThreadOwner owner state)
+
+
 {-| How many threads are waiting for [`tick`](#tick). `0` means there's
 nothing to advance, so a host can stop calling `tick` on every frame.
 -}
 threadCount : World -> Int
 threadCount (World state) =
     Interpreter.threadCount state
-
-
-{-| Stops every thread started with `Thread.start`, and keeps those
-started with `Thread.start_global`.
-
-Scripts start a thread with `Thread.start` for work that belongs to what
-the host is doing now, and with `Thread.start_global` for work that
-should outlive it. The host decides when "now" is over, and calls this
-then.
-
-It takes effect at once: called from a native, it stops the threads
-that are waiting at that moment, and threads the script starts after
-the call keep running. Like `Thread.stop`, it doesn't stop the thread
-that's running when it's called.
-
--}
-stopLocalThreads : World -> World
-stopLocalThreads (World state) =
-    World (Interpreter.stopLocalThreads state)
 
 
 

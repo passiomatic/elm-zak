@@ -1,11 +1,11 @@
 module Zak.Internal.Library.Thread exposing (natives)
 
 {-| `wait_for`/`join` — the two primitives that actually suspend the
-*calling* thread — plus `stop`, kept in their own module since, unlike `start`/`start_global`, none needs
+*calling* thread — plus `stop`, kept in their own module since, unlike `start`, none needs
 to call back into `Zak.Internal.Interpreter` (no `callFunction`/`execBlock`
 involved) — they just construct a `Suspended` value directly and hand it
 back, so they're free of the circular-import constraint that keeps
-`start`/`start_global` living in `Zak.Internal.Interpreter` itself (see that
+`start` living in `Zak.Internal.Interpreter` itself (see that
 module's own doc for the full reasoning).
 
 Deliberately doesn't have a frame-counted `wait_frames(n)`-style sibling:
@@ -25,7 +25,7 @@ implementation accident, not what a reader of this namespace actually
 wants grouped together.
 
 Exposes `natives`, merged by `Zak.Internal.Interpreter` alongside its own
-`start`/`start_global` into one `Thread` namespace table
+`start` into one `Thread` namespace table
 (`Thread.wait_for(...)`, `Thread.start(...)`, ...) — see
 `Zak.Internal.Interpreter`'s own `threadNatives` doc for why that wrapping has
 to happen there, one level up from `natives` here, rather than in this
@@ -113,8 +113,8 @@ waitFor state args =
 
 
 {-| `Thread.join(thread_id)` — suspend the current thread until the thread
-named by `thread_id` (a value previously returned by `Thread.start`/
-`Thread.start_global`) is no longer running. The one generic "wait on
+named by `thread_id` (a value previously returned by `Thread.start`) is
+no longer running. The one generic "wait on
 something else" primitive kept in this pass — host-specific wait
 conditions are left to the embedder (see `wait_while`) rather than
 folded in here.

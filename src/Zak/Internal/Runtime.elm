@@ -10,6 +10,7 @@ module Zak.Internal.Runtime exposing
     , Outcome(..)
     , WaitCondition(..)
     , ThreadId
+    , ThreadOwner
     , Thread(..)
     , LogLevel(..)
     , Effect(..)
@@ -180,7 +181,7 @@ Value` to its own caller).
 
 Deliberately narrow in this first pass: only `Zak.Internal.Library.Thread`'s
 `wait_for`/`join` (and, inside
-`Zak.Internal.Interpreter` itself, `start`/`start_global`'s own
+`Zak.Internal.Interpreter` itself, `start`/`startThread`'s own
 closure body, transitively) ever construct a `Suspended` value — see
 `WaitCondition`'s doc for what a thread can wait on. A suspend attempted from
 inside a plain expression (`let x = wait_for(1.0)`, an `Array.map`
@@ -212,8 +213,17 @@ type alias ThreadId =
     Int
 
 
+{-| Who a thread belongs to: a name the host picks (Zak defines none).
+A thread started with `Thread.start` gets the owner of the code that
+starts it, so a thread's descendants share its owner, and the host stops
+them all at once by owner (`Zak.Internal.Interpreter.stopThreads`).
+-}
+type alias ThreadOwner =
+    String
+
+
 {-| One suspended, independently-scheduled thread, as registered in
-`State.threads` by `start`/`start_global` — see
+`State.threads` by `start`/`startThread` — see
 `Zak.Internal.Interpreter`'s own doc for why those two natives (unlike
 `wait_for`/`join`) have to live in
 `Zak.Internal.Interpreter` itself rather than `Zak.Internal.Library.Thread`. `resume` is
@@ -225,10 +235,9 @@ already collapses the body's own `Signal` into one, the same conversion
 any other call goes through) — `Thread` only ever needs to carry that
 call forward to completion, resuming it exactly like any other suspended
 call. `elapsed` is reset to `0` every time `waitCondition` changes (a
-fresh suspend point starts its own fresh countdown); `isGlobal`
-(mirroring `start_global`) is what `Zak.Internal.Interpreter.stopLocalThreads`
-reads: it stops every thread that isn't global, and that's the only
-difference in how the two are treated.
+fresh suspend point starts its own fresh countdown); `owner` is what
+`Zak.Internal.Interpreter.stopThreads` reads, and what threads it starts
+inherit.
 
 A real `type` (not a `type alias`) for the same reason `Env` already is
 one: `Thread`'s own `resume` field refers back to `State`, and `State`
@@ -244,7 +253,7 @@ type Thread
         { waitCondition : WaitCondition
         , elapsed : Float
         , resume : State -> Result RuntimeError ( Outcome Value, State )
-        , isGlobal : Bool
+        , owner : ThreadOwner
         }
 
 
@@ -338,7 +347,7 @@ built-in `Array.*` natives in `Zak.Internal.Interpreter`) genuinely needs it.
 success payload, needed by exactly the natives that can themselves
 suspend their caller directly (`Zak.Internal.Library.Thread`'s `wait_for`/
 `join`). Every other native — including
-`start`/`start_global`, which spawn a thread but never
+`start`/`startThread`, which spawn a thread but never
 suspend the *caller* — stays a plain `NativeFunction`; see `Outcome`'s own
 doc for why suspension is deliberately this narrow in the first pass.
 -}
@@ -379,7 +388,7 @@ type alias ArrayHeap =
 
 
 {-| `threads`/`nextThreadId` hold every currently-suspended thread spawned
-by `start`/`start_global` — kept as part of `State` itself
+by `start`/`startThread` — kept as part of `State` itself
 (rather than a separate field the embedding app has to thread through
 alongside it) so a native function that spawns a thread can register it
 with nothing more than the `State` it's already given, and so
@@ -421,6 +430,14 @@ type alias State =
     , nextId : Int
     , threads : Dict ThreadId Thread
     , nextThreadId : ThreadId
+
+    {- The owner of the code running right now: the resumed thread's own
+       while `tick` runs it, the new thread's while `start`/`startThread`
+       run its body, and otherwise what the host last set
+       (`setThreadOwner`, `""` until then). `Thread.start` gives it to the
+       thread it starts.
+    -}
+    , currentOwner : ThreadOwner
     , pendingEffects : List Effect
     , randomSeed : Random.Seed
 

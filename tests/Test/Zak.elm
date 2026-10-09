@@ -355,11 +355,52 @@ suite =
                                 |> Tuple.first
                                 |> List.map Zak.errorProblem
                                 |> Expect.equal [ UndefinedName "first", UndefinedName "second" ]
-            , test "stopLocalThreads keeps only the global threads" <|
+            , test "stopThreads stops one owner's threads, and hasThreads tells which owners still have some" <|
                 \_ ->
-                    withWorld (runIn [] "Thread.start(function(): Thread.wait_for(1.0) end)\nThread.start_global(function(): Thread.wait_for(1.0) end)") <|
-                        \( _, world ) ->
-                            Zak.threadCount (Zak.stopLocalThreads world) |> Expect.equal 1
+                    let
+                        start world =
+                            Zak.run "Thread.start(function(): Thread.wait_for(1.0) end)" world |> Result.map Tuple.second
+                    in
+                    Zak.init []
+                        |> Zak.setThreadOwner "level"
+                        |> start
+                        |> Result.map (Zak.setThreadOwner "music")
+                        |> Result.andThen start
+                        |> Result.map (Zak.stopThreads "level")
+                        |> Result.map (\world -> ( Zak.threadCount world, Zak.hasThreads "level" world, Zak.hasThreads "music" world ))
+                        |> Expect.equal (Ok ( 1, False, True ))
+            , test "startThread runs a function as a thread of the given owner" <|
+                \_ ->
+                    withWorld (runIn [] "return function(): Thread.wait_for(1.0) end") <|
+                        \( fn, world ) ->
+                            Zak.startThread "cutscene" fn [] world
+                                |> Result.map (Tuple.second >> Zak.hasThreads "cutscene")
+                                |> Expect.equal (Ok True)
+            , test "startThread gives back the thread's id, which a script can join" <|
+                \_ ->
+                    let
+                        startAsCutscene =
+                            Zak.nativeFunction
+                                (\args world ->
+                                    case args of
+                                        [ fn ] ->
+                                            Zak.startThread "cutscene" fn [] world |> Result.mapError Zak.errorProblem
+
+                                        _ ->
+                                            Err (WrongArgCount { expected = 1, got = List.length args })
+                                )
+
+                        source =
+                            "let log = { value = \"waiting\" }\nThread.start(function():\n    Thread.join(start_as_cutscene(function(): Thread.wait_for(1.0) end))\n    log.value = \"joined\"\nend)\nreturn log"
+
+                        logAfter seconds ( log, world ) =
+                            List.foldl (\dt w -> Zak.tick dt w |> Tuple.second) world seconds
+                                |> (\w -> Zak.getField "value" log w)
+                    in
+                    withWorld (runIn [ ( "start_as_cutscene", startAsCutscene ) ] source) <|
+                        \started ->
+                            ( logAfter [] started, logAfter [ 1.0, 0 ] started )
+                                |> Expect.equal ( Just (String "waiting"), Just (String "joined") )
             ]
         , describe "effects"
             [ test "logs and a native's effects come back in one queue, in order, and the queue empties" <|

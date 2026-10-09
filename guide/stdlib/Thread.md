@@ -20,15 +20,7 @@ end)
 log.value = log.value ++ "C"       # runs right away — start never blocks its caller
 ```
 
-## Thread.start_global(closure)
-
-Same as `start`, except that the thread is global. The program that runs your scripts can stop every thread that isn't global in one go, when the work those threads belong to is over. Global threads keep running. Use `start_global` for a thread that should outlive what's happening now.
-
-```
-Thread.start_global(function():
-    Thread.wait_for(1.0)
-end)
-```
+The new thread belongs to whatever the code calling `start` belongs to, so the threads a thread starts share its fate: the program that runs your scripts can stop a thread and every thread it started in one go. See [Threads](../language/Threads.md).
 
 ## Thread.wait_for(seconds)
 
@@ -42,7 +34,7 @@ end)
 
 ## Thread.join(thread_id)
 
-Suspends the calling thread until the thread named by `thread_id` (an id previously returned by `start`/`start_global`) is no longer running. An unknown or already-finished `thread_id` isn't an error — the call resolves immediately.
+Suspends the calling thread until the thread named by `thread_id` (an id previously returned by `start`) is no longer running. An unknown or already-finished `thread_id` isn't an error — the call resolves immediately.
 
 ```
 let worker_id = Thread.start(function():

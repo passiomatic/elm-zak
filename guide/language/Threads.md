@@ -41,7 +41,7 @@ The function starts running immediately, as part of the `Thread.start` call, and
 
 A thread can start other threads, and a thread can share state with the rest of the script through closures, like any other function — see [Closures](Functions.md#closures).
 
-`Thread.start_global` works the same as `Thread.start`, except that the thread is global. The program that runs your scripts can stop every thread that isn't global in one go, and global threads keep running. See [Thread.start_global](../stdlib/Thread.md#threadstart_globalclosure).
+A thread belongs to whatever the code that starts it belongs to, so the threads a thread starts share its fate. The program that runs your scripts groups threads this way (a game might group them by level) and can stop a whole group in one go: a thread, and every thread it started.
 
 ## Waiting
 

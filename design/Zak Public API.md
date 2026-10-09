@@ -14,41 +14,13 @@ An item that would change a signature or remove a name has to be settled before 
 
 A `nativeExpression` that fails to parse or evaluate is left undefined, and `init` queues a `Log LogError` naming it. Nothing stops the host from booting, and its tests still pass. The stricter option is `init : List ( String, Native ) -> Result (List BrokenNative) World`, which lists every broken native with its error. Switching to it changes `init`'s signature.
 
-### Whether a thread takes its kind from the thread that starts it
-
-Today it doesn't. The kind is picked at each start, so a plain `Thread.start` inside a global thread starts a local one. If threads inherited their kind (or their group, see "The thread model" below), helpers started by a thread would be stopped along with it. Switching to that after publishing would change what existing scripts do, so it has to be decided now. The suggestion is to keep today's rule: it's what's implemented, and it's easy to explain.
-
 ## Later
 
 ### The thread model
 
-For v1, there are two kinds of thread. A script decides whether a thread is local or global when it starts it: `Thread.start` makes a local thread, and `Thread.start_global` a global one. The host has one way to act on that: `stopLocalThreads`. That fits the game, which stops local threads on a room change. A host whose threads need more than one boundary can't express that, for example a level and a dialog inside it. Whether "local" is the right word is also still open.
+Decided (2026-10-08): every thread has an owner, a `ThreadOwner` the host names (Zak defines none). A thread started with `Thread.start` gets the owner of the code that starts it, so a thread's descendants share its owner, and `Zak.stopThreads` stops them all. Code the host runs directly uses the owner set with `Zak.setThreadOwner`. `Thread.start_global` and `Zak.stopLocalThreads` were removed: a host that wants a "start this under another owner" primitive adds its own native calling `Zak.startThread`, which gives back the new thread's id (since 2026-10-09) so a script can `Thread.join` it. The package docs describe it.
 
-#### Named groups
-
-This is the preferred way forward. A script names a group when it starts a thread, as in `Thread.start(fn, "dialog")`, and the host stops a group with `Zak.stopThreads : String -> World -> World`. Inside the interpreter, the thread's `isGlobal : Bool` becomes a `group : String`.
-
-Today's two kinds become two built-in groups:
-
-- `Thread.start(fn)` puts the thread in the default group, `"local"`;
-- `Thread.start_global(fn)` is the same as `Thread.start(fn, "global")`, and stays as a shorthand;
-- `stopLocalThreads` is `stopThreads "local"`.
-
-So groups can be added without breaking anything, and a thread with no group keeps today's safe default. Two questions are open:
-
-- **Groups don't nest, but boundaries do.** Leaving a level should also stop the threads of a dialog inside it, but `stopThreads "local"` leaves `"dialog"` running. With flat groups, the host stops each group it knows about. That's probably fine, since the host knows its own boundaries. Nested group names, or a thread in several groups, would be much more machinery for an unclear gain.
-- **Whether `"global"` is reserved.** As an ordinary group, a host could call `stopThreads "global"`, which is useful for a reset, but then "global" is a convention, not a guarantee. Reserving it keeps the meaning, at the cost of a special case.
-
-#### Leaving grouping to the host (set aside)
-
-`start_global` would go away, and the host would track the threads it cares about. It's the most flexible option, but it costs more than it saves:
-
-- **Zak still needs a host function.** The host can't stop a thread by id today, so `stopLocalThreads` would be traded for a `Zak.stopThread : Int -> World -> World`, not removed.
-- **Every start has to be recorded.** The game would add a wrapper, say `Room.start(fn)`, that calls `Thread.start` and saves the id in a list it stops on a room change. Even storing the list is awkward, because a native expression can't see script globals (see "A native expression only sees natives" below).
-- **The safe default flips.** A thread that doesn't go through the wrapper is silently global: one a script author forgot, one in a helper file, or any Zak code written without this host in mind. It leaks into the next room, and nothing reports it. Keeping the safe default means tracking the global threads instead and stopping all the others, which needs yet another host function to list the running threads.
-- **Threads started by threads go untracked,** unless every script follows the convention.
-
-Removing `start_global` would also be a breaking change.
+Still open: **owners don't nest, but boundaries can.** Leaving a level should also stop the threads of a cutscene inside it, but they have different owners. With flat owners the host stops each owner it knows about, which is probably fine, since the host knows its own boundaries.
 
 ### A native expression only sees natives
 

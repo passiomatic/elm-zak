@@ -8,7 +8,10 @@ module Zak.Internal.Interpreter exposing
     , include
     , tick
     , threadCount
-    , stopLocalThreads
+    , startThread
+    , stopThreads
+    , hasThreads
+    , setThreadOwner
     , drainEffects
     , call
     , allocCell
@@ -64,6 +67,7 @@ import Zak.Internal.Runtime
         , State
         , Thread(..)
         , ThreadId
+        , ThreadOwner
         , Value(..)
         , WaitCondition(..)
         , mapOutcome
@@ -211,9 +215,9 @@ extended to the whole loaded world.
 A top-level script suspending at all (e.g. calling `Thread.wait_for`
 directly, not from inside a `Thread.start`-spawned body) is
 `SuspendedNotAllowed` — a root-VM-can't-suspend constraint (see `Zak.Internal.Runtime.Outcome`'s doc): only
-`Thread.start`/`Thread.start_global` ever let a
+`Thread.start` (or the host's `startThread`) ever lets a
 script's own statements actually run as a suspend-capable thread, and
-those two natives fully absorb whatever their spawned body
+it fully absorbs whatever their spawned body
 does (registering it with `State.threads` if it suspends) before
 returning here, so a `Suspended` reaching all the way out to
 `runIncremental` never happens for a *correctly* written top-level
@@ -387,6 +391,7 @@ seedState natives =
                 , nextId = 1
                 , threads = Dict.empty
                 , nextThreadId = 0
+                , currentOwner = ""
                 , pendingEffects = []
                 , randomSeed = Random.initialSeed 0
 
@@ -430,21 +435,17 @@ stdlibNatives =
         |> Dict.union ZakRandom.natives
 
 
-{-| One `Thread` namespace table holding all four threading primitives: `wait_for`/`join`
-(`Zak.Internal.Library.Thread`, neither of which needs to call back
-into this module) plus `start`/`start_global` (defined
+{-| One `Thread` namespace table holding every threading primitive:
+`wait_for`/`join`/`wait_while`/`stop` (`Zak.Internal.Library.Thread`, none
+of which needs to call back into this module) plus `start` (defined
 directly below, since spawning a thread means running its closure
-argument via `callFunction`/`execBlock` — exactly the kind of sharing
-that keeps `Array`/`Table`'s own natives living in this module too, per
-this module's own top-of-file doc; putting these two in `Zak.Internal.Library.Thread`
-instead would need `Zak.Internal.Library.Thread` to import `Zak.Internal.Interpreter`, and
-`Zak.Internal.Interpreter` already imports `Zak.Internal.Library.Thread` for the other two — a
-real circular import, not a style preference).
-The wrapping happens here, one level up from `Zak.Internal.Library.Thread.natives`
-itself, specifically so it covers all four together — wrapping only
-`Zak.Internal.Library.Thread.natives` would leave `start`/`start_global`
-stranded outside the namespace, since they're merged in from a different
-module entirely.
+argument via `callFunction` -- exactly the kind of sharing that keeps
+`Array`/`Table`'s own natives living in this module too, per this
+module's own top-of-file doc; putting it in `Zak.Internal.Library.Thread`
+instead would need that module to import this one, which already imports
+it -- a real circular import, not a style preference). The wrapping
+happens here, one level up from `Zak.Internal.Library.Thread.natives`
+itself, so it covers `start` too.
 
 Merged into `stdlibNatives` since this is exactly as unconditional (in
 `run`/`initialWorld`/`runIncremental`, not `runExpr`) as `Math`/`String`/
@@ -457,61 +458,82 @@ threadNatives =
     Dict.singleton "Thread"
         (NativeNamespace
             (Thread.natives
-                |> Dict.insert "start" (NativeFunction (start False))
-                |> Dict.insert "start_global" (NativeFunction (start True))
+                |> Dict.insert "start" (NativeFunction start)
             )
         )
 
 
-{-| `Thread.start(closure)` / `Thread.start_global(closure)` — spawns
-`closure` (called with zero arguments) as an independent, suspend-capable
-thread: its body runs *immediately*, synchronously, right here, up to its
-own first suspend point or completion — *before* this call itself returns anything. If the body suspends partway
-through, the resulting `Thread` (see `Zak.Internal.Runtime`'s own doc) is
-registered under a freshly-allocated id in `state.threads`, to be resumed
-later by `tick`; if the body runs to completion without ever suspending,
-nothing gets registered at all — there's nothing left to resume. Either
-way, this call's *own* result is always `Done (VNumber threadId)` — the
-new thread's id, handed back so a caller can pass it to
-`join` later — never `Suspended`: starting a thread is not
-running one, so the caller of `start` itself is never blocked by
-it, regardless of what the spawned body goes on to do.
-
-`isGlobal` is threaded straight onto the resulting `Thread` record as a
-bare marker — see that type's own doc for why this pass doesn't yet
-define any actual difference in scheduling behavior for a global thread.
+{-| `Thread.start(closure)` -- spawns `closure` (called with zero
+arguments) as a new thread, owned by the owner of the code that starts it
+(`state.currentOwner`): a thread's descendants share its owner. See
+`spawn`.
 -}
-start : Bool -> State -> List Value -> Result RuntimeError ( Value, State )
-start isGlobal state args =
+start : State -> List Value -> Result RuntimeError ( Value, State )
+start state args =
     case args of
         [ closure ] ->
-            let
-                threadId =
-                    state.nextThreadId
-
-                state1 =
-                    { state | nextThreadId = threadId + 1 }
-            in
-            callFunction state1 closure []
-                |> Result.map
-                    (\( outcome, state2 ) ->
-                        case outcome of
-                            Done _ ->
-                                ( VNumber (toFloat threadId), state2 )
-
-                            Suspended waitCondition resume ->
-                                ( VNumber (toFloat threadId)
-                                , { state2
-                                    | threads =
-                                        Dict.insert threadId
-                                            (Thread { waitCondition = waitCondition, elapsed = 0, resume = resume, isGlobal = isGlobal })
-                                            state2.threads
-                                  }
-                                )
-                    )
+            spawn state.currentOwner closure [] state
 
         _ ->
             Err (WrongArgCount { expected = 1, got = List.length args })
+
+
+{-| Runs `callee` as a new thread owned by `owner`: its body runs
+*immediately*, synchronously, right here, up to its own first suspend
+point or completion -- *before* this call itself returns anything. If the
+body suspends partway through, the resulting `Thread` (see
+`Zak.Internal.Runtime`'s own doc) is registered under a freshly-allocated
+id in `state.threads`, to be resumed later by `tick`; if the body runs to
+completion without ever suspending, nothing gets registered at all --
+there's nothing left to resume. Either way, the result is the new
+thread's id, handed back so a caller can pass it to `join` later: starting
+a thread is not running one, so the caller is never blocked by it.
+
+While the body runs, `owner` is the current owner, so a thread it starts
+before its first wait is `owner`'s too; the caller's owner is restored
+afterwards.
+-}
+spawn : ThreadOwner -> Value -> List Value -> State -> Result RuntimeError ( Value, State )
+spawn owner callee args state =
+    let
+        threadId =
+            state.nextThreadId
+
+        callerOwner =
+            state.currentOwner
+    in
+    callFunction { state | nextThreadId = threadId + 1, currentOwner = owner } callee args
+        |> Result.map
+            (\( outcome, state1 ) ->
+                let
+                    state2 =
+                        { state1 | currentOwner = callerOwner }
+                in
+                case outcome of
+                    Done _ ->
+                        ( VNumber (toFloat threadId), state2 )
+
+                    Suspended waitCondition resume ->
+                        ( VNumber (toFloat threadId)
+                        , { state2
+                            | threads =
+                                Dict.insert threadId
+                                    (Thread { waitCondition = waitCondition, elapsed = 0, resume = resume, owner = owner })
+                                    state2.threads
+                          }
+                        )
+            )
+
+
+{-| The host's way to start a thread: `callee` called with `args`, as a
+thread owned by `owner` (see `spawn`), giving back its id. An error raised
+before the body's first wait comes back as an `Err`, and nothing is
+registered.
+-}
+startThread : ThreadOwner -> Value -> List Value -> State -> Result Error ( Value, State )
+startThread owner callee args state =
+    spawn owner callee args state
+        |> Result.mapError RuntimeError
 
 
 {-| The once-per-frame scheduler step: advances every currently-suspended
@@ -578,16 +600,19 @@ tick dt state =
                         )
 
                     ReadyToResume ->
-                        case thread.resume stateAcc of
+                        -- The thread runs as its own owner, so a thread it
+                        -- starts is its owner's too.
+                        case thread.resume { stateAcc | currentOwner = thread.owner } of
                             Ok ( Done _, state1 ) ->
-                                ( { state1 | threads = Dict.remove threadId state1.threads }, errorsAcc )
+                                ( { state1 | threads = Dict.remove threadId state1.threads, currentOwner = stateAcc.currentOwner }, errorsAcc )
 
                             Ok ( Suspended waitCondition resume, state1 ) ->
                                 ( { state1
                                     | threads =
                                         Dict.insert threadId
-                                            (Thread { waitCondition = waitCondition, elapsed = 0, resume = resume, isGlobal = thread.isGlobal })
+                                            (Thread { waitCondition = waitCondition, elapsed = 0, resume = resume, owner = thread.owner })
                                             state1.threads
+                                    , currentOwner = stateAcc.currentOwner
                                   }
                                 , errorsAcc
                                 )
@@ -609,19 +634,33 @@ threadCount state =
     Dict.size state.threads
 
 
-{-| Stops every thread started with `Thread.start`, and keeps those
-started with `Thread.start_global`. A host calls it when the scene
-changes, as TWP's `exitRoom` does ("stop all local threads"); a native
-can call it too, so threads its script starts afterwards are kept.
-
-The same rule as `Thread.stop`: only a *suspended* thread can be stopped.
-The thread that's running when this is called — the one whose native
-asked for it — isn't affected, since `tick` re-registers it at its next
-wait.
+{-| Stops every thread `owner` owns -- its descendants included, since
+they share its owner. The same rule as `Thread.stop`: only a *suspended*
+thread can be stopped. The thread that's running when this is called --
+the one whose native asked for it -- isn't affected, since `tick`
+re-registers it at its next wait.
 -}
-stopLocalThreads : State -> State
-stopLocalThreads state =
-    { state | threads = Dict.filter (\_ (Thread thread) -> thread.isGlobal) state.threads }
+stopThreads : ThreadOwner -> State -> State
+stopThreads owner state =
+    { state | threads = Dict.filter (\_ (Thread thread) -> thread.owner /= owner) state.threads }
+
+
+{-| Whether any thread `owner` owns is waiting for `tick`.
+-}
+hasThreads : ThreadOwner -> State -> Bool
+hasThreads owner state =
+    state.threads
+        |> Dict.values
+        |> List.any (\(Thread thread) -> thread.owner == owner)
+
+
+{-| Sets the owner of the code that runs outside any thread (what the
+host runs or calls), so the threads it starts belong to `owner`.
+-}
+setThreadOwner : ThreadOwner -> State -> State
+setThreadOwner owner state =
+    { state | currentOwner = owner }
+
 
 {-| Hands back every `Effect` queued in `state.pendingEffects` since the
 last `drainEffects` call, oldest first, and clears the queue. Two kinds
