@@ -84,13 +84,27 @@ String.slice("abc", 2, 1)           # "" (start at or past end)
 
 ## String.split(string, separator)
 
-A new array of the pieces of `string` between each occurrence of `separator`, in order. Separators next to each other, or at either end, give empty pieces, so joining the pieces with `separator` always gives `string` back. An empty `separator` splits `string` into single characters.
+A new array of the pieces of `string` between each occurrence of `separator`, in order. Separators next to each other, or at either end, give empty pieces, so joining the pieces with `separator` always gives `string` back. An empty `separator` splits `string` into single characters. `String.join` does the opposite.
 
 ```
 String.split("thimbleweed_county,videogames", ",")   # ["thimbleweed_county", "videogames"]
 String.split("trash", ",")                           # ["trash"]
 String.split(",a,", ",")                             # ["", "a", ""]
 String.split("abc", "")                              # ["a", "b", "c"]
+```
+
+## String.join(array, separator)
+
+The strings in `array`, joined into one `String` with `separator` between each pair. Every element of `array` must be a `String`, or it's an error. To join other values, convert them first with `Array.map(array, String.from)`. An empty `array` gives `""`.
+
+Joining the result of `String.split` with the same separator always gives the original string back.
+
+```
+String.join(["red", "green", "blue"], ", ")         # "red, green, blue"
+String.join(["a", "b", "c"], "")                    # "abc"
+String.join([], ",")                                # ""
+String.join(Array.map([1, 2, 3], String.from), "-") # "1-2-3"
+String.join([1, 2, 3], "-")                         # error: 1 is not a String
 ```
 
 ## String.append(a, b)

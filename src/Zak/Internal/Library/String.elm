@@ -16,7 +16,8 @@ surface.
 `++`/`replace`/`reverse` already here. See `slice`'s own doc for the
 specific, deliberate divergences from typical slice APIs that came out of
 designing it. `split` followed, as the one function here that returns
-an `Array` (pieces of a comma-separated list).
+an `Array` (pieces of a comma-separated list), and `join` as its inverse,
+the one that takes an `Array` of strings.
 
 Every function in this namespace is pure, with no exception and no
 mutating twin for any of them — not a per-function naming choice, but because a
@@ -72,6 +73,7 @@ natives =
                 , ( "replace", NativeFunction stringReplace )
                 , ( "slice", NativeFunction stringSlice )
                 , ( "split", NativeFunction stringSplit )
+                , ( "join", NativeFunction stringJoin )
                 , ( "append", NativeFunction stringAppend )
                 , ( "format", NativeFunction stringFormat )
                 ]
@@ -396,6 +398,53 @@ stringSplit state args =
 
         _ ->
             Err (WrongArgCount { expected = 2, got = List.length args })
+
+
+{-| `String.join(array, separator)` — `array`'s strings, with `separator`
+between each pair: Elm's own `String.join`, but subject first like every
+other function here (Elm puts the separator first, for piping). The
+inverse of `String.split`: `join(split(s, sep), sep)` is always `s`.
+
+Every element must already be a `String`, the same strictness as `++`:
+a non-string element is a `TypeError` naming that element, not silently
+converted. A mixed array goes through `Array.map(array, String.from)`
+first, keeping the conversion explicit.
+-}
+stringJoin : State -> List Value -> Result RuntimeError ( Value, State )
+stringJoin state args =
+    case args of
+        [ VArray id, VString separator ] ->
+            arrayContents state id
+                |> Array.toList
+                |> collectStrings
+                |> Result.map (\strings -> ( VString (String.join separator strings), state ))
+
+        [ VArray _, other ] ->
+            Err (TypeError { expected = "String", got = other })
+
+        [ other, _ ] ->
+            Err (TypeError { expected = "Array", got = other })
+
+        _ ->
+            Err (WrongArgCount { expected = 2, got = List.length args })
+
+
+{-| The plain Elm strings inside `values`, or a `TypeError` for the first
+element that isn't a `VString`.
+-}
+collectStrings : List Value -> Result RuntimeError (List String)
+collectStrings values =
+    List.foldr
+        (\value acc ->
+            case value of
+                VString string ->
+                    Result.map ((::) string) acc
+
+                other ->
+                    Err (TypeError { expected = "String", got = other })
+        )
+        (Ok [])
+        values
 
 
 {-| `String.append(a, b)` — literally `a ++ b`: Zak's own `++` is already

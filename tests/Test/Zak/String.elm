@@ -27,7 +27,7 @@ runExpr =
 
 suite : Test
 suite =
-    describe "Zak.Internal.Library.String (from, length, is_empty, reverse, upper, lower, replace, slice, split, append)"
+    describe "Zak.Internal.Library.String (from, length, is_empty, reverse, upper, lower, replace, slice, split, join, append)"
         [ describe "from (accepts any value — the only possible error is arity)" <|
             [ test "a string comes back unquoted, unchanged" <|
                 \_ -> runExpr "String.from(\"hi\")" |> Expect.equal (Ok (VString "hi"))
@@ -266,6 +266,52 @@ suite =
             , test "wrong argument count" <|
                 \_ ->
                     runExpr "String.split(\"a,b\")"
+                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
+            ]
+        , describe "join (array, separator — the inverse of split; elements must already be strings)" <|
+            [ test "joins with the separator between each pair" <|
+                \_ -> runExpr "String.join([\"a\", \"b\", \"c\"], \", \")" |> Expect.equal (Ok (VString "a, b, c"))
+            , test "an empty array gives the empty string" <|
+                \_ -> runExpr "String.join([], \",\")" |> Expect.equal (Ok (VString ""))
+            , test "a single element comes back with no separator" <|
+                \_ -> runExpr "String.join([\"a\"], \",\")" |> Expect.equal (Ok (VString "a"))
+            , test "an empty separator concatenates" <|
+                \_ -> runExpr "String.join([\"a\", \"b\", \"c\"], \"\")" |> Expect.equal (Ok (VString "abc"))
+            , test "empty elements are kept" <|
+                \_ -> runExpr "String.join([\"\", \"a\", \"\"], \",\")" |> Expect.equal (Ok (VString ",a,"))
+            , test "undoes split, including empty pieces and an empty separator" <|
+                \_ ->
+                    Expect.all
+                        [ \_ -> runExpr "String.join(String.split(\",a,,b,\", \",\"), \",\")" |> Expect.equal (Ok (VString ",a,,b,"))
+                        , \_ -> runExpr "String.join(String.split(\"a::b\", \"::\"), \"::\")" |> Expect.equal (Ok (VString "a::b"))
+                        , \_ -> runExpr "String.join(String.split(\"abc\", \"\"), \"\")" |> Expect.equal (Ok (VString "abc"))
+                        ]
+                        ()
+            , test "does not mutate the array" <|
+                \_ ->
+                    run "let a = [\"x\", \"y\"]\nlet _ = String.join(a, \",\")\nreturn Array.length(a)"
+                        |> Expect.equal (Ok (VNumber 2))
+            , test "a non-string element is an error naming that element, not converted" <|
+                \_ ->
+                    runExpr "String.join([\"a\", 1, \"b\"], \",\")"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
+            , test "with several non-string elements, the error names the first" <|
+                \_ ->
+                    runExpr "String.join([\"a\", 1, true], \",\")"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
+            , test "a mixed array joins after an explicit Array.map with String.from" <|
+                \_ -> run "return String.join(Array.map([1, true, \"x\"], String.from), \"-\")" |> Expect.equal (Ok (VString "1-true-x"))
+            , test "wrong first argument type" <|
+                \_ ->
+                    runExpr "String.join(\"abc\", \",\")"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VString "abc" })))
+            , test "wrong second argument type" <|
+                \_ ->
+                    runExpr "String.join([\"a\"], 1)"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
+            , test "wrong argument count" <|
+                \_ ->
+                    runExpr "String.join([\"a\"])"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
             ]
         , describe "append (a callable spelling of ++, mainly useful as a first-class function value)" <|
