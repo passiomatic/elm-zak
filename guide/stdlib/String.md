@@ -82,6 +82,17 @@ String.slice("abc", 0, 999)         # "abc" (end past the string's length clamps
 String.slice("abc", 2, 1)           # "" (start at or past end)
 ```
 
+## String.split(string, separator)
+
+A new array of the pieces of `string` between each occurrence of `separator`, in order. Separators next to each other, or at either end, give empty pieces, so joining the pieces with `separator` always gives `string` back. An empty `separator` splits `string` into single characters.
+
+```
+String.split("thimbleweed_county,videogames", ",")   # ["thimbleweed_county", "videogames"]
+String.split("trash", ",")                           # ["trash"]
+String.split(",a,", ",")                             # ["", "a", ""]
+String.split("abc", "")                              # ["a", "b", "c"]
+```
+
 ## String.append(a, b)
 
 `a`, with `b` appended — a callable spelling of `a ++ b`, useful when concatenation needs to be passed around as a function value (e.g. to `Array.foldr`).

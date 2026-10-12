@@ -15,7 +15,8 @@ surface.
 `"img_logo"` needs a real substring primitive, not just the whole-string
 `++`/`replace`/`reverse` already here. See `slice`'s own doc for the
 specific, deliberate divergences from typical slice APIs that came out of
-designing it.
+designing it. `split` followed, as the one function here that returns
+an `Array` (pieces of a comma-separated list).
 
 Every function in this namespace is pure, with no exception and no
 mutating twin for any of them — not a per-function naming choice, but because a
@@ -54,7 +55,7 @@ with `Zak.Internal.Library.Math`/`Zak.Internal.Library.Debug`/`Zak.Internal.Libr
 import Array
 import Dict exposing (Dict)
 import Hex
-import Zak.Internal.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..), arrayContents)
+import Zak.Internal.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..), allocArrayCell, arrayContents)
 
 
 natives : Dict String NativeValue
@@ -70,6 +71,7 @@ natives =
                 , ( "lower", NativeFunction stringLower )
                 , ( "replace", NativeFunction stringReplace )
                 , ( "slice", NativeFunction stringSlice )
+                , ( "split", NativeFunction stringSplit )
                 , ( "append", NativeFunction stringAppend )
                 , ( "format", NativeFunction stringFormat )
                 ]
@@ -359,6 +361,41 @@ nonNegativeIndex indexFloat =
 
         else
             Err (NotAnInteger { index = indexFloat })
+
+
+{-| `String.split(string, separator)` — a new array of the pieces of
+`string` between each occurrence of `separator`, in order: Elm's own
+`String.split`, subject first like every other function here. Two
+cases worth knowing, both inherited rather than special-cased:
+
+  - **Adjacent or edge separators give empty pieces.**
+    `String.split(",a,", ",")` is `["", "a", ""]`, so joining the pieces
+    back with the same separator always gives `string` again.
+  - **An empty `separator` splits into single characters**, the same
+    "mirror Elm verbatim, don't guard" call `String.replace` makes for an
+    empty needle.
+
+The one string function that returns an `Array`, so the one that
+allocates: a fresh array cell, never shared with anything else.
+-}
+stringSplit : State -> List Value -> Result RuntimeError ( Value, State )
+stringSplit state args =
+    case args of
+        [ VString string, VString separator ] ->
+            let
+                ( id, state1 ) =
+                    allocArrayCell state (Array.fromList (List.map VString (String.split separator string)))
+            in
+            Ok ( VArray id, state1 )
+
+        [ VString _, other ] ->
+            Err (TypeError { expected = "String", got = other })
+
+        [ other, _ ] ->
+            Err (TypeError { expected = "String", got = other })
+
+        _ ->
+            Err (WrongArgCount { expected = 2, got = List.length args })
 
 
 {-| `String.append(a, b)` — literally `a ++ b`: Zak's own `++` is already

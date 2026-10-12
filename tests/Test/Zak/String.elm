@@ -27,7 +27,7 @@ runExpr =
 
 suite : Test
 suite =
-    describe "Zak.Internal.Library.String (from, length, is_empty, reverse, upper, lower, replace, slice, append)"
+    describe "Zak.Internal.Library.String (from, length, is_empty, reverse, upper, lower, replace, slice, split, append)"
         [ describe "from (accepts any value — the only possible error is arity)" <|
             [ test "a string comes back unquoted, unchanged" <|
                 \_ -> runExpr "String.from(\"hi\")" |> Expect.equal (Ok (VString "hi"))
@@ -234,6 +234,39 @@ suite =
                 \_ ->
                     runExpr "String.slice(\"abc\", 0, 1, 2)"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 3, got = 4 })))
+            ]
+        , describe "split (string, separator — a new array of the pieces, like Elm's String.split)" <|
+            let
+                -- The pieces, bracketed and joined: ["a", "b"] reads "[a][b]".
+                pieces source =
+                    run ("return Array.foldr(" ++ source ++ ", function(piece, acc): return \"[\" ++ piece ++ \"]\" ++ acc end, \"\")")
+            in
+            [ test "splits on every occurrence, in order" <|
+                \_ -> pieces "String.split(\"thimbleweed_county,videogames\", \",\")" |> Expect.equal (Ok (VString "[thimbleweed_county][videogames]"))
+            , test "no occurrence gives a single piece, the whole string" <|
+                \_ -> pieces "String.split(\"trash\", \",\")" |> Expect.equal (Ok (VString "[trash]"))
+            , test "a multi-character separator" <|
+                \_ -> pieces "String.split(\"a::b::c\", \"::\")" |> Expect.equal (Ok (VString "[a][b][c]"))
+            , test "adjacent and edge separators give empty pieces" <|
+                \_ -> pieces "String.split(\",a,,b,\", \",\")" |> Expect.equal (Ok (VString "[][a][][b][]"))
+            , test "an empty separator splits into single characters — mirrors Elm's String.split verbatim" <|
+                \_ -> pieces "String.split(\"abc\", \"\")" |> Expect.equal (Ok (VString "[a][b][c]"))
+            , test "returns a fresh array each call" <|
+                \_ ->
+                    run "let a = String.split(\"x,y\", \",\")\nlet b = String.split(\"x,y\", \",\")\nArray.push(a, \"z\")\nreturn Array.length(b)"
+                        |> Expect.equal (Ok (VNumber 2))
+            , test "wrong first argument type" <|
+                \_ ->
+                    runExpr "String.split(1, \",\")"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
+            , test "wrong second argument type" <|
+                \_ ->
+                    runExpr "String.split(\"a,b\", 1)"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
+            , test "wrong argument count" <|
+                \_ ->
+                    runExpr "String.split(\"a,b\")"
+                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
             ]
         , describe "append (a callable spelling of ++, mainly useful as a first-class function value)" <|
             [ test "concatenates two strings, same as ++" <|
