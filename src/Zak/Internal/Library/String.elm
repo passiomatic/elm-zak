@@ -54,7 +54,7 @@ with `Zak.Internal.Library.Math`/`Zak.Internal.Library.Debug`/`Zak.Internal.Libr
 import Array
 import Dict exposing (Dict)
 import Hex
-import Zak.Internal.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..))
+import Zak.Internal.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..), arrayContents)
 
 
 natives : Dict String NativeValue
@@ -437,7 +437,7 @@ stringFormat state args =
         [ VString format, VArray arrayId ] ->
             let
                 argValues =
-                    Array.toList (Dict.get arrayId state.arrayHeap |> Maybe.withDefault Array.empty)
+                    Array.toList (arrayContents state arrayId)
 
                 expectedCount =
                     countPlaceholders (String.toList format)

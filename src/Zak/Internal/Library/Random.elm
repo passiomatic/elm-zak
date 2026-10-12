@@ -1,6 +1,6 @@
 module Zak.Internal.Library.Random exposing (natives)
 
-{-| `Random.number`/`Random.pick`/`Random.odds` — the random functions,
+{-| `Random.number`/`Random.pick`/`Random.shuffle`/`Random.odds` — the random functions,
 under one `Random` namespace table, the same "family of
 related built-ins gets its own file/namespace" shape `Zak.Internal.Library.Math`/
 `Zak.Internal.Library.String`/`Zak.Internal.Library.Debug` already follow.
@@ -31,7 +31,7 @@ absent from `runExpr` (see that function's own doc for why).
 import Array exposing (Array)
 import Dict exposing (Dict)
 import Random
-import Zak.Internal.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..))
+import Zak.Internal.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..), allocArrayCell, arrayContents)
 
 
 natives : Dict String NativeValue
@@ -41,6 +41,7 @@ natives =
             (Dict.fromList
                 [ ( "number", NativeFunction number )
                 , ( "pick", NativeFunction pick )
+                , ( "shuffle", NativeFunction shuffle )
                 , ( "odds", NativeFunction odds )
                 ]
             )
@@ -84,7 +85,7 @@ pick : State -> List Value -> Result RuntimeError ( Value, State )
 pick state args =
     case args of
         [ VArray id ] ->
-            case Array.toList (Dict.get id state.arrayHeap |> Maybe.withDefault Array.empty) of
+            case Array.toList (arrayContents state id) of
                 [] ->
                     Err EmptyArray
 
@@ -100,6 +101,70 @@ pick state args =
 
         _ ->
             Err (WrongArgCount { expected = 1, got = List.length args })
+
+
+{-| `Random.shuffle(array)` — a new array with `array`'s elements in a
+random order, leaving `array` itself untouched. A shuffle derives from
+the whole array, so it follows the same "a whole-collection derivation
+doesn't mutate" rule as `Array.map`/`Array.filter` (see the `Array`
+reference). Living here rather than under `Array` keeps every native
+that advances `State.randomSeed` in one table, next to `Random.pick`.
+
+Unlike `pick`, an empty array is not an error: shuffling `[]` has a
+perfectly good answer, `[]`.
+
+`elm/random` has no shuffle of its own, so this is a plain Fisher–Yates
+(`shuffleFrom`), stepping `state.randomSeed` once per swap.
+-}
+shuffle : State -> List Value -> Result RuntimeError ( Value, State )
+shuffle state args =
+    case args of
+        [ VArray id ] ->
+            let
+                contents =
+                    arrayContents state id
+
+                ( shuffled, newSeed ) =
+                    shuffleFrom (Array.length contents - 1) contents state.randomSeed
+
+                ( newId, state1 ) =
+                    allocArrayCell { state | randomSeed = newSeed } shuffled
+            in
+            Ok ( VArray newId, state1 )
+
+        [ other ] ->
+            Err (TypeError { expected = "Array", got = other })
+
+        _ ->
+            Err (WrongArgCount { expected = 1, got = List.length args })
+
+
+{-| Fisher–Yates, from index `i` down to 1: swaps slot `i` with a random
+slot in `[0, i]`. Threads the seed through `Random.step` by hand rather
+than chaining `Random.andThen`, so it stays tail-recursive for any array
+length.
+-}
+shuffleFrom : Int -> Array a -> Random.Seed -> ( Array a, Random.Seed )
+shuffleFrom i array seed =
+    if i < 1 then
+        ( array, seed )
+
+    else
+        let
+            ( j, nextSeed ) =
+                Random.step (Random.int 0 i) seed
+        in
+        shuffleFrom (i - 1) (swap i j array) nextSeed
+
+
+swap : Int -> Int -> Array a -> Array a
+swap i j array =
+    case ( Array.get i array, Array.get j array ) of
+        ( Just a, Just b ) ->
+            array |> Array.set i b |> Array.set j a
+
+        _ ->
+            array
 
 
 {-| `Random.odds(p)` — `true` with probability `p`,

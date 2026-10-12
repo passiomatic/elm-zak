@@ -41,7 +41,7 @@ How other languages remove the first element, for reference:
 ## Suggested priority
 
 1. **Remove by value** (`arrayfindremove`), as `Array.remove`, together with `Array.remove_at` (see above). This is the only gap outside `Note.dinky`, and the inventory needs it.
-2. **Shuffle** (`arrayshuffle`). It could go in `Random` next to `pick`, since `Random` already holds the randomness.
+2. ✅ **Shuffle** (`arrayshuffle`) — DONE as `Random.shuffle(array)`, next to `Random.pick`. It returns a new array rather than shuffling in place, following the rule that a whole-array derivation doesn't mutate. Dinky's `arrayshuffle(clone(x))` becomes `Random.shuffle(x)`, and the in-place `arrayshuffle(x)` becomes `x = Random.shuffle(x)`.
 3. **`Array.slice`**. It covers `arrayresize` (keep the first 5 items) and would match the existing `String.slice`.
 4. **Sort** (`arrayrsort`). It's only used in debug menus, so it can wait.
 5. **Last** (`arraylast`). Skip it: `a[Array.length(a) - 1]` already does the job.

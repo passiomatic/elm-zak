@@ -14,7 +14,8 @@ are deterministic and reproducible, but no individual draw's exact value
 is asserted here (that would pin down `elm/random`'s own internal
 algorithm, not this module's behavior) — only invariants a caller
 actually depends on: staying in range, only ever returning a real array
-element, and the two probability-1/probability-0 edges of `odds`.
+element, `shuffle` keeping exactly the same elements, and the two
+probability-1/probability-0 edges of `odds`.
 -}
 
 import Dict
@@ -89,6 +90,63 @@ suite =
                 \_ -> run "return Random.pick(1)" |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VNumber 1 })))
             , test "wrong argument count" <|
                 \_ -> run "return Random.pick([1], [2])" |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 2 })))
+            ]
+        , describe "Random.shuffle (returns a new array, like Array.map/Array.filter)" <|
+            [ test "holds exactly the same elements as the original" <|
+                \_ ->
+                    run """
+                        let original = Array.range(1, 20)
+                        let shuffled = Random.shuffle(original)
+                        let ok = Array.length(shuffled) == 20
+                        for n in original:
+                            if not (n in shuffled):
+                                ok = false
+                            end
+                        end
+                        return ok
+                        """
+                        |> Expect.equal (Ok (VBool True))
+            , test "actually reorders: across many shuffles, at least one differs from the original order" <|
+                \_ ->
+                    run """
+                        let original = Array.range(1, 10)
+                        let reordered = false
+                        for i in Array.range(0, 20):
+                            let shuffled = Random.shuffle(original)
+                            for j in Array.range(0, 9):
+                                if shuffled[j] != original[j]:
+                                    reordered = true
+                                end
+                            end
+                        end
+                        return reordered
+                        """
+                        |> Expect.equal (Ok (VBool True))
+            , test "does not mutate the original" <|
+                \_ ->
+                    run """
+                        let a = [1, 2, 3, 4, 5]
+                        let _ = Random.shuffle(a)
+                        return a[0] == 1 and a[1] == 2 and a[2] == 3 and a[3] == 4 and a[4] == 5
+                        """
+                        |> Expect.equal (Ok (VBool True))
+            , test "the result is a separate array: editing it doesn't touch the original" <|
+                \_ ->
+                    run """
+                        let a = [1, 2, 3]
+                        let b = Random.shuffle(a)
+                        b[0] = 99
+                        return 99 in a
+                        """
+                        |> Expect.equal (Ok (VBool False))
+            , test "an empty array shuffles to an empty array, not an error" <|
+                \_ -> run "return Array.length(Random.shuffle([]))" |> Expect.equal (Ok (VNumber 0))
+            , test "a single-element array shuffles to itself" <|
+                \_ -> run "return Random.shuffle([42])[0]" |> Expect.equal (Ok (VNumber 42))
+            , test "wrong argument type" <|
+                \_ -> run "return Random.shuffle(1)" |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VNumber 1 })))
+            , test "wrong argument count" <|
+                \_ -> run "return Random.shuffle([1], [2])" |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 2 })))
             ]
         , describe "Random.odds" <|
             [ test "odds(0) is always false" <|

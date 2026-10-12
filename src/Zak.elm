@@ -347,7 +347,7 @@ newTable : List ( String, Value ) -> World -> ( Value, World )
 newTable entries (World state) =
     let
         ( id, state1 ) =
-            Interpreter.allocCell state
+            Runtime.allocCell state
 
         cell =
             entries

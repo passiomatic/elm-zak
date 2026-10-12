@@ -14,7 +14,6 @@ module Zak.Internal.Interpreter exposing
     , setThreadOwner
     , drainEffects
     , call
-    , allocCell
     )
 
 {-| Evaluates a `Zak.Internal.AST` tree produced by `Zak.Internal.Parser`, against the
@@ -70,6 +69,9 @@ import Zak.Internal.Runtime
         , ThreadOwner
         , Value(..)
         , WaitCondition(..)
+        , allocArrayCell
+        , allocCell
+        , arrayContents
         , mapOutcome
         , mapOutcomeResult
         , requireDone
@@ -1896,27 +1898,6 @@ valuesEqual a b =
 -- ENVIRONMENT / HEAP
 
 
-{-| Exposed (unlike most of this module's own internals) so an
-embedder's own natives can build an ad-hoc nested `VTable` from Elm data
--- e.g. constructing a `{x=,y=}` table to stamp onto some existing
-table. Every other `NativeFunction` that needs a fresh table cell
-(`NativeNamespace`'s own resolution, for one) already reaches this same function from inside this module; this just
-widens who else can.
--}
-allocCell : State -> ( Int, State )
-allocCell state =
-    ( state.nextId, { state | heap = Dict.insert state.nextId Dict.empty state.heap, nextId = state.nextId + 1 } )
-
-
-{-| Like `allocCell`, but for a new `VArray` cell in `arrayHeap` — takes
-its initial contents directly, since (unlike a frame or a fresh table)
-an array is never allocated empty-then-filled-in.
--}
-allocArrayCell : State -> Array Value -> ( Int, State )
-allocArrayCell state contents =
-    ( state.nextId, { state | arrayHeap = Dict.insert state.nextId contents state.arrayHeap, nextId = state.nextId + 1 } )
-
-
 lookupVar : Env -> State -> String -> Maybe Value
 lookupVar (Env frameId parent) state name =
     case Dict.get frameId state.heap |> Maybe.andThen (Dict.get name) of
@@ -2053,18 +2034,6 @@ warnIfShadowsConst env name state =
 -- getArrayIndex/setArrayIndex (shared with [index]/[index] = value); the
 -- rest have no dedicated syntax of their own, so they're only ever reached
 -- this way.
-
-
-{-| Looks up a `VArray`'s actual contents in `state.arrayHeap`. The
-`Nothing` case (an id with no entry) can't happen for any `VArray` the
-interpreter itself ever produces — ids only ever come from
-`allocArrayCell` — so it's treated as an empty array rather than threading
-a new error case through every caller for something that would be an
-interpreter bug, not a runtime condition a script could trigger.
--}
-arrayContents : State -> Int -> Array Value
-arrayContents state id =
-    Dict.get id state.arrayHeap |> Maybe.withDefault Array.empty
 
 
 arrayLength : State -> List Value -> Result RuntimeError ( Value, State )

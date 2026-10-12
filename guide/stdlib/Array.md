@@ -6,6 +6,8 @@ Every function below follows one rule for whether it mutates: a function that ed
 
 A function that derives a whole new array from the existing one (`map`, `filter`, `foldl`, `foldr`) never mutates — it always returns a new value instead.
 
+To pick a random element or shuffle an array, see [`Random.pick` and `Random.shuffle`](Random.md).
+
 `get`/`set` are bounds-checked: `index` must be `0 <= index < length(array)`. `index` must also be a whole number.
 
 ## Array.length(array)

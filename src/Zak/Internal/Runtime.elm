@@ -14,6 +14,9 @@ module Zak.Internal.Runtime exposing
     , Thread(..)
     , LogLevel(..)
     , Effect(..)
+    , allocArrayCell
+    , allocCell
+    , arrayContents
     , bindGlobal
     , dropPosition
     , mapOutcome
@@ -463,6 +466,38 @@ type alias State =
     -}
     , includedFiles : Set String
     }
+
+
+{-| Allocates a new, empty table cell (also used for environment frames)
+in `heap`, returning its id. The heap-cell operations (`allocCell`,
+`allocArrayCell`, `arrayContents`, `bindGlobal`) live here, next to the
+`State`/`Heap`/`ArrayHeap` types they work on, so the interpreter, the
+library natives, and `Zak` itself all share one implementation.
+-}
+allocCell : State -> ( Int, State )
+allocCell state =
+    ( state.nextId, { state | heap = Dict.insert state.nextId Dict.empty state.heap, nextId = state.nextId + 1 } )
+
+
+{-| Like `allocCell`, but for a new `VArray` cell in `arrayHeap` — takes
+its initial contents directly, since (unlike a frame or a fresh table)
+an array is never allocated empty-then-filled-in.
+-}
+allocArrayCell : State -> Array Value -> ( Int, State )
+allocArrayCell state contents =
+    ( state.nextId, { state | arrayHeap = Dict.insert state.nextId contents state.arrayHeap, nextId = state.nextId + 1 } )
+
+
+{-| Looks up a `VArray`'s actual contents in `state.arrayHeap`. The
+`Nothing` case (an id with no entry) can't happen for any `VArray` the
+interpreter itself ever produces — ids only ever come from
+`allocArrayCell` — so it's treated as an empty array rather than threading
+a new error case through every caller for something that would be an
+interpreter bug, not a runtime condition a script could trigger.
+-}
+arrayContents : State -> Int -> Array Value
+arrayContents state id =
+    Dict.get id state.arrayHeap |> Maybe.withDefault Array.empty
 
 
 {-| Binds `name -> value` directly into the shared world frame
