@@ -27,7 +27,7 @@ Currently `Array.pop` (from the end) is the only way to remove an element. The p
 
 `Array.pop_first` was considered and dropped. It only handles the front, and 4 calls in one spot don't justify a dedicated name. `Array.pop` stays as the shortcut for the most common case, the end.
 
-Still open for `Array.remove`: what happens when the value isn't there (returning a `Bool` the way C# does is the obvious choice), and whether it removes only the first match.
+`Array.remove` is now implemented, following C#'s `List.Remove`: it removes only the first match, in place, and returns `true` if it removed something or `false` if the value wasn't there (no error). Python's `list.remove` raises an error instead, while Squirrel, Lua and JavaScript have no remove-by-value at all.
 
 How other languages remove the first element, for reference:
 
@@ -40,7 +40,7 @@ How other languages remove the first element, for reference:
 
 ## Suggested priority
 
-1. **Remove by value** (`arrayfindremove`), as `Array.remove`, together with `Array.remove_at` (see above). This is the only gap outside `Note.dinky`, and the inventory needs it.
+1. ✅ **Remove by value** (`arrayfindremove`) — DONE as `Array.remove` (see above). `Array.remove_at` is still to do. In elm-adventure, the `_without` stand-in (`Note.zak`) and the `Array.filter` in `remove_inventory` (`InventoryHelpers.zak`) can now use `Array.remove`.
 2. ✅ **Shuffle** (`arrayshuffle`) — DONE as `Random.shuffle(array)`, next to `Random.pick`. It returns a new array rather than shuffling in place, following the rule that a whole-array derivation doesn't mutate. Dinky's `arrayshuffle(clone(x))` becomes `Random.shuffle(x)`, and the in-place `arrayshuffle(x)` becomes `x = Random.shuffle(x)`.
 3. **`Array.slice`**. It covers `arrayresize` (keep the first 5 items) and would match the existing `String.slice`.
 4. **Sort** (`arrayrsort`). It's only used in debug menus, so it can wait.

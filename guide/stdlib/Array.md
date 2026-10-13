@@ -2,7 +2,7 @@
 
 Ordered, mutable collections that can grow and shrink. An array is a reference, not a plain value — passing one to a function, or storing one in a `let`, never copies it.
 
-Every function below follows one rule for whether it mutates: a function that edits one specific part of the array (a slot, an appended value, the last element) mutates it directly, so every other reference to the same array sees the change. 
+Every function below follows one rule for whether it mutates: a function that edits one specific part of the array (a slot, an appended value, the last element, a removed element) mutates it directly, so every other reference to the same array sees the change. 
 
 A function that derives a whole new array from the existing one (`map`, `filter`, `foldl`, `foldr`) never mutates — it always returns a new value instead.
 
@@ -81,6 +81,16 @@ Removes and returns the last element of `array`. An empty `array` is an error, n
 ```
 let a = [1, 2, 3]
 Array.pop(a)   # 3; a is now [1, 2]
+```
+
+## Array.remove(array, value)
+
+Removes the first element of `array` equal to `value`, mutating `array`. Returns `true` if an element was removed, `false` if `value` wasn't in `array` — not an error. Elements are compared the same way as `==`, so a table or array only matches itself, not another one with the same contents. To remove every match, use `Array.filter`.
+
+```
+let inventory = ["lamp", "key", "lamp"]
+Array.remove(inventory, "lamp")   # true; inventory is now ["key", "lamp"]
+Array.remove(inventory, "map")    # false; inventory is unchanged
 ```
 
 ## Array.contains(array, value)

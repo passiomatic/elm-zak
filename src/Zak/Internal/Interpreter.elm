@@ -749,6 +749,7 @@ builtinNatives =
                     , ( "push", NativeFunction arrayPush )
                     , ( "append", NativeFunction arrayAppend )
                     , ( "pop", NativeFunction arrayPop )
+                    , ( "remove", NativeFunction arrayRemove )
                     , ( "contains", NativeFunction arrayContains )
                     , ( "clone", NativeFunction arrayClone )
                     , ( "each", NativeFunction arrayEach )
@@ -2220,6 +2221,54 @@ arrayPop state args =
 
         _ ->
             Err (WrongArgCount { expected = 1, got = List.length args })
+
+
+{-| `Array.remove(array, value)` — removes the first element equal to
+`value` (by the same rules as `==`/`in`/`Array.contains`), in place:
+like `Array.pop`, a targeted edit, so it mutates. Follows C#'s
+`List.Remove` rather than Python's `list.remove`: it returns `true` if
+something was removed and `false` if `value` wasn't there, instead of
+erroring. Unlike `pop`, which has to return an element and so has
+nothing to return on an empty array, `remove` always has an answer, and
+"remove it if it's there" is a normal thing for game code to want (an
+inventory item that's already gone). Only the first match goes; to drop
+every match, `Array.filter` already does that, as a new array.
+-}
+arrayRemove : State -> List Value -> Result RuntimeError ( Value, State )
+arrayRemove state args =
+    case args of
+        [ VArray id, value ] ->
+            let
+                contents =
+                    arrayContents state id
+            in
+            case firstIndexOf value contents of
+                Just index ->
+                    let
+                        remaining =
+                            Array.append
+                                (Array.slice 0 index contents)
+                                (Array.slice (index + 1) (Array.length contents) contents)
+                    in
+                    Ok ( VBool True, { state | arrayHeap = Dict.insert id remaining state.arrayHeap } )
+
+                Nothing ->
+                    Ok ( VBool False, state )
+
+        [ other, _ ] ->
+            Err (TypeError { expected = "Array", got = other })
+
+        _ ->
+            Err (WrongArgCount { expected = 2, got = List.length args })
+
+
+firstIndexOf : Value -> Array Value -> Maybe Int
+firstIndexOf value contents =
+    contents
+        |> Array.toIndexedList
+        |> List.filter (\( _, element ) -> valuesEqual value element)
+        |> List.head
+        |> Maybe.map Tuple.first
 
 
 arrayContains : State -> List Value -> Result RuntimeError ( Value, State )

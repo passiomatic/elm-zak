@@ -63,6 +63,7 @@ Arrays change size through functions, which change the array in place:
 | `Array.push(array, value)`  | adds `value` to the end                          |
 | `Array.append(array, other)`| adds every element of `other` to the end         |
 | `Array.pop(array)`          | removes the last element, and returns it         |
+| `Array.remove(array, value)`| removes the first element equal to `value`, and returns whether it found one |
 
 ```
 let stack = []

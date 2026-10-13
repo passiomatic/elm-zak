@@ -23,7 +23,7 @@ runExpr =
 
 suite : Test
 suite =
-    describe "Zak.Array (length, is_empty, get, get_default, set, push, append, contains, clone, each, map, indexed_map, filter, foldl, foldr)"
+    describe "Zak.Array (length, is_empty, get, get_default, set, push, append, pop, remove, contains, clone, each, map, indexed_map, filter, foldl, foldr)"
         [ describe "length" <|
             [ test "of an empty array" <|
                 \_ -> runExpr "Array.length([])" |> Expect.equal (Ok (VNumber 0))
@@ -274,6 +274,67 @@ suite =
                 \_ ->
                     runExpr "Array.pop(1, 2)"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 2 })))
+            ]
+        , describe "remove (mutating, in place — removes the first match; returns whether anything was removed, like C#'s List.Remove)" <|
+            [ test "returns true when the value was there" <|
+                \_ -> runExpr "Array.remove([1, 2, 3], 2)" |> Expect.equal (Ok (VBool True))
+            , test "removes the element, keeping the others in order" <|
+                \_ ->
+                    run
+                        """
+                        let a = ["a", "b", "c"]
+                        Array.remove(a, "b")
+                        return Array.length(a) == 2 and a[0] == "a" and a[1] == "c"
+                        """
+                        |> Expect.equal (Ok (VBool True))
+            , test "removes only the first match" <|
+                \_ ->
+                    run
+                        """
+                        let a = [1, 2, 1, 2]
+                        Array.remove(a, 2)
+                        return Array.length(a) == 3 and a[0] == 1 and a[1] == 1 and a[2] == 2
+                        """
+                        |> Expect.equal (Ok (VBool True))
+            , test "a missing value returns false and leaves the array unchanged, not an error" <|
+                \_ ->
+                    run
+                        """
+                        let a = [1, 2, 3]
+                        let removed = Array.remove(a, 9)
+                        return not removed and Array.length(a) == 3
+                        """
+                        |> Expect.equal (Ok (VBool True))
+            , test "an empty array returns false, not an error" <|
+                \_ -> runExpr "Array.remove([], 1)" |> Expect.equal (Ok (VBool False))
+            , test "mutates in place, visible through an alias" <|
+                \_ ->
+                    run
+                        """
+                        let a = [1, 2, 3]
+                        let b = a
+                        Array.remove(a, 1)
+                        return Array.length(b)
+                        """
+                        |> Expect.equal (Ok (VNumber 2))
+            , test "tables compare by reference, the same as ==" <|
+                \_ ->
+                    run
+                        """
+                        let lamp = { name = "lamp" }
+                        let items = [{ name = "lamp" }, lamp]
+                        Array.remove(items, lamp)
+                        return Array.length(items) == 1 and items[0] != lamp
+                        """
+                        |> Expect.equal (Ok (VBool True))
+            , test "wrong argument type" <|
+                \_ ->
+                    runExpr "Array.remove(1, 2)"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VNumber 1 })))
+            , test "wrong argument count" <|
+                \_ ->
+                    runExpr "Array.remove([1])"
+                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
             ]
         , describe "contains" <|
             [ test "true when the value is present" <|
