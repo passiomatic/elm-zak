@@ -4,7 +4,7 @@ Ordered, mutable collections that can grow and shrink. An array is a reference, 
 
 Every function below follows one rule for whether it mutates: a function that edits one specific part of the array (a slot, an appended value, the last element, a removed element) mutates it directly, so every other reference to the same array sees the change. 
 
-A function that derives a whole new array from the existing one (`map`, `filter`, `foldl`, `foldr`) never mutates — it always returns a new value instead.
+A function that derives a whole new array from the existing one (`map`, `filter`, `slice`, `foldl`, `foldr`) never mutates — it always returns a new value instead.
 
 To pick a random element or shuffle an array, see [`Random.pick` and `Random.shuffle`](Random.md).
 
@@ -117,6 +117,19 @@ let c = [inner]
 let d = Array.clone(c)
 Array.set(Array.get(d, 0), 0, 99)
 c   # [[99]] — the nested array was shared, not copied
+```
+
+## Array.slice(array, start, end=nil)
+
+A new array with the elements of `array` from `start` up to but not including `end` (0-based). `array` itself is unchanged. `end` is optional — omit it to slice through the end of the array. `start`/`end` must be non-negative whole numbers, or it's an error; a negative index does *not* count from the end. An `end` past the array's length just clamps to the length, and `start` at or past `end` gives `[]` — neither is an error.
+
+Like `Array.clone`, the copy is shallow: a nested array or table is shared with the original, not duplicated.
+
+```
+Array.slice([10, 20, 30, 40], 1, 3)   # [20, 30]
+Array.slice([10, 20, 30, 40], 2)      # [30, 40] (end omitted — through the end of the array)
+Array.slice([1, 2], 0, 5)             # [1, 2] (end past the array's length clamps)
+Array.slice([1, 2, 3], 2, 1)          # [] (start at or past end)
 ```
 
 ## Array.each(array, fn)

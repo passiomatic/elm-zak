@@ -56,7 +56,7 @@ with `Zak.Internal.Library.Math`/`Zak.Internal.Library.Debug`/`Zak.Internal.Libr
 import Array
 import Dict exposing (Dict)
 import Hex
-import Zak.Internal.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..), allocArrayCell, arrayContents)
+import Zak.Internal.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..), allocArrayCell, arrayContents, nonNegativeIndex)
 
 
 natives : Dict String NativeValue
@@ -309,14 +309,10 @@ stringSlice state args =
 
 
 {-| Validates `start`/`end` (each non-negative, whole numbers —
-`nonNegativeIndex`, below) before ever calling Elm's own `String.slice`,
-then resolves an omitted `end` to `string`'s own length and clamps both
-bounds into `[0, String.length string]`. Can't reuse
-`Zak.Internal.Interpreter`'s own private `wholeNumberIndex` (the equivalent check
-`Array.get`'s bounds-checking already does) — `Zak.Internal.Interpreter` is what
-imports `Zak.Internal.Library.String`'s `natives` in the first place, so importing it back
-here would be circular; a small local duplicate is cheaper than a
-shared-module refactor for one function.
+`Zak.Internal.Runtime.nonNegativeIndex`, shared with `Array.slice`) before
+ever calling Elm's own `String.slice`, then resolves an omitted `end` to
+`string`'s own length and clamps both bounds into
+`[0, String.length string]`.
 -}
 sliceChecked : State -> String -> Float -> Maybe Float -> Result RuntimeError ( Value, State )
 sliceChecked state string startFloat maybeEndFloat =
@@ -338,31 +334,6 @@ sliceChecked state string startFloat maybeEndFloat =
                 in
                 ( VString (String.slice (min start length) (min end length) string), state )
             )
-
-
-{-| A `Float` that's both non-negative and a whole number, as the `Int`
-`String.slice`'s own clamping needs — `NegativeIndex`/`NotAnInteger` on
-whichever check fails first, matching `Array.get`'s own bounds-checking
-order (type, then whole-number-ness, then range) except negativity is
-checked ahead of whole-number-ness here, since a fractional *and*
-negative index (`-2.5`) is unambiguously "negative" first, not two
-independent problems to report at once.
--}
-nonNegativeIndex : Float -> Result RuntimeError Int
-nonNegativeIndex indexFloat =
-    if indexFloat < 0 then
-        Err (NegativeIndex { index = indexFloat })
-
-    else
-        let
-            rounded =
-                round indexFloat
-        in
-        if toFloat rounded == indexFloat then
-            Ok rounded
-
-        else
-            Err (NotAnInteger { index = indexFloat })
 
 
 {-| `String.split(string, separator)` — a new array of the pieces of

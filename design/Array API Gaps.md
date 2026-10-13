@@ -42,6 +42,6 @@ How other languages remove the first element, for reference:
 
 1. ✅ **Remove by value** (`arrayfindremove`) — DONE as `Array.remove` (see above). `Array.remove_at` is still to do. In elm-adventure, the `_without` stand-in (`Note.zak`) and the `Array.filter` in `remove_inventory` (`InventoryHelpers.zak`) can now use `Array.remove`.
 2. ✅ **Shuffle** (`arrayshuffle`) — DONE as `Random.shuffle(array)`, next to `Random.pick`. It returns a new array rather than shuffling in place, following the rule that a whole-array derivation doesn't mutate. Dinky's `arrayshuffle(clone(x))` becomes `Random.shuffle(x)`, and the in-place `arrayshuffle(x)` becomes `x = Random.shuffle(x)`.
-3. **`Array.slice`**. It covers `arrayresize` (keep the first 5 items) and would match the existing `String.slice`.
+3. ✅ **`Array.slice`** — DONE as `Array.slice(array, start, end=nil)`, with the same rules as `String.slice`. It returns a new array, like every other language's `slice` (in-place versions always go by another name: `splice`, `RemoveRange`, `resize`). It covers `arrayresize`: elm-adventure's `_first_of(a, n)` stand-in (`Note.zak`) becomes `Array.slice(a, 0, n)`.
 4. **Sort** (`arrayrsort`). It's only used in debug menus, so it can wait.
 5. **Last** (`arraylast`). Skip it: `a[Array.length(a) - 1]` already does the job.

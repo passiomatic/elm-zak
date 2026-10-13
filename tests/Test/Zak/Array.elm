@@ -23,7 +23,7 @@ runExpr =
 
 suite : Test
 suite =
-    describe "Zak.Array (length, is_empty, get, get_default, set, push, append, pop, remove, contains, clone, each, map, indexed_map, filter, foldl, foldr)"
+    describe "Zak.Array (length, is_empty, get, get_default, set, push, append, pop, remove, contains, clone, slice, each, map, indexed_map, filter, foldl, foldr)"
         [ describe "length" <|
             [ test "of an empty array" <|
                 \_ -> runExpr "Array.length([])" |> Expect.equal (Ok (VNumber 0))
@@ -349,6 +349,98 @@ suite =
                 \_ ->
                     runExpr "Array.contains(1)"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
+            ]
+        , describe "slice (array, start, end=nil — a new array, same rules as String.slice)" <|
+            let
+                -- The elements, bracketed and joined: [1, 2] reads "[1][2]".
+                elements source =
+                    run ("return Array.foldr(" ++ source ++ ", function(x, acc): return \"[\" ++ String.from(x) ++ \"]\" ++ acc end, \"\")")
+            in
+            [ test "a plain 3-arg slice" <|
+                \_ -> elements "Array.slice([10, 20, 30, 40], 1, 3)" |> Expect.equal (Ok (VString "[20][30]"))
+            , test "omitting end slices through the end of the array" <|
+                \_ -> elements "Array.slice([10, 20, 30, 40], 2)" |> Expect.equal (Ok (VString "[30][40]"))
+            , test "the motivating case: the first n elements, or all of them if there are fewer" <|
+                \_ ->
+                    Expect.all
+                        [ \_ -> elements "Array.slice([1, 2, 3, 4, 5, 6], 0, 5)" |> Expect.equal (Ok (VString "[1][2][3][4][5]"))
+                        , \_ -> elements "Array.slice([1, 2], 0, 5)" |> Expect.equal (Ok (VString "[1][2]"))
+                        ]
+                        ()
+            , test "start >= end (after clamping) gives an empty array, no error" <|
+                \_ ->
+                    Expect.all
+                        [ \_ -> runExpr "Array.length(Array.slice([1, 2, 3], 2, 1))" |> Expect.equal (Ok (VNumber 0))
+                        , \_ -> runExpr "Array.length(Array.slice([1, 2, 3], 2, 2))" |> Expect.equal (Ok (VNumber 0))
+                        , \_ -> runExpr "Array.length(Array.slice([1, 2, 3], 999, 999))" |> Expect.equal (Ok (VNumber 0))
+                        , \_ -> runExpr "Array.length(Array.slice([], 0))" |> Expect.equal (Ok (VNumber 0))
+                        ]
+                        ()
+            , test "does not mutate the original" <|
+                \_ ->
+                    run
+                        """
+                        let a = [1, 2, 3, 4]
+                        let _ = Array.slice(a, 0, 2)
+                        return Array.length(a)
+                        """
+                        |> Expect.equal (Ok (VNumber 4))
+            , test "the result is a new array, even when it covers the whole original" <|
+                \_ ->
+                    run
+                        """
+                        let a = [1, 2, 3]
+                        let b = Array.slice(a, 0)
+                        Array.push(b, 4)
+                        return Array.length(a) == 3 and b != a
+                        """
+                        |> Expect.equal (Ok (VBool True))
+            , test "shallow: a nested array is shared with the original, like Array.clone" <|
+                \_ ->
+                    run
+                        """
+                        let inner = [1]
+                        let a = [inner, 2]
+                        let b = Array.slice(a, 0, 1)
+                        return b[0] == inner
+                        """
+                        |> Expect.equal (Ok (VBool True))
+            , test "a negative start is a NegativeIndex error, not a count-from-the-end" <|
+                \_ ->
+                    runExpr "Array.slice([1, 2, 3], -1, 2)"
+                        |> Expect.equal (Err (RuntimeError (NegativeIndex { index = -1 })))
+            , test "a negative end is a NegativeIndex error" <|
+                \_ ->
+                    runExpr "Array.slice([1, 2, 3], 0, -1)"
+                        |> Expect.equal (Err (RuntimeError (NegativeIndex { index = -1 })))
+            , test "a non-whole-number start is a NotAnInteger error" <|
+                \_ ->
+                    runExpr "Array.slice([1, 2, 3], 0.5, 2)"
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger { index = 0.5 })))
+            , test "a non-whole-number end is a NotAnInteger error" <|
+                \_ ->
+                    runExpr "Array.slice([1, 2, 3], 0, 2.5)"
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger { index = 2.5 })))
+            , test "wrong first argument type" <|
+                \_ ->
+                    runExpr "Array.slice(\"abc\", 0, 1)"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VString "abc" })))
+            , test "wrong second argument type (2-arg call)" <|
+                \_ ->
+                    runExpr "Array.slice([1], \"x\")"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Number", got = VString "x" })))
+            , test "wrong third argument type" <|
+                \_ ->
+                    runExpr "Array.slice([1], 0, \"x\")"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Number", got = VString "x" })))
+            , test "wrong argument count: one" <|
+                \_ ->
+                    runExpr "Array.slice([1])"
+                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
+            , test "wrong argument count: four" <|
+                \_ ->
+                    runExpr "Array.slice([1], 0, 1, 2)"
+                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 3, got = 4 })))
             ]
         , describe "clone (pure — a shallow copy: independent at the top level, but a nested array/table is still shared)" <|
             [ test "contents match right after cloning" <|

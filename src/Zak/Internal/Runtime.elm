@@ -21,7 +21,9 @@ module Zak.Internal.Runtime exposing
     , dropPosition
     , mapOutcome
     , mapOutcomeResult
+    , nonNegativeIndex
     , requireDone
+    , wholeNumberIndex
     )
 
 {-| The runtime representation `Zak.Internal.Interpreter`'s evaluator manipulates
@@ -498,6 +500,49 @@ interpreter bug, not a runtime condition a script could trigger.
 arrayContents : State -> Int -> Array Value
 arrayContents state id =
     Dict.get id state.arrayHeap |> Maybe.withDefault Array.empty
+
+
+{-| Converts a Zak `Number` to the `Int` an array index needs — but only if
+it already has no fractional part. Zak has no separate Integer type, so
+`2.0` and `2` are indistinguishable (both are just the `Float` value
+`2.0`) and pass through fine, but a genuinely fractional value like `2.5`
+is a `NotAnInteger` error rather than being silently rounded or truncated
+to a neighboring slot: a stray fractional value reaching an index is far
+more likely to be an arithmetic mistake (`/` where `//` was meant) than a
+deliberate choice.
+
+The index checks (`wholeNumberIndex`, `nonNegativeIndex`) live here, next
+to the `RuntimeError` cases they produce, so `[index]`, `Array.get`/`set`,
+`Array.slice`, and `String.slice` all share one definition of a valid
+index.
+-}
+wholeNumberIndex : Float -> Result RuntimeError Int
+wholeNumberIndex indexFloat =
+    let
+        rounded =
+            round indexFloat
+    in
+    if toFloat rounded == indexFloat then
+        Ok rounded
+
+    else
+        Err (NotAnInteger { index = indexFloat })
+
+
+{-| Like `wholeNumberIndex`, but also rejects a negative value with
+`NegativeIndex` — for the slice functions, which clamp an index past the
+end instead of bounds-checking it, so negativity is the one range check
+left. Negativity is checked first, since a fractional *and* negative
+index (`-2.5`) is unambiguously "negative" first, not two independent
+problems to report at once.
+-}
+nonNegativeIndex : Float -> Result RuntimeError Int
+nonNegativeIndex indexFloat =
+    if indexFloat < 0 then
+        Err (NegativeIndex { index = indexFloat })
+
+    else
+        wholeNumberIndex indexFloat
 
 
 {-| Binds `name -> value` directly into the shared world frame

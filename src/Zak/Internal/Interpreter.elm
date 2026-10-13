@@ -74,7 +74,9 @@ import Zak.Internal.Runtime
         , arrayContents
         , mapOutcome
         , mapOutcomeResult
+        , nonNegativeIndex
         , requireDone
+        , wholeNumberIndex
         )
 import Zak.Internal.Library.String as ZakString
 
@@ -752,6 +754,7 @@ builtinNatives =
                     , ( "remove", NativeFunction arrayRemove )
                     , ( "contains", NativeFunction arrayContains )
                     , ( "clone", NativeFunction arrayClone )
+                    , ( "slice", NativeFunction arraySlice )
                     , ( "each", NativeFunction arrayEach )
                     , ( "map", NativeFunction arrayMap )
                     , ( "indexed_map", NativeFunction arrayIndexedMap )
@@ -1239,28 +1242,6 @@ setPath env state target segments value =
             -- handled directly by execAssign without involving this
             -- function at all).
             Err (TypeError { expected = "Array or Table", got = target })
-
-
-{-| Converts a Zak `Number` to the `Int` an array index needs — but only if
-it already has no fractional part. Zak has no separate Integer type, so
-`2.0` and `2` are indistinguishable (both are just the `Float` value
-`2.0`) and pass through fine, but a genuinely fractional value like `2.5`
-is a `NotAnInteger` error rather than being silently rounded or truncated
-to a neighboring slot: a stray fractional value reaching an index is far
-more likely to be an arithmetic mistake (`/` where `//` was meant) than a
-deliberate choice.
--}
-wholeNumberIndex : Float -> Result RuntimeError Int
-wholeNumberIndex indexFloat =
-    let
-        rounded =
-            round indexFloat
-    in
-    if toFloat rounded == indexFloat then
-        Ok rounded
-
-    else
-        Err (NotAnInteger { index = indexFloat })
 
 
 {-| Shared by the `[index]` assignment-target step above, the `Index`
@@ -2291,6 +2272,88 @@ the same error, the literal same function," the same relationship
 arrayHasValue : State -> Int -> Value -> Bool
 arrayHasValue state id value =
     arrayContents state id |> Array.toList |> List.any (valuesEqual value)
+
+
+{-| `Array.slice(array, start, end)` — a new array with `array`'s elements
+from `start` up to but not including `end`, leaving `array` untouched:
+a derivation from the whole array, like `Array.map`/`Array.filter`, so it
+doesn't mutate. Every language that has a function named `slice`
+(Squirrel, JavaScript, Ruby) returns a copy too; the in-place versions
+always go by another name (`splice`, `RemoveRange`, `resize`).
+
+Same rules as `String.slice`, on purpose, so the one name means one
+thing: `end` is optional (through the end of the array), `start`/`end`
+must be non-negative whole numbers (`nonNegativeIndex` — no
+count-from-the-end), an `end` past the length clamps to the length, and
+`start >= end` gives `[]`. Shallow, like `Array.clone`: a nested
+array/table element is shared with the original, not copied.
+-}
+arraySlice : State -> List Value -> Result RuntimeError ( Value, State )
+arraySlice state args =
+    case args of
+        [ VArray id, VNumber startFloat, VNumber endFloat ] ->
+            arraySliceChecked state id startFloat (Just endFloat)
+
+        [ VArray id, VNumber startFloat ] ->
+            arraySliceChecked state id startFloat Nothing
+
+        [ VArray _, VNumber _, other ] ->
+            Err (TypeError { expected = "Number", got = other })
+
+        [ VArray _, other ] ->
+            Err (TypeError { expected = "Number", got = other })
+
+        [ VArray _, other, _ ] ->
+            Err (TypeError { expected = "Number", got = other })
+
+        [ other, _, _ ] ->
+            Err (TypeError { expected = "Array", got = other })
+
+        [ other, _ ] ->
+            Err (TypeError { expected = "Array", got = other })
+
+        [ _ ] ->
+            Err (WrongArgCount { expected = 2, got = 1 })
+
+        [] ->
+            Err (WrongArgCount { expected = 2, got = 0 })
+
+        _ ->
+            Err (WrongArgCount { expected = 3, got = List.length args })
+
+
+{-| Validates `start`/`end`, resolves an omitted `end` to the array's
+length, and clamps both into `[0, length]` before calling Elm's own
+`Array.slice` (whose negative-index wraparound the validation keeps out
+of reach) — the same steps as `String.slice`'s `sliceChecked`.
+-}
+arraySliceChecked : State -> Int -> Float -> Maybe Float -> Result RuntimeError ( Value, State )
+arraySliceChecked state id startFloat maybeEndFloat =
+    let
+        contents =
+            arrayContents state id
+
+        length =
+            Array.length contents
+    in
+    nonNegativeIndex startFloat
+        |> Result.andThen
+            (\startIndex ->
+                case maybeEndFloat of
+                    Nothing ->
+                        Ok ( startIndex, length )
+
+                    Just endFloat ->
+                        nonNegativeIndex endFloat |> Result.map (\endIndex -> ( startIndex, endIndex ))
+            )
+        |> Result.map
+            (\( startIndex, endIndex ) ->
+                let
+                    ( newId, state1 ) =
+                        allocArrayCell state (Array.slice (min startIndex length) (min endIndex length) contents)
+                in
+                ( VArray newId, state1 )
+            )
 
 
 {-| `Array.clone(array)` — a new array with the same elements as `array`.
