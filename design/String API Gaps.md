@@ -6,7 +6,7 @@ Uses in `TranslationHelpers.dinky` are left out: Zak has no translation system.
 
 Everything else Dinky does with strings already has a Zak counterpart: `sizeof` (on a string) → `String.length`, `format` → `String.format`, `is_string` → `type(x)`, `strslice` → `String.slice`, `strsplit` → `String.split`, `strreplace` → `String.replace`, and `strupper` → `String.upper`. Two small differences, both in debug code only: `strslice(filter, 0, -2)` (DebugHelpers.dinky:76) uses a negative end to drop the last character, which in Zak is `String.slice(s, 0, String.length(s) - 1)`; and the `dprintx` macro uses a field width (`%08x`), which Zak's `%x` doesn't support.
 
-The elm-adventure port has no string stand-ins yet, because the code that needs these gaps (verb registration from table keys, the ending credits, the debug menu) hasn't been ported.
+The elm-adventure port has no string stand-ins: `registerVerbs`' warnings, which check table keys for a `verb_` prefix, were ported once `String.starts_with`/`String.ends_with` existed, and the other code that needs these gaps (the ending credits, the debug menu) hasn't been ported yet.
 
 ## Gaps
 
