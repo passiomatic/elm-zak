@@ -27,7 +27,7 @@ runExpr =
 
 suite : Test
 suite =
-    describe "Zak.Internal.Library.String (from, length, is_empty, reverse, upper, lower, replace, slice, split, join, append)"
+    describe "Zak.Internal.Library.String (from, length, is_empty, starts_with, ends_with, reverse, upper, lower, replace, slice, split, join, append)"
         [ describe "from (accepts any value — the only possible error is arity)" <|
             [ test "a string comes back unquoted, unchanged" <|
                 \_ -> runExpr "String.from(\"hi\")" |> Expect.equal (Ok (VString "hi"))
@@ -88,6 +88,76 @@ suite =
                 \_ ->
                     runExpr "String.is_empty(\"a\", \"b\")"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 2 })))
+            ]
+        , describe "starts_with (string, prefix — case-sensitive, an empty prefix is always true)" <|
+            [ test "true when string starts with prefix" <|
+                \_ -> runExpr "String.starts_with(\"verb_open\", \"verb_\")" |> Expect.equal (Ok (VBool True))
+            , test "false when it doesn't" <|
+                \_ -> runExpr "String.starts_with(\"okverb_open\", \"verb_\")" |> Expect.equal (Ok (VBool False))
+            , test "the prefix at the end doesn't count" <|
+                \_ -> runExpr "String.starts_with(\"open_verb\", \"verb\")" |> Expect.equal (Ok (VBool False))
+            , test "an empty prefix is always true, even on an empty string" <|
+                \_ ->
+                    Expect.all
+                        [ \_ -> runExpr "String.starts_with(\"abc\", \"\")" |> Expect.equal (Ok (VBool True))
+                        , \_ -> runExpr "String.starts_with(\"\", \"\")" |> Expect.equal (Ok (VBool True))
+                        ]
+                        ()
+            , test "a prefix longer than the string is false, not an error" <|
+                \_ -> runExpr "String.starts_with(\"ab\", \"abc\")" |> Expect.equal (Ok (VBool False))
+            , test "an empty string doesn't start with a non-empty prefix" <|
+                \_ -> runExpr "String.starts_with(\"\", \"+\")" |> Expect.equal (Ok (VBool False))
+            , test "the whole string is its own prefix" <|
+                \_ -> runExpr "String.starts_with(\"abc\", \"abc\")" |> Expect.equal (Ok (VBool True))
+            , test "case-sensitive" <|
+                \_ -> runExpr "String.starts_with(\"Verb_open\", \"verb_\")" |> Expect.equal (Ok (VBool False))
+            , test "case-insensitive by lowering the string first" <|
+                \_ -> runExpr "String.starts_with(String.lower(\"Verb_open\"), \"verb_\")" |> Expect.equal (Ok (VBool True))
+            , test "wrong first argument type" <|
+                \_ ->
+                    runExpr "String.starts_with(1, \"a\")"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
+            , test "wrong second argument type" <|
+                \_ ->
+                    runExpr "String.starts_with(\"a\", 1)"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
+            , test "wrong argument count" <|
+                \_ ->
+                    runExpr "String.starts_with(\"a\")"
+                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
+            ]
+        , describe "ends_with (string, suffix — case-sensitive, an empty suffix is always true)" <|
+            [ test "true when string ends with suffix" <|
+                \_ -> runExpr "String.ends_with(\"verb_open_text\", \"_text\")" |> Expect.equal (Ok (VBool True))
+            , test "false when it doesn't" <|
+                \_ -> runExpr "String.ends_with(\"verb_open\", \"_text\")" |> Expect.equal (Ok (VBool False))
+            , test "the suffix at the start doesn't count" <|
+                \_ -> runExpr "String.ends_with(\"_text_open\", \"_text\")" |> Expect.equal (Ok (VBool False))
+            , test "an empty suffix is always true, even on an empty string" <|
+                \_ ->
+                    Expect.all
+                        [ \_ -> runExpr "String.ends_with(\"abc\", \"\")" |> Expect.equal (Ok (VBool True))
+                        , \_ -> runExpr "String.ends_with(\"\", \"\")" |> Expect.equal (Ok (VBool True))
+                        ]
+                        ()
+            , test "a suffix longer than the string is false, not an error" <|
+                \_ -> runExpr "String.ends_with(\"bc\", \"abc\")" |> Expect.equal (Ok (VBool False))
+            , test "the whole string is its own suffix" <|
+                \_ -> runExpr "String.ends_with(\"abc\", \"abc\")" |> Expect.equal (Ok (VBool True))
+            , test "case-sensitive" <|
+                \_ -> runExpr "String.ends_with(\"verb_open_TEXT\", \"_text\")" |> Expect.equal (Ok (VBool False))
+            , test "wrong first argument type" <|
+                \_ ->
+                    runExpr "String.ends_with(1, \"a\")"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
+            , test "wrong second argument type" <|
+                \_ ->
+                    runExpr "String.ends_with(\"a\", 1)"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
+            , test "wrong argument count" <|
+                \_ ->
+                    runExpr "String.ends_with(\"a\", \"b\", \"c\")"
+                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 3 })))
             ]
         , describe "reverse (pure — String has no identity to mutate, so there's no mutating form to choose between)" <|
             [ test "reverses a simple string" <|

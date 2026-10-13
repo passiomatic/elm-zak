@@ -67,6 +67,8 @@ natives =
                 [ ( "from", NativeFunction stringFrom )
                 , ( "length", NativeFunction stringLength )
                 , ( "is_empty", NativeFunction stringIsEmpty )
+                , ( "starts_with", NativeFunction (stringAffixCheck String.startsWith) )
+                , ( "ends_with", NativeFunction (stringAffixCheck String.endsWith) )
                 , ( "reverse", NativeFunction stringReverse )
                 , ( "upper", NativeFunction stringUpper )
                 , ( "lower", NativeFunction stringLower )
@@ -130,6 +132,32 @@ stringIsEmpty state args =
 
         _ ->
             Err (WrongArgCount { expected = 1, got = List.length args })
+
+
+{-| `String.starts_with(string, prefix)`/`String.ends_with(string, suffix)`
+— Elm's own `String.startsWith`/`String.endsWith`, passed in as `check`,
+with the arguments swapped into Zak's subject-first order (Elm puts the
+prefix first, for piping). Both inherit Elm's behavior unchanged, which
+is also every other language's: an empty prefix/suffix is always `true`,
+one longer than `string` is just `false`, and the comparison is
+case-sensitive (`String.lower` both sides for a case-insensitive check).
+No Python/JavaScript-style position argument: `String.slice` already
+covers checking from a position.
+-}
+stringAffixCheck : (String -> String -> Bool) -> State -> List Value -> Result RuntimeError ( Value, State )
+stringAffixCheck check state args =
+    case args of
+        [ VString string, VString affix ] ->
+            Ok ( VBool (check affix string), state )
+
+        [ VString _, other ] ->
+            Err (TypeError { expected = "String", got = other })
+
+        [ other, _ ] ->
+            Err (TypeError { expected = "String", got = other })
+
+        _ ->
+            Err (WrongArgCount { expected = 2, got = List.length args })
 
 
 {-| `String.reverse(string)` — Elm's own `String.reverse` directly:

@@ -36,6 +36,25 @@ String.is_empty("")   # true
 String.is_empty("hi")  # false
 ```
 
+## String.starts_with(string, prefix)
+
+True if `string` begins with `prefix`. The check is case-sensitive. An empty `prefix` is always true, and a `prefix` longer than `string` is just false.
+
+```
+String.starts_with("verb_open", "verb_")   # true
+String.starts_with("Verb_open", "verb_")   # false (case-sensitive)
+String.starts_with("", "+")                # false
+```
+
+## String.ends_with(string, suffix)
+
+True if `string` ends with `suffix`. The check is case-sensitive. An empty `suffix` is always true, and a `suffix` longer than `string` is just false.
+
+```
+String.ends_with("verb_open_text", "_text")   # true
+String.ends_with("verb_open", "_text")        # false
+```
+
 ## String.reverse(string)
 
 `string`, reversed.
