@@ -720,14 +720,15 @@ why.
 
 `Array` is a small set sourced from Elm's own `Array` module (not Elm's
 `List`) — `length`, `is_empty`, `get`, `get_default`, `set`, `push`,
-`append`, `pop`, `contains`, `clone`, `each`, `map`, `indexed_map`,
-`filter`, `foldl`, `foldr`.
-Every function that mutates (`set`, `push`, `append`) always mutates — no
-separate copy-returning sibling (see "Arrays" in the language reference
-for the full rule).
-`Array.remove`/`remove_value` was considered and deliberately deferred:
-it's unclear whether it should remove the first matching value or every
-matching value. `Table` covers what dot syntax structurally
+`append`, `pop`, `remove`, `contains`, `clone`, `slice`, `each`, `map`,
+`filter`, `foldl`, `foldr`, `range`.
+Every function that mutates (`set`, `push`, `append`, `pop`, `remove`)
+always mutates — no separate copy-returning sibling (see "Arrays" in the
+language reference for the full rule).
+There's deliberately no `indexed_map` (or `indexed_each`): the games
+never needed an element's index from a callback, and the one loop that
+needs indexes walks `Array.range(0, Array.length(array) - 1)` with
+`for`, which already gives it. `Table` covers what dot syntax structurally
 can't (a field name that's a runtime value rather than a literal
 identifier, `get`/`set`) plus a way to test/soften the hard error a
 missing field raises (`contains`/`get_default`) — kept in lockstep with
@@ -757,7 +758,6 @@ builtinNatives =
                     , ( "slice", NativeFunction arraySlice )
                     , ( "each", NativeFunction arrayEach )
                     , ( "map", NativeFunction arrayMap )
-                    , ( "indexed_map", NativeFunction arrayIndexedMap )
                     , ( "filter", NativeFunction arrayFilter )
                     , ( "foldl", NativeFunction arrayFoldl )
                     , ( "foldr", NativeFunction arrayFoldr )
@@ -2458,47 +2458,6 @@ mapValues state fn values =
                 |> Result.andThen
                     (\( mappedFirst, state1 ) ->
                         mapValues state1 fn rest
-                            |> Result.map (\( mappedRest, state2 ) -> ( mappedFirst :: mappedRest, state2 ))
-                    )
-
-
-{-| `Array.indexed_map(array, fn)` — like `Array.map`, but `fn` also
-receives each element's index (`fn(index, element)`), matching Elm's
-`indexedMap` signature order.
--}
-arrayIndexedMap : State -> List Value -> Result RuntimeError ( Value, State )
-arrayIndexedMap state args =
-    case args of
-        [ VArray id, fn ] ->
-            indexedMapValues state fn (Array.toIndexedList (arrayContents state id))
-                |> Result.map
-                    (\( mapped, state1 ) ->
-                        let
-                            ( newId, state2 ) =
-                                allocArrayCell state1 (Array.fromList mapped)
-                        in
-                        ( VArray newId, state2 )
-                    )
-
-        [ other, _ ] ->
-            Err (TypeError { expected = "Array", got = other })
-
-        _ ->
-            Err (WrongArgCount { expected = 2, got = List.length args })
-
-
-indexedMapValues : State -> Value -> List ( Int, Value ) -> Result RuntimeError ( List Value, State )
-indexedMapValues state fn indexedValues =
-    case indexedValues of
-        [] ->
-            Ok ( [], state )
-
-        ( index, value ) :: rest ->
-            callFunction state fn [ VNumber (toFloat index), value ]
-                |> Result.andThen (\( outcome, state1 ) -> requireDone outcome |> Result.map (\v -> ( v, state1 )))
-                |> Result.andThen
-                    (\( mappedFirst, state1 ) ->
-                        indexedMapValues state1 fn rest
                             |> Result.map (\( mappedRest, state2 ) -> ( mappedFirst :: mappedRest, state2 ))
                     )
 

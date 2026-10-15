@@ -152,14 +152,6 @@ A new array with `fn(element)` in place of every element. `array` itself is unch
 Array.map([1, 2, 3], function(x): return x * 2 end)   # [2, 4, 6]
 ```
 
-## Array.indexed_map(array, fn)
-
-Like `map`, but `fn` also receives each element's index: `fn(index, element)`.
-
-```
-Array.indexed_map([1, 2, 3], function(i, x): return i * x end)   # [0, 2, 6]
-```
-
 ## Array.filter(array, predicate)
 
 A new array holding only the elements where `predicate(element)` is `true`.

@@ -111,7 +111,6 @@ A few functions build a new array, or a single value, out of an existing one, le
 | Function                          | Result                                               |
 | --------------------------------- | ---------------------------------------------------- |
 | `Array.map(array, fn)`            | a new array with `fn(element)` for every element     |
-| `Array.indexed_map(array, fn)`    | the same, with `fn(index, element)`                  |
 | `Array.filter(array, predicate)`  | a new array with only the elements `predicate` accepts |
 | `Array.slice(array, start, end)`  | a new array with the elements from `start` up to `end` |
 | `Array.foldl(array, fn, initial)` | a single value, combining elements left to right     |

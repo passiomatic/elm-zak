@@ -23,7 +23,7 @@ runExpr =
 
 suite : Test
 suite =
-    describe "Zak.Array (length, is_empty, get, get_default, set, push, append, pop, remove, contains, clone, slice, each, map, indexed_map, filter, foldl, foldr)"
+    describe "Zak.Array (length, is_empty, get, get_default, set, push, append, pop, remove, contains, clone, slice, each, map, filter, foldl, foldr)"
         [ describe "length" <|
             [ test "of an empty array" <|
                 \_ -> runExpr "Array.length([])" |> Expect.equal (Ok (VNumber 0))
@@ -564,20 +564,6 @@ suite =
             , test "wrong argument count" <|
                 \_ ->
                     runExpr "Array.map(function(x): return x end)"
-                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
-            ]
-        , describe "indexed_map (pure, whole-collection derivation)" <|
-            [ test "fn receives (index, element)" <|
-                \_ ->
-                    runExpr "Array.get(Array.indexed_map([10, 20, 30], function(i, x): return i + x end), 2)"
-                        |> Expect.equal (Ok (VNumber 32))
-            , test "wrong argument type" <|
-                \_ ->
-                    runExpr "Array.indexed_map(1, function(i, x): return x end)"
-                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VNumber 1 })))
-            , test "wrong argument count" <|
-                \_ ->
-                    runExpr "Array.indexed_map(function(i, x): return x end)"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
             ]
         , describe "filter (pure, whole-collection derivation)" <|
