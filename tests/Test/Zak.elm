@@ -12,19 +12,22 @@ import Test exposing (Test, describe, test)
 import Zak exposing (Effect(..), Error, LogLevel(..), Problem(..), Value(..), World)
 
 
-{-| A world with `natives`, then `source` run into it. -}
+{-| A world with `natives`, then `source` run into it.
+-}
 runIn : List ( String, Zak.Native ) -> String -> Result Error ( Value, World )
 runIn natives source =
     Zak.run source (Zak.init natives)
 
 
-{-| The value `source` returns, in a world with `natives`. -}
+{-| The value `source` returns, in a world with `natives`.
+-}
 returns : List ( String, Zak.Native ) -> String -> Result Error Value
 returns natives source =
     runIn natives source |> Result.map Tuple.first
 
 
-{-| What went wrong, if anything. -}
+{-| What went wrong, if anything.
+-}
 problem : Result Error a -> Maybe Problem
 problem result =
     case result of
@@ -35,7 +38,8 @@ problem result =
             Nothing
 
 
-{-| A world with `files` to include, then `source` run into it. -}
+{-| A world with `files` to include, then `source` run into it.
+-}
 withFiles : List ( String, String ) -> String -> Result Error ( Value, World )
 withFiles files source =
     runIn [ ( "include", Zak.nativeInclude (\path -> Dict.get path (Dict.fromList files)) ) ] source
@@ -57,7 +61,8 @@ double =
         )
 
 
-{-| Queues `Effect "ping" [ the argument ]` and returns `nil`. -}
+{-| Queues `Effect "ping" [ the argument ]` and returns `nil`.
+-}
 ping : Zak.Native
 ping =
     Zak.nativeFunction (\args world -> Ok ( Nil, Zak.emitEffect "ping" args world ))

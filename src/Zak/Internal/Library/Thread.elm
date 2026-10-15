@@ -1,7 +1,7 @@
 module Zak.Internal.Library.Thread exposing (natives)
 
 {-| `wait_for`/`join` — the two primitives that actually suspend the
-*calling* thread — plus `stop`, kept in their own module since, unlike `start`, none needs
+_calling_ thread — plus `stop`, kept in their own module since, unlike `start`, none needs
 to call back into `Zak.Internal.Interpreter` (no `callFunction`/`execBlock`
 involved) — they just construct a `Suspended` value directly and hand it
 back, so they're free of the circular-import constraint that keeps
@@ -30,6 +30,7 @@ Exposes `natives`, merged by `Zak.Internal.Interpreter` alongside its own
 `Zak.Internal.Interpreter`'s own `threadNatives` doc for why that wrapping has
 to happen there, one level up from `natives` here, rather than in this
 module.
+
 -}
 
 import Dict exposing (Dict)
@@ -82,6 +83,7 @@ checking (exactly one required parameter) and a non-callable `predicate`
 (`NotAFunction`) both come free from ordinary Zak function-call handling
 — no hand-written `WrongArgCount`/type-check branch needed the way
 `waitFor`/`join` below (real `NativeFunction`s) require.
+
 -}
 waitWhileSource : String
 waitWhileSource =
@@ -120,7 +122,7 @@ conditions are left to the embedder (see `wait_while`) rather than
 folded in here.
 
 `thread_id` must already be a whole number — the same `NotAnInteger`-style
-strictness `Array`'s own index arguments already have — but an *unknown*
+strictness `Array`'s own index arguments already have — but an _unknown_
 id (already finished, or never valid) isn't an error: it means "that
 thread isn't running," so this resolves immediately (`Suspended` with a
 wait condition that's already satisfied on the very next tick, rather
@@ -132,6 +134,7 @@ resolving this wait condition can lag the joined thread's own actual
 completion by one extra `tick` depending on thread-id ordering — see
 `Zak.Internal.Interpreter.tick`'s own doc for the full mechanism and why it's left
 as is.
+
 -}
 join : State -> List Value -> Result RuntimeError ( Outcome Value, State )
 join state args =
@@ -165,7 +168,7 @@ The same `thread_id` checks as `join`, and the same softening: an unknown
 id (already finished, already stopped, or never valid) is a no-op, not an
 error.
 
-**Only a *suspended* thread can be stopped.** A thread that's currently
+**Only a _suspended_ thread can be stopped.** A thread that's currently
 running — the caller itself, or a thread further up the call chain, like
 the one whose body just called `Thread.start` — isn't affected: to end
 itself, a thread returns from its own closure. There's no special case
@@ -174,6 +177,7 @@ synchronous run inside `Thread.start` it isn't in `state.threads` yet, so
 there's nothing to remove; while `Zak.Internal.Interpreter.tick` is resuming it,
 the removal is overwritten when `tick` re-registers the thread at its next
 suspend (or removes it anyway once it's done).
+
 -}
 stop : State -> List Value -> Result RuntimeError ( Value, State )
 stop state args =

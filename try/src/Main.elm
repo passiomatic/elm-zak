@@ -10,6 +10,7 @@ this module has a port (`logToConsole`, below), and Elm's own single-file
 HTML output mode has no slot for a JS-side `app.ports.*.subscribe(...)`
 call, so it needs a hand-authored HTML page plus an `elm-watch` target —
 see `index.html` itself for the JS side of this port.
+
 -}
 
 import Browser
@@ -29,10 +30,10 @@ the script actually logged them.
 call per entry.** The first version of this used `Cmd.batch (List.map
 logCmd entries)` — one `logToConsole` call per entry — and it looked
 right until it was actually run in a real browser: the five messages
-came back in *reverse* order every time, confirmed with Playwright's own
+came back in _reverse_ order every time, confirmed with Playwright's own
 `page.on('console', ...)`, not assumed. `Cmd.batch` doesn't promise
 same-order dispatch for independently-mapped port calls, and for a
-logging feature specifically, message order *is* the point — so this
+logging feature specifically, message order _is_ the point — so this
 sends one list in one call instead, and the JS side (`index.html`)
 iterates it in order itself, which is the only place an ordering
 guarantee can actually be made to hold.
@@ -40,9 +41,10 @@ guarantee can actually be made to hold.
 `level` is already the exact `console.*` method name to call
 (`"log"`/`"debug"`/`"info"`/`"warn"`/`"error"` — see `consoleMethod`),
 not a Zak-level name, so the JS side can stay a one-liner per entry:
-`console[entry.level](entry.message)`. This is genuinely the *only* way a
+`console[entry.level](entry.message)`. This is genuinely the _only_ way a
 `Log` ever becomes a real console call: a native can't produce a `Cmd`,
 so it can only queue the line in the world, for the host to take.
+
 -}
 port logToConsole : List { level : String, message : String } -> Cmd msg
 
@@ -78,7 +80,7 @@ type Msg
 
 
 {-| Takes every `Log` queued in `world` since the last call and
-hands them all to *one* `logToConsole` call, in order — `Cmd.none` if
+hands them all to _one_ `logToConsole` call, in order — `Cmd.none` if
 none were queued (an empty list would be a harmless no-op port call
 either way, but there's no reason to make one). Called from both
 `ClickedRun` and `Tick` below, since either one could have run a
@@ -483,6 +485,7 @@ Zak, and this tool lets you type anything. Two references are `==`
 exactly when they're the same table or array. Zak's own `String.from`
 sidesteps this by not recursing into `Array`/`Table` at all; this tool can
 afford to recurse, since it's for interactive exploration.
+
 -}
 renderValue : World -> List Value -> Value -> String
 renderValue world seen value =

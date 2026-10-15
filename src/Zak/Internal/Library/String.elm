@@ -4,7 +4,7 @@ module Zak.Internal.Library.String exposing (displayString, natives)
 (`String.from(value)`, `String.length(string)`, ...), following the exact
 same shape as `Zak.Internal.Library.Math`. `from` was this namespace's seed; `length`,
 `is_empty`, `reverse`, `replace`, and `append` were its first real
-*manipulation* functions — Zak's counterparts to Elm's own
+_manipulation_ functions — Zak's counterparts to Elm's own
 `String.length`/`isEmpty`/`reverse`/`replace`/`append` — added the moment
 a script actually needed them, per "a small, evidence-backed core,
 extended later" (the same philosophy `Zak.Array`'s own build-out already
@@ -23,7 +23,7 @@ Every function in this namespace is pure, with no exception and no
 mutating twin for any of them — not a per-function naming choice, but because a
 `VString` wraps a plain Elm `String` directly, with no heap id and so no
 identity to mutate in the first place (unlike `VArray`/`VTable`, which
-are heap cells precisely so they *can* be mutated in place and shared —
+are heap cells precisely so they _can_ be mutated in place and shared —
 see `Zak.Internal.Runtime`'s own `Value` doc). "A targeted edit mutates, a
 whole-collection derivation doesn't" (see "Arrays" in the language
 reference) is a real choice for `Array`/`Table`; for `String` there's no
@@ -41,7 +41,7 @@ channel at all — converting a `Value` to a `String` is pure, so it's
 implemented as a plain, permanent, hand-written formatter, safe under
 `elm make --optimize`.
 
-Deliberately *not* recursive for `Array`/`Table`: a Zak array or table
+Deliberately _not_ recursive for `Array`/`Table`: a Zak array or table
 can hold a reference to itself (`Array.push(a, a)`), so field-by-field
 printing risks looping forever on a cycle. Solving that safely is a real,
 separate problem — for now these get a fixed placeholder rather than
@@ -50,7 +50,8 @@ attempting to print their contents.
 Exposes `natives`, merged in automatically by `Zak.Internal.Interpreter` (along
 with `Zak.Internal.Library.Math`/`Zak.Internal.Library.Debug`/`Zak.Internal.Library.Globals`) for `run`/`initialWorld`/
 `runIncremental` — nothing needs to import or merge this by hand.
-`runExpr` is the one entry point that deliberately does *not* include it.
+`runExpr` is the one entry point that deliberately does _not_ include it.
+
 -}
 
 import Array
@@ -244,6 +245,7 @@ with a real, if unusual, meaning here. Stays in the same bucket as
 `Math.round`'s tie-breaking or `Array.range`'s `lo > hi` case: a real,
 deterministic Elm behavior, inherited and documented rather than
 guarded against.
+
 -}
 stringReplace : State -> List Value -> Result RuntimeError ( Value, State )
 stringReplace state args =
@@ -295,6 +297,7 @@ length, and `start >= end` (after clamping) yields `""`. Elm's own
 the time this function clamps both bounds into `[0, String.length
 string]`, Elm's own behavior for whatever's left to resolve is exactly
 what's wanted, not something to guard against.
+
 -}
 stringSlice : State -> List Value -> Result RuntimeError ( Value, State )
 stringSlice state args =
@@ -378,6 +381,7 @@ cases worth knowing, both inherited rather than special-cased:
 
 The one string function that returns an `Array`, so the one that
 allocates: a fresh array cell, never shared with anything else.
+
 -}
 stringSplit : State -> List Value -> Result RuntimeError ( Value, State )
 stringSplit state args =
@@ -408,6 +412,7 @@ Every element must already be a `String`, the same strictness as `++`:
 a non-string element is a `TypeError` naming that element, not silently
 converted. A mixed array goes through `Array.map(array, String.from)`
 first, keeping the conversion explicit.
+
 -}
 stringJoin : State -> List Value -> Result RuntimeError ( Value, State )
 stringJoin state args =
@@ -497,7 +502,7 @@ matching `Hex.toString`'s own behavior, not inventing a new rule.
 every other `NativeFunction` in the language (Zak's real default-argument
 mechanism, `function(a, b=1): ... end`, only applies to `function(...)`
 closures, not natives — though an embedder's own native may still opt
-into the same *calling convention*, via Elm-side arity handling rather
+into the same _calling convention_, via Elm-side arity handling rather
 than Zak-level defaults).
 
 Its own length must equal the number of `%s`/`%d`/`%f` placeholders in
@@ -515,6 +520,7 @@ already does exactly this); `%f` keeps the
 full value via the same `String.fromFloat`-based path `displayString`'s
 own `Number` case already uses (no fixed decimal-place count yet — that's
 what precision support would add, once it's ever needed).
+
 -}
 stringFormat : State -> List Value -> Result RuntimeError ( Value, State )
 stringFormat state args =

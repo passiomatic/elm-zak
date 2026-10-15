@@ -26,6 +26,7 @@ Exposes `natives`, a single `"Random"` namespace entry — folded into
 `Zak.Internal.Interpreter.stdlibNatives`, the same tier `Math`/`String`/`Debug`
 already sit in: unconditional in `run`/`initialWorld`/`runIncremental`,
 absent from `runExpr` (see that function's own doc for why).
+
 -}
 
 import Array exposing (Array)
@@ -115,6 +116,7 @@ perfectly good answer, `[]`.
 
 `elm/random` has no shuffle of its own, so this is a plain Fisher–Yates
 (`shuffleFrom`), stepping `state.randomSeed` once per swap.
+
 -}
 shuffle : State -> List Value -> Result RuntimeError ( Value, State )
 shuffle state args =

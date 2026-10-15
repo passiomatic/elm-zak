@@ -3,8 +3,8 @@ module Zak.Internal.Lexer exposing (blankSpace, identifier, keyword, newline, nu
 {-| Low-level lexeme parsers for Zak source text.
 
 Follows the "Tiny Interpreters" convention (<https://blog.tinyinterpreters.dev/posts/>):
-a *lexeme* parser recognizes one lexical unit and consumes its own trailing
-*horizontal* whitespace (spaces and tabs); leading whitespace is handled once,
+a _lexeme_ parser recognizes one lexical unit and consumes its own trailing
+_horizontal_ whitespace (spaces and tabs); leading whitespace is handled once,
 at the top of the grammar (not needed yet, since there is no top-level parser
 in this module).
 
@@ -12,6 +12,7 @@ Trailing whitespace deliberately does **not** include newlines: Zak's design
 uses a newline as the significant separator between two statements (see
 `newline` below), so lexemes must not silently swallow it the way they do
 plain spaces/tabs.
+
 -}
 
 import Parser as P exposing ((|.), (|=), Parser)
@@ -100,8 +101,21 @@ they're ordinary pre-bound values, not reserved words.
 reservedWords : Set String
 reservedWords =
     Set.fromList
-        [ "let", "const", "if", "else", "end", "while", "for", "in", "return"
-        , "and", "or", "not", "function", "break", "continue"
+        [ "let"
+        , "const"
+        , "if"
+        , "else"
+        , "end"
+        , "while"
+        , "for"
+        , "in"
+        , "return"
+        , "and"
+        , "or"
+        , "not"
+        , "function"
+        , "break"
+        , "continue"
         ]
 
 
@@ -117,20 +131,21 @@ given to it by the parser (`Zak.Internal.Parser.rejectThrowaway`) and the interp
 not here. Cannot be one of the `reservedWords`.
 
 Built by hand rather than with `P.variable` (unlike most of this module):
-`P.variable`'s reserved-word check runs on the chomped string *before* a
+`P.variable`'s reserved-word check runs on the chomped string _before_ a
 caller could append anything after it, so it would reject `"let?"` on the
 grounds that its first three characters spell the reserved word `let` —
 wrong, since `let?` as a whole isn't reserved. Chomping the optional
-trailing character first and checking the *complete* string against
+trailing character first and checking the _complete_ string against
 `reservedWords` afterward avoids that.
 
 Wrapped in `P.backtrackable`: without it, rejecting a reserved word (which
-only happens *after* chomping several characters) counts as "made progress"
+only happens _after_ chomping several characters) counts as "made progress"
 to `elm/parser`, so a surrounding `P.oneOf` — e.g. `statement`'s attempt to
 parse an expression-statement starting with the literal keyword `end` at the
 close of a block — would treat the rejection as a hard failure instead of
 trying its next alternative (the real `end` keyword). `P.variable` avoids
 this itself internally; doing the check by hand means doing this too.
+
 -}
 identifier : Parser String
 identifier =
@@ -165,7 +180,7 @@ latter (its own boundary check is fixed, not configurable), so it happily
 treats `"function"` as a complete match against `"function?(1)"`, leaving
 `"?(1)"` behind — the real bug this extra check exists to close (see
 `identifier` above, which already chomps an optional trailing `?` as
-part of *its* own definition, for the same reason). Wrapped in
+part of _its_ own definition, for the same reason). Wrapped in
 `P.backtrackable` for the same reason `identifier` is: chomping that
 trailing `?` before rejecting it still counts as "made progress" to
 `elm/parser`, and without backtracking a surrounding `P.oneOf` (e.g.
@@ -200,7 +215,7 @@ blank lines, indentation, or comments, all swallowed together via
 blank-line/comment whitespace has no separate meaning and can be consumed
 indiscriminately. Deliberately built on `blankSpace`, not our own `spaces`
 above: `spaces` stops dead at a newline (by design, since a bare lexeme must
-never swallow the significant separator itself), but a *second* newline
+never swallow the significant separator itself), but a _second_ newline
 found here is exactly the further blank-line whitespace this is meant to
 consume.
 -}
@@ -255,7 +270,7 @@ spaces =
         |. P.oneOf [ comment, P.succeed () ]
 
 
-{-| Every kind of insignificant "gap" *across* line boundaries — blank
+{-| Every kind of insignificant "gap" _across_ line boundaries — blank
 lines, indentation, and now full-line or trailing `#` comments — repeated
 until none of them match anymore. Unlike `spaces` above (horizontal only,
 stops dead at a newline), this is for the specific places a newline
@@ -274,7 +289,7 @@ blankSpace =
 blankSpaceHelp : () -> Parser (P.Step () ())
 blankSpaceHelp _ =
     P.succeed identity
-        |. P.chompWhile (\c -> c == ' ' || c == '\t' || c == '\n' || c == '\r')
+        |. P.chompWhile (\c -> c == ' ' || c == '\t' || c == '\n' || c == '\u{000D}')
         |= P.oneOf
             [ P.map (\_ -> P.Loop ()) comment
             , P.succeed (P.Done ())

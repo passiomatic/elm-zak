@@ -18,10 +18,11 @@ just `testValue` applied to `Block`).
 — every `parseExpr` call site below passes either `identity` (nothing to
 strip) or `normalizeExpr` (see its own doc below): `Block` gained a
 `Position` per statement, and these existing cases were written to test
-parsed *structure*, not to hand-verify an exact row/col for every single
+parsed _structure_, not to hand-verify an exact row/col for every single
 one of them — see the dedicated "captures real source positions" describe
 block further down for the small, hand-checked set that actually does
 that.
+
 -}
 testValue : (a -> a) -> (String -> Result e a) -> ( String, Maybe a ) -> Test
 testValue normalize run ( input, expected ) =
@@ -46,19 +47,19 @@ testValue normalize run ( input, expected ) =
                         )
 
 
-{-| `parseProgram`'s own test runner — deliberately *not* `testValue`
+{-| `parseProgram`'s own test runner — deliberately _not_ `testValue`
 applied to `Block`, because the actual and expected sides can't be the
 same type here the way they can for `testValue`: `Block` is `List
 PositionedStatement` now, but every existing test literal below (`Just [
 Let "x" (NumberLiteral 1) ]`, etc.) already writes the pre-position shape
 (`List Statement`) directly, and there's no way to make that literal
-*mean* `Block` without editing every single one of the ~80 cases that use
+_mean_ `Block` without editing every single one of the ~80 cases that use
 it. Instead, this keeps the expected side exactly as `List Statement` —
 so none of those literals change at all — and does the type-crossing in
 one place: `dummyBlock` lifts the expected `List Statement` up to `Block`
 (tagging everything with the same placeholder position), while
 `normalizeBlock` brings the actual, really-parsed `Block` back down to
-that same placeholder, so the two compare equal whenever the *structure*
+that same placeholder, so the two compare equal whenever the _structure_
 matches, regardless of the real positions the parser actually produced.
 -}
 testProgram : ( String, Maybe (List Statement) ) -> Test
@@ -86,7 +87,7 @@ testProgram ( input, expected ) =
 
 {-| Replaces every captured `Position` in a `Block` — including inside
 any nested `If`/`While`/`For`/`FunctionLiteral` body, arbitrarily deep —
-with a single fixed placeholder, so a test asserting *structure* doesn't
+with a single fixed placeholder, so a test asserting _structure_ doesn't
 also have to hand-compute the exact row/col `elm/parser` would produce
 for its own source string. `dummyPosition`'s actual value never matters,
 only that it's applied uniformly wherever a `Position` is needed for a
@@ -102,7 +103,7 @@ normalizeBlock block =
 {-| The inverse of `normalizeBlock`'s own tagging step — lifts a bare
 `List Statement` (the shape every existing test literal already writes)
 up into a `Block` by tagging each one with `dummyPosition`, the same
-placeholder `normalizeBlock` reduces a *real* parsed `Block` down to.
+placeholder `normalizeBlock` reduces a _real_ parsed `Block` down to.
 Shallow, deliberately: it only tags this list's own top-level elements,
 trusting that any `Statement` already in the list (built via `testIf`/
 `testWhile`/`testFor` below, if it's one of those) already has its own

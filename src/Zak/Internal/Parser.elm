@@ -1,11 +1,11 @@
 module Zak.Internal.Parser exposing
     ( Error
-    , parseProgram
-    , parseExpr
-    , program
     , block
-    , statement
     , expr
+    , parseExpr
+    , parseProgram
+    , program
+    , statement
     )
 
 {-| Turns Zak source text into a `Zak.Internal.AST` tree, following the "Tiny
@@ -73,6 +73,7 @@ always parses its own body with `True` regardless of its caller's value
 regardless of its caller's value (a function body is a separate unit of
 execution — `break`/`continue` don't cross into or out of one, the same
 way `return` doesn't leak into an enclosing loop's control flow either).
+
 -}
 block : Bool -> Parser Block
 block insideLoop =
@@ -108,7 +109,7 @@ blockHelp insideLoop revStatements =
 
 
 {-| A statement, paired with where it starts — captured via `position`
-*before* `statement` itself runs, so it's the position of the statement's
+_before_ `statement` itself runs, so it's the position of the statement's
 own first token, not wherever parsing happens to land afterward.
 -}
 positionedStatement : Bool -> Parser PositionedStatement
@@ -119,7 +120,7 @@ positionedStatement insideLoop =
 
 
 {-| `elm/parser` already tracks row/col live as it consumes input — the
-same state a `DeadEnd` reads from on a *syntax* error (`P.getRow`/
+same state a `DeadEnd` reads from on a _syntax_ error (`P.getRow`/
 `P.getCol`, confirmed against `elm/parser`'s own installed source, not
 assumed) — so this is a free read of state already being maintained, not
 new tracking machinery. `P.getPosition` returns the raw `(Int, Int)` pair
@@ -188,8 +189,8 @@ ifStmt insideLoop =
     the nested `if` itself starts — exactly the shape you'd get by
     hand-nesting `else: if cond: ... end end` yourself, just without
     needing to write the extra `end`/indentation. Recurses into another
-    `elseBranch` for *its own* `else`/`else if`, so any number of
-    `else if`s can chain — all sharing the *one* `end` the outermost
+    `elseBranch` for _its own_ `else`/`else if`, so any number of
+    `else if`s can chain — all sharing the _one_ `end` the outermost
     `ifStmt` consumes; none of the nested `If`s parse an `end` of their
     own.
   - `else:` — a plain final block.
@@ -200,6 +201,7 @@ this: `else if` is pure parser sugar over the `If Expr Block (Maybe
 Block)` shape that already exists — it was always able to represent a
 chain, once nested this way, the same way hand-writing nested `if`/`else`
 already could before this existed.
+
 -}
 elseBranch : Bool -> Parser (Maybe Block)
 elseBranch insideLoop =
@@ -247,6 +249,7 @@ precedent.
 Like `whileStmt`, its own body always parses with `insideLoop = True`
 regardless of the caller's value, since entering a `for` starts a new loop
 context of its own.
+
 -}
 forStmt : Parser Statement
 forStmt =
@@ -314,6 +317,7 @@ otherwise it's an expression statement.
 This never gets confused with `==`: `expr` already consumes `==` itself as
 part of a comparison (see `comparisonOp`), so a bare `=` left over afterward
 can only mean assignment.
+
 -}
 assignOrExprStmt : Parser Statement
 assignOrExprStmt =
@@ -341,11 +345,11 @@ toAssignStatement targetExpr rhs =
 
 
 {-| Walks a `.field`/`[index]` chain back to its base, same as before —
-the one change is what counts as a valid *base*. A `Name` is always valid
+the one change is what counts as a valid _base_. A `Name` is always valid
 (segments or not — that's the ordinary `x = 1`/`Taylor.health = 1` cases).
 Anything else (a `Call`, a parenthesized expression, ...) is valid only
 once there's at least one segment to actually write through — a call is
-allowed as an assignment's base, but there's still nothing to assign *to*
+allowed as an assignment's base, but there's still nothing to assign _to_
 for a bare `f() = 1` (see `AssignTarget`'s own doc in `Zak.Internal.AST` for the
 full rationale).
 -}
@@ -589,14 +593,15 @@ primaryExpr =
 stored under it, so reading it is a hard parse-time error. Assignment
 targets are parsed as expressions first (`assignOrExprStmt`), so this
 single check also rejects `_ = 1`, `_.x = 1` and `_[0] = 1`. A field
-*named* `_` (`t._`, `{ _ = 1 }`) is a field, not a binding, and is
+_named_ `_` (`t._`, `{ _ = 1 }`) is a field, not a binding, and is
 unaffected.
 
-Checked by peeking at the source *before* `L.identifier` chomps anything,
+Checked by peeking at the source _before_ `L.identifier` chomps anything,
 then failing with `P.commit`: `L.identifier` is `P.backtrackable`, so a
 problem raised after it counts as no progress, and an enclosing `P.oneOf`
 or statement loop would swallow it ("expected the end of the program").
 Peeking first also puts the error's position on the `_` itself.
+
 -}
 rejectThrowaway : Parser ()
 rejectThrowaway =
@@ -797,7 +802,7 @@ multi-line literal like
         talk_to = function(self): ... end
     })
 
-parses. This is deliberately *not* what `L.spaces` (plain horizontal
+parses. This is deliberately _not_ what `L.spaces` (plain horizontal
 whitespace, stops dead at a newline — see `Zak.Internal.Lexer`'s own doc) already
 gives every other lexeme for free: a newline is still the significant
 statement separator everywhere outside a `(`/`[`/`{` — only inside one,
@@ -805,6 +810,7 @@ where there's no such ambiguity (we're unambiguously still mid-expression
 until the matching close), is a bare newline just more insignificant
 whitespace, the same way it already is at a block's own leading/trailing
 edge (`block` above).
+
 -}
 commaSeparated : Parser a -> Parser (List a)
 commaSeparated item =
@@ -820,7 +826,7 @@ commaSeparated item =
 {-| No `P.backtrackable` needed on the comma branch below, unlike when a
 trailing comma was still allowed: once a `,` is actually consumed, another
 `item` is now unconditionally required to follow it, so there's nothing
-left for `P.oneOf` to backtrack *to* — a comma with nothing meaningful
+left for `P.oneOf` to backtrack _to_ — a comma with nothing meaningful
 after it (`[1, 2,]`) is a genuine, uncaught syntax error now, exactly the
 same as a missing item anywhere else.
 -}

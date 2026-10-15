@@ -16,6 +16,7 @@ algorithm, not this module's behavior) — only invariants a caller
 actually depends on: staying in range, only ever returning a real array
 element, `shuffle` keeping exactly the same elements, and the two
 probability-1/probability-0 edges of `odds`.
+
 -}
 
 import Dict

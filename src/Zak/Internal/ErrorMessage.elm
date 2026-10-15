@@ -137,13 +137,13 @@ describeRuntimeError runtimeError =
             describeRuntimeError innerError
 
 
-{-| A value mentioned *inside* a `RuntimeError` (`NotATable`'s/
+{-| A value mentioned _inside_ a `RuntimeError` (`NotATable`'s/
 `NotAFunction`'s/`TypeError`'s own payload) can't be rendered the same
 way a successful result can be by an embedder's own full rendering: that
 needs a `State` to resolve a `VArray`/`VTable` id against its heap, and
 `runIncremental` returns no `State` at all on `Err` — evaluation stopped
 before producing one. So this stays deliberately shallow: enough to say
-*what kind* of thing was found, not a full recursive rendering of its
+_what kind_ of thing was found, not a full recursive rendering of its
 contents.
 -}
 describeValue : Value -> String
@@ -183,7 +183,7 @@ describeValue value =
 {-| `elm/parser` accumulates one `DeadEnd` per alternative a `P.oneOf`
 tried and abandoned, not just the one that "really" failed — most of
 them are shallow, uninteresting backtracks (an earlier alternative bailing
-after only a character or two). The `DeadEnd`(s) that got *furthest*
+after only a character or two). The `DeadEnd`(s) that got _furthest_
 into the input before giving up are the ones actually worth showing;
 picking the single deepest `(row, col)` and keeping only the `DeadEnd`s
 that reached it is `elm/parser`'s own documented technique for this
@@ -263,6 +263,7 @@ this fall back to combining them into one "expected ... or ..." sentence.
 expected, so it's left out of that sentence. The parser and lexer give
 the common cases their own message instead ("expected an expression",
 "expected a name", ...); if it's all that's left, the message says so.
+
 -}
 describeProblems : List Parser.Problem -> String
 describeProblems problems =

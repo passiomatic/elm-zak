@@ -3,8 +3,8 @@ module Test.Zak.Globals exposing (suite)
 import Dict
 import Expect
 import Test exposing (Test, describe, test)
-import Zak.Internal.Library.Globals as Globals
 import Zak.Internal.Interpreter as I exposing (Error(..))
+import Zak.Internal.Library.Globals as Globals
 import Zak.Internal.Runtime as Runtime exposing (RuntimeError(..), Value(..))
 
 
@@ -12,11 +12,12 @@ import Zak.Internal.Runtime as Runtime exposing (RuntimeError(..), Value(..))
 automatically — no natives need passing in here at all.
 
 Strips any `WithPosition` a `RuntimeError` comes back wrapped in
-(`Runtime.dropPosition`) — this suite pins down *which* `RuntimeError`
-each case produces, the same as before position-tracking existed; *where*
+(`Runtime.dropPosition`) — this suite pins down _which_ `RuntimeError`
+each case produces, the same as before position-tracking existed; _where_
 it happened is a different, orthogonal thing, exercised by
 `Test.Zak.Interpreter`'s own dedicated position-tracking tests instead,
 not re-asserted at every call site here.
+
 -}
 run : String -> Result Error Value
 run source =
@@ -33,7 +34,7 @@ dropRuntimePosition error =
             error
 
 
-{-| `runExpr` deliberately does *not* auto-include `type` (see
+{-| `runExpr` deliberately does _not_ auto-include `type` (see
 `Zak.Internal.Interpreter`'s own doc) — so unlike `run` above, this still has to
 pass `Globals.natives` in by hand to exercise it here.
 -}

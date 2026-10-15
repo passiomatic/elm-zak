@@ -17,7 +17,8 @@ namespace either.
 Exposes `natives`, merged in automatically by `Zak.Internal.Interpreter` (along
 with `Zak.Internal.Library.Math`/`Zak.Internal.Library.String`/`Zak.Internal.Library.Debug`) for `run`/`initialWorld`/
 `runIncremental` — nothing needs to import or merge this by hand.
-`runExpr` is the one entry point that deliberately does *not* include it.
+`runExpr` is the one entry point that deliberately does _not_ include it.
+
 -}
 
 import Dict exposing (Dict)

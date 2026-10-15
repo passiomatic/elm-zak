@@ -5,12 +5,12 @@ module Zak.Internal.Library.Math exposing (natives)
 Most of these (trigonometry) genuinely need native code — there's no way
 to compute a sine or cosine from Zak's own operators — so they're plain
 `NativeFunction`s wrapping Elm's own `Basics` implementations directly.
-`abs`, though, *is* fully expressible from Zak's own operators/control-flow,
+`abs`, though, _is_ fully expressible from Zak's own operators/control-flow,
 so it's written as Zak source (`NativeZakExpr`) instead of native code —
 "don't implement what the language can already express" applies here too,
 it just happens to sit inside a namespace instead of the global scope.
 
-`min`/`max` are *also* fully expressible from Zak's own `<` — but unlike
+`min`/`max` are _also_ fully expressible from Zak's own `<` — but unlike
 `abs`, they're still plain `NativeFunction`s (`binaryNumber min`/
 `binaryNumber max`, the same helper `atan2` already uses), not
 `NativeZakExpr`. Reason: Zak's own `<` (`orderedCompare` in
@@ -37,7 +37,7 @@ functions: reuse what Elm already gives you rather than hand-typing a
 
 `Math.round` wraps Elm's own `Basics.round` (converted back to `Float`,
 since Zak has no separate integer type). Worth knowing: Elm's `round`
-breaks ties by always rounding *up* (toward positive infinity) — `round
+breaks ties by always rounding _up_ (toward positive infinity) — `round
 1.5 == 2` but `round -1.5 == -1`, not `-2` — rather than the more common
 "round half away from zero" most people expect. `Math.round` inherits
 this exact behavior rather than reimplementing rounding some other way.
@@ -55,8 +55,9 @@ Exposes `natives`, a single `"Math"` namespace entry — a fragment of the
 `Dict String NativeValue` `Zak.Internal.Interpreter` merges in automatically (along
 with `Zak.Internal.Library.String`/`Zak.Internal.Library.Debug`/`Zak.Internal.Library.Globals`) for `run`/`initialWorld`/
 `runIncremental`. Nothing needs to import or merge this by hand —
-`runExpr` is the one entry point that deliberately does *not* include it
+`runExpr` is the one entry point that deliberately does _not_ include it
 (see `Zak.Internal.Interpreter`'s own module doc for why).
+
 -}
 
 import Dict exposing (Dict)
@@ -117,7 +118,7 @@ unaryNumber f state args =
 
 {-| Like `unaryNumber`, but for a function with a real domain restriction
 — `isValid` decides whether `n` is in bounds, and `describeError` builds
-the `DomainError` message when it isn't (checked *before* ever calling
+the `DomainError` message when it isn't (checked _before_ ever calling
 `f`, rather than calling it and checking the result for `NaN` — cheaper,
 and reads as "this input is invalid" rather than "something already went
 wrong and now we're finding out"). Elm's own `Basics.sqrt`/`acos`/`asin`

@@ -4,8 +4,8 @@ import Dict
 import Expect
 import Test exposing (Test, describe, test)
 import Zak.Internal.Interpreter as I exposing (Error(..))
-import Zak.Internal.Runtime exposing (RuntimeError(..), Value(..))
 import Zak.Internal.Library.String as ZakString
+import Zak.Internal.Runtime exposing (RuntimeError(..), Value(..))
 
 
 {-| `String` is seeded by `Zak.Internal.Interpreter.run` itself now, automatically
@@ -16,7 +16,7 @@ run =
     I.run Dict.empty
 
 
-{-| `runExpr` deliberately does *not* auto-include `String` (see
+{-| `runExpr` deliberately does _not_ auto-include `String` (see
 `Zak.Internal.Interpreter`'s own doc) — so unlike `run` above, this still has to
 pass `ZakString.natives` in by hand to exercise `String.from` here.
 -}

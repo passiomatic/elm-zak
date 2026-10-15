@@ -29,10 +29,11 @@ script's own return value and the resulting `State`, so tests can inspect
 `state.threads`/`state.heap` afterward.
 
 Strips any `WithPosition` a `RuntimeError` comes back wrapped in — this
-suite pins down *which* `RuntimeError` a case produces, the same as
-before position-tracking existed; *where* it happened is exercised by
+suite pins down _which_ `RuntimeError` a case produces, the same as
+before position-tracking existed; _where_ it happened is exercised by
 `Test.Zak.Interpreter`'s own dedicated position-tracking tests instead,
 not re-asserted here.
+
 -}
 runWithState : String -> Result I.Error ( Value, Runtime.State )
 runWithState source =
@@ -78,7 +79,7 @@ dropRuntimePosition error =
 
 
 {-| Reads a `VTable`'s own `field` back out of `state.heap` directly —
-used to check what a `start`-spawned body actually did *after*
+used to check what a `start`-spawned body actually did _after_
 being resumed by `tick`, since the top-level script's own return value
 only reflects a snapshot taken before any tick ever ran.
 -}

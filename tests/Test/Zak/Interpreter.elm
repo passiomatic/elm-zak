@@ -3,14 +3,14 @@ module Test.Zak.Interpreter exposing (suite)
 import Dict exposing (Dict)
 import Expect
 import Test exposing (Test, describe, test)
-import Zak.Internal.Interpreter as I exposing (Error(..))
 import Zak.Internal.ErrorMessage as ErrorMessage
+import Zak.Internal.Interpreter as I exposing (Error(..))
 import Zak.Internal.Runtime as Runtime exposing (Effect(..), LogLevel(..), NativeValue(..), RuntimeError(..), Value(..))
 
 
 {-| `I.run`, with any `WithPosition` a `RuntimeError` comes back wrapped in
-stripped off — this suite (mostly) pins down *which* `RuntimeError` each
-case produces, the same as before position-tracking existed; *where* it
+stripped off — this suite (mostly) pins down _which_ `RuntimeError` each
+case produces, the same as before position-tracking existed; _where_ it
 happened has its own dedicated describe block below
 ("position tracking"), not re-asserted at every other call site.
 `I.runExpr` deliberately isn't wrapped the same way — it never gets
@@ -1154,10 +1154,16 @@ return function?(function?)"""
                             Dict.singleton "Util"
                                 (NativeNamespace
                                     (Dict.fromList
-                                        [ ( "double", NativeFunction (\state args -> case args of
-                                                [ VNumber n ] -> Ok ( VNumber (n * 2), state )
-                                                _ -> Err (TypeError { expected = "Number", got = VNil })
-                                            )
+                                        [ ( "double"
+                                          , NativeFunction
+                                                (\state args ->
+                                                    case args of
+                                                        [ VNumber n ] ->
+                                                            Ok ( VNumber (n * 2), state )
+
+                                                        _ ->
+                                                            Err (TypeError { expected = "Number", got = VNil })
+                                                )
                                           )
                                         , ( "triple", NativeZakExpr "function(n): return n * 3 end" )
                                         ]

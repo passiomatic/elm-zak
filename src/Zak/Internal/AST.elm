@@ -1,13 +1,13 @@
 module Zak.Internal.AST exposing
-    ( Block
-    , PositionedStatement
-    , Position
-    , Statement(..)
-    , AssignTarget(..)
-    , PathSegment(..)
-    , Expr(..)
-    , UnaryOp(..)
+    ( AssignTarget(..)
     , BinaryOp(..)
+    , Block
+    , Expr(..)
+    , PathSegment(..)
+    , Position
+    , PositionedStatement
+    , Statement(..)
+    , UnaryOp(..)
     )
 
 {-| The abstract syntax tree for Zak, mirroring the grammar rules
@@ -25,13 +25,14 @@ function, since those are all the same grammar rule.
 `Statement`/`Expr` themselves carry no position at all, deliberately.
 Attaching one to every node (would mean every one of `Statement`'s 9 and
 `Expr`'s 11 constructors changing shape) buys precision a runtime error
-doesn't need: reporting the *line* is enough, a sub-expression range adds
+doesn't need: reporting the _line_ is enough, a sub-expression range adds
 little. Tagging only here, at the
 list `Block` already is, gets every statement — including ones nested
 inside a loop/conditional/function body, since `If`/`While`/`For`/
 `FunctionLiteral` all embed a `Block` — a real position with the
 smallest structural change available: nothing about `Statement`'s or
 `Expr`'s own constructors changes at all, only what a `Block` holds.
+
 -}
 type alias Block =
     List PositionedStatement
@@ -40,8 +41,8 @@ type alias Block =
 {-| One statement, paired with the `Position` it starts at. `Zak.Internal.Parser`
 captures this via `elm/parser`'s own live row/col tracking (`P.getPosition`
 — free, since the parser already maintains this internally for every
-`DeadEnd` a *syntax* error would carry); `Zak.Internal.Interpreter` reads it back
-to tag a `RuntimeError` with *where* it happened, not just what happened.
+`DeadEnd` a _syntax_ error would carry); `Zak.Internal.Interpreter` reads it back
+to tag a `RuntimeError` with _where_ it happened, not just what happened.
 -}
 type alias PositionedStatement =
     { position : Position
@@ -80,15 +81,16 @@ type Statement
 
 `base` is a full `Expr`, not just a bare name — so a function call
 (`getTable().x = 99`) or any parenthesized expression can be an assignment
-target's base, matching Zak's own *read*-side `postfix-expr` grammar, which
+target's base, matching Zak's own _read_-side `postfix-expr` grammar, which
 already lets `.field`/`[index]`/`(args)` chain onto any primary expression
 — only the write side used to disagree. `Zak.Internal.Parser.exprToAssignTarget` is what
 actually enforces the one remaining restriction this type can't express on
 its own: a bare, segment-less target (`x = 1`, `AssignTarget base []`) is
 only ever valid when `base` is a `Name` — there's no slot to rebind
 otherwise (`f() = 1`/`(a + b) = 1` stay hard errors, same as before) — a
-*non*-`Name` base is only valid once at least one `.field`/`[index]` step
+_non_-`Name` base is only valid once at least one `.field`/`[index]` step
 gives it somewhere to write.
+
 -}
 type AssignTarget
     = AssignTarget Expr (List PathSegment)

@@ -1,26 +1,26 @@
 module Zak.Internal.Interpreter exposing
     ( Error(..)
+    , call
+    , drainEffects
+    , hasThreads
+    , include
+    , initialWorld
     , run
     , runExpr
-    , initialWorld
-    , worldEnv
     , runIncremental
-    , include
-    , tick
-    , threadCount
+    , setThreadOwner
     , startThread
     , stopThreads
-    , hasThreads
-    , setThreadOwner
-    , drainEffects
-    , call
+    , threadCount
+    , tick
+    , worldEnv
     )
 
 {-| Evaluates a `Zak.Internal.AST` tree produced by `Zak.Internal.Parser`, against the
 runtime value model `Zak.Internal.Runtime` defines. There are two tiers of
 unconditional built-ins, for two different reasons:
 
-`Array`/`Table` are unconditional in *every* entry point below, including
+`Array`/`Table` are unconditional in _every_ entry point below, including
 `runExpr` — a real technical necessity, not a preference: `.field`/`.field
 = value`/`[index]`/`[index] = value` need to share their actual
 implementation with `Table.get`/`Table.set`/`Array.get`/`Array.set` (see
@@ -31,7 +31,7 @@ evaluator — see `builtinNatives` below.
 `Math`/`String`/`Debug`/`Globals` (the `Debug` namespace table, plus the
 bare global `type`) are
 unconditional only in `run`/`initialWorld`/`runIncremental`, deliberately
-*not* in `runExpr` — see `stdlibNatives` below for why, and why this split
+_not_ in `runExpr` — see `stdlibNatives` below for why, and why this split
 is a design choice about what a "real program" should be able to assume
 rather than a technical constraint the way `Array`/`Table`'s is.
 
@@ -40,6 +40,7 @@ hypothetical `walk_to`/`say_line`) is supplied by the caller as native
 functions passed into `run`, grouped under `NativeValue` so a whole group
 of related natives can be seeded as one namespace table (`Math.cos(1)`)
 instead of flooding the global scope with every individual name.
+
 -}
 
 import Array exposing (Array)
@@ -47,13 +48,14 @@ import Dict exposing (Dict)
 import Random
 import Set
 import Zak.Internal.AST exposing (AssignTarget(..), BinaryOp(..), Block, Expr(..), PathSegment(..), Position, PositionedStatement, Statement(..), UnaryOp(..))
-import Zak.Internal.Library.Debug as ZakDebug
 import Zak.Internal.ErrorMessage as ErrorMessage
+import Zak.Internal.Library.Debug as ZakDebug
 import Zak.Internal.Library.Globals as Globals
 import Zak.Internal.Library.Math as Math
-import Zak.Internal.Parser as Parser
 import Zak.Internal.Library.Random as ZakRandom
+import Zak.Internal.Library.String as ZakString
 import Zak.Internal.Library.Thread as Thread
+import Zak.Internal.Parser as Parser
 import Zak.Internal.Runtime
     exposing
         ( Effect(..)
@@ -78,7 +80,6 @@ import Zak.Internal.Runtime
         , requireDone
         , wholeNumberIndex
         )
-import Zak.Internal.Library.String as ZakString
 
 
 {-| `Value`, `RuntimeError`, `NativeValue`, `Env`, `State`, `Signal`,
@@ -175,7 +176,7 @@ and also by `run` itself, which is just one `initialWorld` call followed
 by one `runIncremental` call.
 
 Exposed (rather than kept private to `run`) because `runIncremental` is
-meant to be called more than once against the *same* frame — once per
+meant to be called more than once against the _same_ frame — once per
 script, as scripts arrive over real time (e.g. HTTP fetches resolving one
 after another in a browser) — so the caller has to be the one holding
 `Env`/`State` between calls; the interpreter has no way to wait for "the
@@ -186,6 +187,7 @@ Seeded with `initialStateFull`, not `initialState`, since `runIncremental`
 never reseeds natives itself (see its own doc): this is the only place a
 world loaded incrementally (or via `run`) gets `Math`/`String`/`Debug`/
 `type` at all.
+
 -}
 initialWorld : Dict String NativeValue -> ( Env, State )
 initialWorld natives =
@@ -224,9 +226,10 @@ script's own statements actually run as a suspend-capable thread, and
 it fully absorbs whatever their spawned body
 does (registering it with `State.threads` if it suspends) before
 returning here, so a `Suspended` reaching all the way out to
-`runIncremental` never happens for a *correctly* written top-level
+`runIncremental` never happens for a _correctly_ written top-level
 script — only for one that calls a suspending native directly, which is
 exactly the case this should reject.
+
 -}
 runIncremental : Env -> State -> String -> Result Error ( Value, State )
 runIncremental env state source =
@@ -263,7 +266,7 @@ runProgramInto env state program =
 {-| `include(path)`'s own core (the embedder's own `include` native is the
 thin, host-specific wrapper around this: it resolves `path` to `source`,
 a lookup this module deliberately knows nothing about). Splices `source`'s own
-top-level statements into the shared *world* frame, not `env`'s (whatever
+top-level statements into the shared _world_ frame, not `env`'s (whatever
 that happens to be at the call site) — `state.globalFrameId`, stamped
 once by `initialWorld`, is what every top-level `let` across every
 included file needs to land in, matching `runIncremental`'s own
@@ -278,6 +281,7 @@ already declared, and (not incidentally) the entire guard against an
 include cycle: if `A` includes `B` includes `A`, `A` is already marked
 included by the time `B`'s own `include("A")` runs, so it resolves to
 `VNil` instead of looping.
+
 -}
 include : String -> String -> State -> Result RuntimeError ( Value, State )
 include path source state =
@@ -302,17 +306,18 @@ otherwise-internal `callFunction`, for exactly the case `run`/
 `runIncremental` don't cover: invoking a Zak closure the embedder already
 has a handle on, outside of running a whole program. Named `call`, not
 something host-specific like `callVerb` — this module stays host-agnostic
-regardless of *why* an embedder wants to call a value.
+regardless of _why_ an embedder wants to call a value.
 
 Same `Outcome`-collapsing `runIncremental` itself already does: a bare
 call can never suspend (`Suspended _ _ -> SuspendedNotAllowed`) — a value
 that wants to suspend has to already be a thread's own body, started via
-`Thread.start(...)` from *inside* whatever script produced this `Value`
+`Thread.start(...)` from _inside_ whatever script produced this `Value`
 in the first place. `callFunction` itself is deliberately not exposed
 directly: every other public entry point in this module already commits
 to this same "top-level calls can't suspend" contract, and exposing the
 raw `Outcome`/`RuntimeError` pair here would let a caller route around
 it.
+
 -}
 call : State -> Value -> List Value -> Result Error ( Value, State )
 call state callee args =
@@ -341,16 +346,17 @@ globalEnv =
 (resolving each `NativeNamespace` into a real heap-allocated `VTable`, and
 each `NativeZakExpr` by parsing and evaluating it, along the way), plus
 `true`/`false`/`nil`. `natives` is whatever the embedder chooses to
-wire up — merged in *after* `builtinNatives` so a caller can never shadow
+wire up — merged in _after_ `builtinNatives` so a caller can never shadow
 `Array`/`Table` this way (`Dict.union` prefers its first argument's
 keys), the same protection `true`/`false`/`nil` already get below. A
-*script* can still shadow `Array`/`Table` locally with its own `let`,
+_script_ can still shadow `Array`/`Table` locally with its own `let`,
 same as any other global — this only stops a native-Elm-code caller from
 redefining what they mean for every script it runs.
 
 Used directly by `runExpr`, which deliberately stops here (no
 `stdlibNatives`) — see `initialStateFull` for the version `run`/
 `initialWorld` use instead.
+
 -}
 initialState : Dict String NativeValue -> State
 initialState natives =
@@ -379,7 +385,7 @@ means — the typo-guard the original `const` open point named as a
 motivating case. `natives` (`Array`/`Table`/`Math`/... ) deliberately
 stay out of `constNames` for now, not because they're any less
 "built-in" than `true`/`false`/`nil`, just a smaller, more conservative
-first step. This only blocks *reassignment*: a script's own
+first step. This only blocks _reassignment_: a script's own
 `let true = ...` in a nested scope still shadows the built-in exactly as
 before — that's a new binding in a child frame, `defineVar`
 never even looks at frame 0's `constNames`.
@@ -423,7 +429,7 @@ seedState natives =
 {-| `Math`/`String`/`Debug`/`Random`/the bare global (`type`) — the rest
 of the standard library beyond `Array`/`Table`. Unlike `builtinNatives` below, nothing about these
 needs to share implementation with any dedicated syntax, so there's no
-*technical* reason they couldn't live in a caller-supplied `natives` dict
+_technical_ reason they couldn't live in a caller-supplied `natives` dict
 instead — they're unconditional here purely as a design choice about
 what a "real program" (`run`/`initialWorld`/`runIncremental`) should be
 able to assume, deliberately not extended to `runExpr` (see that
@@ -456,6 +462,7 @@ Merged into `stdlibNatives` since this is exactly as unconditional (in
 `Debug`/`type` already are, for the same reason: nothing about scripting
 threads is a technical necessity the way `Array`/`Table`'s sharing is,
 it's a "what a real program should be able to assume" design choice.
+
 -}
 threadNatives : Dict String NativeValue
 threadNatives =
@@ -483,8 +490,8 @@ start state args =
 
 
 {-| Runs `callee` as a new thread owned by `owner`: its body runs
-*immediately*, synchronously, right here, up to its own first suspend
-point or completion -- *before* this call itself returns anything. If the
+_immediately_, synchronously, right here, up to its own first suspend
+point or completion -- _before_ this call itself returns anything. If the
 body suspends partway through, the resulting `Thread` (see
 `Zak.Internal.Runtime`'s own doc) is registered under a freshly-allocated
 id in `state.threads`, to be resumed later by `tick`; if the body runs to
@@ -496,6 +503,7 @@ a thread is not running one, so the caller is never blocked by it.
 While the body runs, `owner` is the current owner, so a thread it starts
 before its first wait is `owner`'s too; the caller's owner is restored
 afterwards.
+
 -}
 spawn : ThreadOwner -> Value -> List Value -> State -> Result RuntimeError ( Value, State )
 spawn owner callee args state =
@@ -544,14 +552,14 @@ startThread owner callee args state =
 thread's own wait condition by `dt` (seconds since the last `tick`),
 resuming any whose condition is now satisfied. Each thread gets at most
 one `resume` call per `tick`, never more, so a thread that resumes and
-immediately suspends again on a condition that's *already* satisfied
+immediately suspends again on a condition that's _already_ satisfied
 still only advances one step this frame, picking up the rest on the next
 `tick` instead of looping here.
 
 A thread whose `resume` call errors is dropped from `threads` (there's
 nothing sensible left to do with a thread whose own body raised a runtime
 error) and its error is collected in the returned list, rather than
-silently discarded or allowed to stop every *other* thread this frame
+silently discarded or allowed to stop every _other_ thread this frame
 from being ticked too.
 
 **The fold walks the `threads` snapshot taken when this `tick` started,
@@ -560,7 +568,7 @@ thread resumed earlier in the same pass. So each thread is first checked
 against `stateAcc`'s own `threads`, and skipped if it's gone; otherwise
 the `StillWaiting` branch would write a stopped thread straight back in,
 or `ReadyToResume` would run it. The opposite case is deliberate: a
-thread that stops *itself* (or its caller) while being resumed here is
+thread that stops _itself_ (or its caller) while being resumed here is
 re-registered at its next suspend, which is exactly what makes
 `Thread.stop` a no-op on a running thread (see `Zak.Internal.Library.Thread.stop`).
 
@@ -569,13 +577,13 @@ than the thread it's joining actually finishes, depending on thread-id
 ordering.** `Dict.foldl` visits `threads` in ascending key order (=
 creation order, since ids are a monotonic counter), all within this one
 fold pass, and `checkWaitCondition`'s `ThreadRunning` case checks the
-target's membership against `stateAcc` -- the *same in-progress*
-accumulator. So: if the joining thread's own id is *lower* than the
+target's membership against `stateAcc` -- the _same in-progress_
+accumulator. So: if the joining thread's own id is _lower_ than the
 target's (i.e. the joiner was created first -- an entirely ordinary
 pattern, e.g. a long-running thread later joining on some shorter task it
-spawns), it gets checked *before* the target is processed and removed
+spawns), it gets checked _before_ the target is processed and removed
 later in this same pass, and only notices the target is gone on the
-*next* `tick` -- one extra frame of latency (~16ms at 60fps), never a
+_next_ `tick` -- one extra frame of latency (~16ms at 60fps), never a
 permanent stall. The opposite ordering (joiner id > target id) resolves
 the same tick, since the target gets removed from `stateAcc` earlier in
 the pass.
@@ -588,6 +596,7 @@ against the now-settled `threads`, looping until stable within the same
 first-class suspend primitive at all, versus exposing an
 `is_running`-style boolean query and letting scripts build blocking on
 it with a `wait_for` + poll loop.
+
 -}
 tick : Float -> State -> ( State, List RuntimeError )
 tick dt state =
@@ -628,7 +637,6 @@ tick dt state =
         state.threads
 
 
-
 {-| How many threads are waiting for `tick` to resume them. `0` means
 there's nothing to advance, so a host can stop calling `tick` on every
 frame.
@@ -639,7 +647,7 @@ threadCount state =
 
 
 {-| Stops every thread `owner` owns -- its descendants included, since
-they share its owner. The same rule as `Thread.stop`: only a *suspended*
+they share its owner. The same rule as `Thread.stop`: only a _suspended_
 thread can be stopped. The thread that's running when this is called --
 the one whose native asked for it -- isn't affected, since `tick`
 re-registers it at its next wait.
@@ -683,6 +691,7 @@ native, and turn each item into its own `Cmd` (a `Log` into a
 `console.*` call via a port, say) — nothing in this module does that
 itself, on purpose, and it never inspects an `Effect`'s name or arguments
 (see `Zak.Internal.Runtime`'s own `pendingEffects` doc for why).
+
 -}
 drainEffects : State -> ( List Effect, State )
 drainEffects state =
@@ -712,7 +721,7 @@ checkWaitCondition dt elapsed waitCondition state =
                 ReadyToResume
 
 
-{-| `Array`/`Table`, always present in *every* entry point — including
+{-| `Array`/`Table`, always present in _every_ entry point — including
 `runExpr` — regardless of what `natives` supplies. Unlike `stdlibNatives`
 above, this one's unconditional-everywhere status is a real technical
 necessity, not a design choice: see this module's own top-of-file doc for
@@ -737,6 +746,7 @@ side. Neither `is_empty` nor `contains` uses the stdlib's older `?`-suffix
 predicate convention — that convention is still valid Zak grammar for a
 script's own functions, just no longer used by the stdlib itself (see
 "Identifiers and reserved words" in the language reference).
+
 -}
 builtinNatives : Dict String NativeValue
 builtinNatives =
@@ -863,7 +873,6 @@ logBrokenNative path message state =
     }
 
 
-
 {-| The value a block's final signal stands for. A `break`/`continue` can
 never get this far (the parser only accepts them inside a `while`/`for`
 body, and the loop absorbs them), so those two are an `InternalError`,
@@ -903,14 +912,14 @@ execBlock parentEnv state statements =
 
 
 {-| Runs each statement in turn, tagging any `RuntimeError` that comes out
-of it with *that statement's own* position (`Zak.Internal.Runtime.WithPosition`, via
+of it with _that statement's own_ position (`Zak.Internal.Runtime.WithPosition`, via
 `tagPosition` below) before it propagates any further — the one place in
 this whole module position-tagging happens at all. Because this function
 is exactly what runs recursively for every nested block too (an `if`
 branch, a `while`/`for` body, a function call's body — see `execBlock`),
 a statement failing ten calls deep still gets tagged with its own real
 position, by the innermost `execStatements` call to ever see the error,
-*before* it bubbles up through every enclosing one — each of which also
+_before_ it bubbles up through every enclosing one — each of which also
 calls `tagPosition`, but `tagPosition` is a deliberate no-op on an
 already-tagged error, so the innermost, most useful position is the one
 that survives, not the outermost/least specific one.
@@ -945,7 +954,7 @@ execStatements env state statements =
 already wrapped. This is what makes "the innermost failure's position
 wins" in `execStatements` above actually true: without the guard, every
 enclosing `execStatements` call would re-wrap an already-positioned error
-with its *own*, less specific position on the way back up, and the
+with its _own_, less specific position on the way back up, and the
 outermost statement in the whole call chain would win instead of the one
 that actually failed.
 -}
@@ -964,7 +973,7 @@ suspend, so it just runs to `Done` immediately, same as before this module
 supported suspension at all. Only a bare top-level call statement can
 actually preserve and propagate a `Suspended` result — see
 `Zak.Internal.Runtime.Outcome`'s own doc for why that's the one place this pass
-wires it up, and `evalExpr`'s `Call` case (used by every *other* case
+wires it up, and `evalExpr`'s `Call` case (used by every _other_ case
 here, via `evalExpr`) for what happens if a suspending native is called
 from anywhere else instead (a `SuspendedNotAllowed` error, not silent
 wrong behavior).
@@ -1108,7 +1117,7 @@ withoutThrowaway =
 
 
 {-| `for loopVar in collectionExpr: ... end` — `collectionExpr` is evaluated
-once, up front, to fix *which* array is being iterated (re-evaluating it
+once, up front, to fix _which_ array is being iterated (re-evaluating it
 every pass isn't something most dynamic languages do either); iteration
 itself is live, per `execForLoop` below.
 -}
@@ -1126,17 +1135,18 @@ execFor env state loopVar collectionExpr body =
             )
 
 
-{-| Live iteration: re-reads the array's *current* contents from `arrayHeap`
+{-| Live iteration: re-reads the array's _current_ contents from `arrayHeap`
 on every pass (rather than a snapshot taken once at loop start), so a
 `push`/`set` from within the body is visible to later iterations, as in
 most dynamic languages. A deliberately revisitable choice, not a
 permanent one.
 
-Each pass gets a *fresh* frame holding just `loopVar` (mirroring how
+Each pass gets a _fresh_ frame holding just `loopVar` (mirroring how
 `callFunction` binds parameters in their own frame before running the
 body), with `execBlock` then giving the body itself its own nested frame
 underneath that — so a `let` inside the body never collides with `loopVar`,
 the same separation a function's own parameters and its body's `let`s have.
+
 -}
 execForLoop : Env -> State -> String -> Int -> Block -> Int -> Result RuntimeError ( Outcome Signal, State )
 execForLoop env state loopVar id body index =
@@ -1185,9 +1195,9 @@ execForLoop env state loopVar id body index =
 (only ever reachable when `base` is a `Name`, per `exprToAssignTarget`'s
 own invariant — nothing else parses with an empty path); with one, every
 step but the last must already resolve to the right kind of value to take
-the *next* step on (a table for a `.field` step, an array for a `[index]`
+the _next_ step on (a table for a `.field` step, an array for a `[index]`
 step — no auto-vivification of these intermediate steps, see "Tables" in
-the reference manual). The *last* step is different for a `.field` step
+the reference manual). The _last_ step is different for a `.field` step
 specifically: it creates the field if it doesn't already exist, the same
 targeted-edit-mutates rule `Array.set`/`Array.push` already follow, rather
 than requiring it to already be there — a last `[index]` step still has to
@@ -1195,13 +1205,14 @@ be in-bounds, though, since arrays don't grow via assignment (only via
 `Array.push`).
 
 `base` is resolved via `evalExpr`, not a bare `lookupVar`, so a path
-assignment's own base can be *any* expression, not just a name —
+assignment's own base can be _any_ expression, not just a name —
 `current_player().health = 100` resolves `current_player()` like any
 other call before writing through it (see `AssignTarget`'s own doc in
 `Zak.Internal.AST`). For the plain `Name` case this is
 no behavior change at all: `evalExpr`'s own `Name` branch is exactly
 `lookupVar` plus the same `UndefinedName` wrapping this used to do by
 hand.
+
 -}
 execAssign : Env -> State -> AssignTarget -> Value -> Result RuntimeError State
 execAssign env state (AssignTarget base segments) value =
@@ -1220,7 +1231,7 @@ setPath env state target segments value =
         [ FieldSegment field ] ->
             setTableField state target field value
 
-        FieldSegment field :: rest ->
+        (FieldSegment field) :: rest ->
             getTableField state target field
                 |> Result.andThen (\innerValue -> setPath env state innerValue rest value)
 
@@ -1229,7 +1240,7 @@ setPath env state target segments value =
                 |> Result.andThen
                     (\( indexValue, state1 ) -> setArrayIndex state1 target indexValue value)
 
-        IndexSegment indexExpr :: rest ->
+        (IndexSegment indexExpr) :: rest ->
             evalExpr env state indexExpr
                 |> Result.andThen
                     (\( indexValue, state1 ) ->
@@ -1246,7 +1257,7 @@ setPath env state target segments value =
 
 
 {-| Shared by the `[index]` assignment-target step above, the `Index`
-expression case below, *and* the `Array.get`/`Array.set` natives further
+expression case below, _and_ the `Array.get`/`Array.set` natives further
 down — not just the same bounds-check and error, the literal same
 function: `[index]`/`[index] = value` and `Array.get`/`Array.set` are two
 spellings of the exact same operation (see this module's own doc for why
@@ -1304,7 +1315,7 @@ setArrayIndex state target indexValue value =
 
 
 {-| Shared by the `.field`/assignment-target step above, the `FieldAccess`
-expression case below, *and* the `Table.get`/`Table.set` natives further
+expression case below, _and_ the `Table.get`/`Table.set` natives further
 down — same relationship `getArrayIndex`/`setArrayIndex` have with
 `Array.get`/`Array.set`: not just the same error, the literal same
 function.
@@ -1519,7 +1530,7 @@ evalFieldExprs env state fields =
 {-| Evaluates the default expression for each parameter past the args a
 call actually supplied (`callFunction`'s `VFunction` branch passes only
 the trailing slice here, once positional binding has already claimed the
-rest) — evaluated against `env`, the function's own captured *enclosing*
+rest) — evaluated against `env`, the function's own captured _enclosing_
 scope, never the call frame being built for this call. Two consequences,
 both deliberate:
 
@@ -1536,6 +1547,7 @@ The `Nothing` branch is unreachable in practice: `Zak.Internal.Parser`'s
 trailing-only-defaults rule guarantees every parameter past a supplied
 argument has a default. Falls back to `VNil` rather than crashing if
 that guarantee were somehow ever violated.
+
 -}
 evalDefaultArgs : Env -> State -> List ( String, Maybe Expr ) -> Result RuntimeError ( List ( String, Value ), State )
 evalDefaultArgs env state remainingParams =
@@ -1575,7 +1587,7 @@ isRequiredParam ( _, default ) =
 both just produce `Done value` immediately, same as before this module
 supported suspension at all — the only genuinely new case is `VNativeThread`
 (`wait_for`/`join`, see `Zak.Internal.Library.Thread`),
-which can hand back `Suspended` directly, and a `VFunction` whose *body*
+which can hand back `Suspended` directly, and a `VFunction` whose _body_
 suspends (because it itself calls one of those, as its own top-level
 statement — see `execStatement`'s `ExprStatement (Call ...)` case), whose
 `Outcome Signal` from running the body is mapped to the `Outcome Value`
@@ -1781,7 +1793,7 @@ instantiated at `Float`, once at `String`) rather than anything hand-written
 one `List.sort`/`compare` rely on elsewhere in `elm/core`), so ordering two
 `VString`s needs nothing beyond calling it directly on the two extracted
 Elm `String`s, exactly the same pattern `( VNumber a, VNumber b )` below
-already uses for `Float`. Deliberately *not* named `numberCompare` anymore
+already uses for `Float`. Deliberately _not_ named `numberCompare` anymore
 now that it covers two types.
 
 Ordering is defined for exactly these two — see "Comparison operators" in
@@ -1789,6 +1801,7 @@ the language reference for why `Bool`/`Nil`/every cross-type pairing
 (`Number` vs `String` included) stays a hard `TypeError` rather than being
 given invented semantics: only numeric and string ordering are
 well-defined and deterministic.
+
 -}
 orderedCompare :
     (Float -> Float -> Bool)
@@ -1845,7 +1858,7 @@ can hold a raw Elm function (`VNative`) — comparing one of those with `==`
 crashes at runtime. `VTable` and `VArray` both compare by heap id
 (reference identity, matching how a mutable-in-place value is meant to
 behave: "are these the same object", not "do they currently hold equal
-contents") — two separately-built arrays with identical elements are *not*
+contents") — two separately-built arrays with identical elements are _not_
 `==` to one another, only an array compared against itself (reached
 through two different names, say) is, the same rule tables already
 follow. Two function values (`VFunction`/`VNative`) are never considered
@@ -1891,8 +1904,8 @@ lookupVar (Env frameId parent) state name =
             parent |> Maybe.andThen (\p -> lookupVar p state name)
 
 
-{-| `let`: adds a new binding to the *current* frame only — an error if
-that exact frame already has one (shadowing an *outer* scope's binding of
+{-| `let`: adds a new binding to the _current_ frame only — an error if
+that exact frame already has one (shadowing an _outer_ scope's binding of
 the same name is fine, and goes through this same function, since the
 current frame starts out empty for a freshly-entered block).
 -}
@@ -1909,13 +1922,13 @@ defineVar (Env frameId _) state name value =
         Ok { state | heap = Dict.insert frameId (Dict.insert name value frame) state.heap }
 
 
-{-| `const`: marks `name`, in the *same* frame `defineVar` just bound it
+{-| `const`: marks `name`, in the _same_ frame `defineVar` just bound it
 in, as reassignment-proof — called only after `defineVar` has already
 succeeded, so this never needs to fail itself (the frame is guaranteed
 to already hold `name` by the time this runs). Kept as a separate step
 from `defineVar` rather than folded into it (e.g. via a `Bool`/`mode`
 parameter) specifically so `const`'s own "already defined in this
-scope"/shadowing behavior is *identical* to `let`'s, by construction —
+scope"/shadowing behavior is _identical_ to `let`'s, by construction —
 both funnel through the exact same `defineVar`, so there's no second
 copy of that logic to keep in sync.
 -}
@@ -1937,7 +1950,7 @@ hard error instead — checked only here, the single place a bare-name
 reassignment can ever happen; `t.field = value`/`a[0] = value` (a
 non-empty `AssignTarget` path) never reach this function at all (see
 `execAssign` below), which is exactly why mutating a `const`-bound
-table's/array's own *contents* is still allowed — only rebinding the
+table's/array's own _contents_ is still allowed — only rebinding the
 name itself isn't.
 -}
 assignVar : Env -> State -> String -> Value -> Result RuntimeError State
@@ -1969,11 +1982,11 @@ isConst frameId name state =
         |> Maybe.withDefault False
 
 
-{-| True if `name` is `const` in some *ancestor* of `env` — never `env`'s
+{-| True if `name` is `const` in some _ancestor_ of `env` — never `env`'s
 own frame, deliberately: a same-frame collision (shadowing or not) is
 already `AlreadyDefined`, a hard error `defineVar` raises before this is
 ever reached, so the two checks never overlap. Walks outward the same way
-`assignVar` does, but only ever *reads* `isConst`, one frame at a time —
+`assignVar` does, but only ever _reads_ `isConst`, one frame at a time —
 covers every nesting level for free, since `execBlock` already gives every
 `if`/`while`/`for`/function body its own fresh frame.
 -}
@@ -2063,7 +2076,7 @@ arrayGet state args =
 returns `default` instead of raising `IndexOutOfBounds` when `index` is
 out of range. Only the bounds check is softened: a non-integer `index`
 (`wholeNumberIndex`) or a non-`Array` `array` is still a hard error, the
-same split `Table.get_default` draws between a missing *field* (softened)
+same split `Table.get_default` draws between a missing _field_ (softened)
 and a wrong-typed target (still an error). The `Array` counterpart to
 `Table.get_default`, kept symmetric with it.
 -}
@@ -2139,12 +2152,13 @@ language reference for why `String`/`Array` diverge on this).
 Argument order matches every other mutating `Array` function — the
 target first, the same position `push`/`set` already use — which also
 means it now agrees with `String.append`/Elm's own `Array.append`:
-argument order *is* content order, `array`'s own elements followed by
+argument order _is_ content order, `array`'s own elements followed by
 `other`'s, with no reversal to remember (see "Arrays" in the language
 reference for the fuller history of this — target-last was tried first,
 by analogy with Elm, before the analogy itself was found not to hold:
 Elm's own last-argument convention is a consequence of currying + `|>`,
 neither of which Zak has).
+
 -}
 arrayAppend : State -> List Value -> Result RuntimeError ( Value, State )
 arrayAppend state args =
@@ -2167,8 +2181,8 @@ arrayAppend state args =
 
 
 {-| `Array.pop(array)` — a targeted edit like `Array.push`/`Array.set`
-(there's no ambiguity about *what* it removes, only ever the last
-element), but it returns the *removed value*, not the array, as `pop`
+(there's no ambiguity about _what_ it removes, only ever the last
+element), but it returns the _removed value_, not the array, as `pop`
 does almost everywhere — the return-value split being: bulk mutators
 return the array itself, removal returns what was removed. Errors on an
 empty array rather than returning `nil` — matching Zak's own
@@ -2288,6 +2302,7 @@ must be non-negative whole numbers (`nonNegativeIndex` — no
 count-from-the-end), an `end` past the length clamps to the length, and
 `start >= end` gives `[]`. Shallow, like `Array.clone`: a nested
 array/table element is shared with the original, not copied.
+
 -}
 arraySlice : State -> List Value -> Result RuntimeError ( Value, State )
 arraySlice state args =
@@ -2360,7 +2375,7 @@ arraySliceChecked state id startFloat maybeEndFloat =
 {-| `Array.clone(array)` — a new array with the same elements as `array`.
 Shallow: top-level elements are
 independent afterward, but a `VArray`/`VTable` element is just a heap
-id, so a nested array/table inside is still the *same* one, shared by
+id, so a nested array/table inside is still the _same_ one, shared by
 reference — cloning never walks into it.
 -}
 arrayClone : State -> List Value -> Result RuntimeError ( Value, State )
@@ -2643,7 +2658,7 @@ present on `table`. A callable alternative to null-safe field access
 and null-coalescing operators (Zak has neither), reached via a built-in
 function rather than new operator syntax, per Zak's own design goal of preferring the former.
 Still raises `NotATable` if `table` isn't a `VTable` at all — only a
-missing *field* gets the default, not a wrong-typed target.
+missing _field_ gets the default, not a wrong-typed target.
 -}
 tableGetDefault : State -> List Value -> Result RuntimeError ( Value, State )
 tableGetDefault state args =
@@ -2699,8 +2714,8 @@ tableRemove state args =
 would for a missing one. The only way a script can test for a field's
 presence at all, since Zak has no exception handling to probe for that
 error indirectly. Reuses `contains` across `Array`/`Table` deliberately —
-it checks a different thing on each side (element *contents* for
-`Array.contains`, field *name* existence here), the same way Python's own
+it checks a different thing on each side (element _contents_ for
+`Array.contains`, field _name_ existence here), the same way Python's own
 `in` checks values on a list but keys on a dict.
 -}
 tableContains : State -> List Value -> Result RuntimeError ( Value, State )

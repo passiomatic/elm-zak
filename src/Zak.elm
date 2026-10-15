@@ -467,7 +467,7 @@ body that never waits leaves no thread behind.
 The id is what `Thread.join` and `Thread.stop` take, so a native can start
 a thread under another owner and hand its id to a script to wait on:
 
-    Thread.join(start_as_cutscene(body))
+    Thread.join (start_as_cutscene body)
 
 An error before the first wait comes back as an `Err`, and the world is
 left as it was.

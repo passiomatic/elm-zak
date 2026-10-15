@@ -1,19 +1,19 @@
 module Zak.Internal.Runtime exposing
-    ( Value(..)
-    , RuntimeError(..)
-    , NativeValue(..)
+    ( ArrayHeap
+    , Effect(..)
     , Env(..)
-    , State
     , Heap
-    , ArrayHeap
-    , Signal(..)
+    , LogLevel(..)
+    , NativeValue(..)
     , Outcome(..)
-    , WaitCondition(..)
+    , RuntimeError(..)
+    , Signal(..)
+    , State
+    , Thread(..)
     , ThreadId
     , ThreadOwner
-    , Thread(..)
-    , LogLevel(..)
-    , Effect(..)
+    , Value(..)
+    , WaitCondition(..)
     , allocArrayCell
     , allocCell
     , arrayContents
@@ -27,8 +27,8 @@ module Zak.Internal.Runtime exposing
     )
 
 {-| The runtime representation `Zak.Internal.Interpreter`'s evaluator manipulates
-while a program *runs* — as opposed to `Zak.Internal.AST`, which represents a
-program's *static* structure before anything has executed. Split into its
+while a program _runs_ — as opposed to `Zak.Internal.AST`, which represents a
+program's _static_ structure before anything has executed. Split into its
 own module so `Zak.Internal.Library.Math`/`Zak.Internal.Library.String`/`Zak.Internal.Library.Debug`/`Zak.Internal.Library.Globals` (each of
 which needs these types to describe their own natives) and
 `Zak.Internal.Interpreter` (which needs to import those four, to seed their
@@ -44,6 +44,7 @@ which only ever exposed the opaque type name — nothing outside
 `Zak.Internal.Interpreter` currently constructs an `Env` by hand, so this loses no
 real safety today, but it's a convention `Zak.Internal.Interpreter` itself relies
 on (not a compiler-enforced one) rather than a guarantee.
+
 -}
 
 import Array exposing (Array)
@@ -70,6 +71,7 @@ their current contents, in `Zak.Internal.Interpreter`'s `valuesEqual`.
 (e.g. any of the `Array.*` natives, which have to read/write `arrayHeap` to
 do anything at all) — see `NativeValue`'s own doc for how this threads
 through.
+
 -}
 type Value
     = VString String
@@ -84,15 +86,15 @@ type Value
 
 
 {-| `WithPosition` is different in kind from the other 15 constructors here —
-they're all *leaf* errors, raised directly at the ~116 places across this
+they're all _leaf_ errors, raised directly at the ~116 places across this
 module and the native modules that actually detect something wrong;
-`WithPosition` is a *wrapper*, added by exactly one place
+`WithPosition` is a _wrapper_, added by exactly one place
 (`Zak.Internal.Interpreter.execStatements`, via its own `tagPosition` helper) once
 a leaf error has already propagated out of whichever statement raised it.
 None of those ~116 raise sites construct `WithPosition` themselves, or need
 to change at all for it to exist — every one of them still just builds a
 plain leaf error the same way it always has; the wrapping happens exactly
-once, after the fact, at the one place that actually knows *which*
+once, after the fact, at the one place that actually knows _which_
 statement was executing. See `execStatements`' own doc for why a wrapper
 here (rather than adding a position field to every one of the other 16
 constructors, or to every `Zak.Internal.AST.Expr`/`Statement` node) is enough to
@@ -127,10 +129,10 @@ type RuntimeError
 
 {-| The underlying leaf error, discarding whatever `WithPosition` it's
 wrapped in (if any) — the inverse of what `Zak.Internal.Interpreter.execStatements`
-builds via `tagPosition`. Use it when matching on a *specific*
+builds via `tagPosition`. Use it when matching on a _specific_
 `RuntimeError` shape (a test asserting on the exact error returned, say)
-and the position is beside the point, since *which* statement failed and
-*what* went wrong are two different things to check, not one. Not needed
+and the position is beside the point, since _which_ statement failed and
+_what_ went wrong are two different things to check, not one. Not needed
 anywhere in the interpreter's own evaluation, since nothing there ever
 wants to throw a captured position away.
 -}
@@ -163,6 +165,7 @@ to refer to it (a spawned thread's own body executes statements, so its
 `resume` continuation is phrased in terms of `Signal`, the same as any
 other statement-sequence execution) — see this module's own top-of-file
 doc for why runtime types live together, away from the evaluator itself.
+
 -}
 type Signal
     = Normal
@@ -171,12 +174,12 @@ type Signal
     | Continuing
 
 
-{-| What running something that *might* suspend produced: either it ran to
+{-| What running something that _might_ suspend produced: either it ran to
 completion (`Done`), or it hit a suspend point (`Suspended`) and needs to
 be resumed later, once `waitCondition` is satisfied — `resume` is "the
 rest of this computation," captured as an ordinary Elm closure over
 whatever `Env`/remaining statements/etc. were in scope at the suspend
-point. Parameterized over the payload type so the *same* suspend/resume
+point. Parameterized over the payload type so the _same_ suspend/resume
 shape works for both a statement sequence's own `Signal` (`Outcome
 Signal`, e.g. `Zak.Internal.Interpreter.execStatements`) and a function call's
 `Value` (`Outcome Value`, e.g. `Zak.Internal.Interpreter.callFunction`) — see
@@ -190,12 +193,13 @@ Deliberately narrow in this first pass: only `Zak.Internal.Library.Thread`'s
 closure body, transitively) ever construct a `Suspended` value — see
 `WaitCondition`'s doc for what a thread can wait on. A suspend attempted from
 inside a plain expression (`let x = wait_for(1.0)`, an `Array.map`
-callback, an `if` condition, ...) is deliberately *not* supported yet —
+callback, an `if` condition, ...) is deliberately _not_ supported yet —
 `requireDone` is what every one of those contexts uses to turn an
 unexpected `Suspended` into a `SuspendedNotAllowed` error instead of
 silently doing the wrong thing. Only a bare top-level statement call
 (`Zak.Internal.Interpreter.execStatement`'s `ExprStatement (Call ...)` case) is
 wired to actually preserve and propagate a `Suspended` result.
+
 -}
 type Outcome a
     = Done a
@@ -252,6 +256,7 @@ way it would for `Env`/`State` if `Env` weren't already wrapped this way),
 so this needs a real constructor to break the cycle. `Zak.Internal.Interpreter`
 pattern-matches `Thread record` to get at the fields, the same way it
 already does for `Env frameId parent`.
+
 -}
 type Thread
     = Thread
@@ -348,13 +353,14 @@ through, but anything working with `Array`/`Table` internals (like the
 built-in `Array.*` natives in `Zak.Internal.Interpreter`) genuinely needs it.
 
 `NativeThreadFunction` is `NativeFunction`'s suspend-capable twin — the
-*only* difference is `Outcome Value` instead of a bare `Value` as the
+_only_ difference is `Outcome Value` instead of a bare `Value` as the
 success payload, needed by exactly the natives that can themselves
 suspend their caller directly (`Zak.Internal.Library.Thread`'s `wait_for`/
 `join`). Every other native — including
 `start`/`startThread`, which spawn a thread but never
-suspend the *caller* — stays a plain `NativeFunction`; see `Outcome`'s own
+suspend the _caller_ — stays a plain `NativeFunction`; see `Outcome`'s own
 doc for why suspension is deliberately this narrow in the first pass.
+
 -}
 type NativeValue
     = NativeFunction (State -> List Value -> Result RuntimeError ( Value, State ))
@@ -366,11 +372,11 @@ type NativeValue
 
 {-| A scope: the heap id of its own frame, and (unless this is the
 outermost scope) the enclosing scope. This is an ordinary, immutable Elm
-value — only what's *inside* each frame (in the heap) is mutable; the chain
-of *which* frames are nested under which is fixed once a scope is entered.
+value — only what's _inside_ each frame (in the heap) is mutable; the chain
+of _which_ frames are nested under which is fixed once a scope is entered.
 A closure captures this whole chain, which is what makes lexical scoping
 (as opposed to dynamic scoping) work: a `VFunction`'s body always resolves
-names against the scope active where it was *written*, never the caller's.
+names against the scope active where it was _written_, never the caller's.
 -}
 type Env
     = Env Int (Maybe Env)
@@ -403,7 +409,7 @@ a plain `State -> State` shape, the same as everything else that advances
 entirely, not kept around in some other state — there's no history to
 query once a thread completes.
 
-`pendingEffects` is a *different* kind of "kept as part of `State`" than
+`pendingEffects` is a _different_ kind of "kept as part of `State`" than
 `threads` is, worth not conflating even though both look like "a queue a
 native appends to." `threads` holds continuations — Elm closures the
 interpreter itself calls back into later, entirely within pure Elm. An
@@ -412,7 +418,7 @@ effect has no such callback to give: what a native wants to happen (a
 embedder's own `update` can produce one — no native function ever can, no
 matter what it stashes in `State`. So `pendingEffects` holds plain, inert
 data describing what was asked for, oldest first; appending to it is the
-*entire* job such a native does. `Zak.Internal.Interpreter.drainEffects` hands the
+_entire_ job such a native does. `Zak.Internal.Interpreter.drainEffects` hands the
 queue to the embedder, and turning it into a `Cmd` is entirely the
 embedder's job. Logs and host effects share the one queue, so their
 relative order survives the drain — see `Effect`'s own doc.
@@ -420,13 +426,14 @@ relative order survives the drain — see `Effect`'s own doc.
 `constNames` tracks which names in which scope frame were declared with
 `const` rather than `let` — a separate, narrow side-structure rather
 than a change to `Heap`'s own `Dict String Value` value type, deliberately:
-`Heap` backs *every* scope frame (`let` bindings, function parameters,
+`Heap` backs _every_ scope frame (`let` bindings, function parameters,
 for-loop variables), not just `const` ones, so widening its value type
 to carry const-ness would add a field every ordinary variable lookup has
 to thread through, for a distinction only a bare reassignment ever needs
 to check. Consulted from exactly one place, `Zak.Internal.Interpreter`'s
 `assignVar` — a `let` binding never appears here at all, since `let`
 never marks anything in it in the first place.
+
 -}
 type alias State =
     { heap : Heap
@@ -515,6 +522,7 @@ The index checks (`wholeNumberIndex`, `nonNegativeIndex`) live here, next
 to the `RuntimeError` cases they produce, so `[index]`, `Array.get`/`set`,
 `Array.slice`, and `String.slice` all share one definition of a valid
 index.
+
 -}
 wholeNumberIndex : Float -> Result RuntimeError Int
 wholeNumberIndex indexFloat =
@@ -532,7 +540,7 @@ wholeNumberIndex indexFloat =
 {-| Like `wholeNumberIndex`, but also rejects a negative value with
 `NegativeIndex` — for the slice functions, which clamp an index past the
 end instead of bounds-checking it, so negativity is the one range check
-left. Negativity is checked first, since a fractional *and* negative
+left. Negativity is checked first, since a fractional _and_ negative
 index (`-2.5`) is unambiguously "negative" first, not two independent
 problems to report at once.
 -}
@@ -574,7 +582,7 @@ type LogLevel
 
 {-| One item a native queued in `State.pendingEffects` for the embedder,
 until `Zak.Internal.Interpreter.drainEffects` hands it over. Plain, inert data —
-see `pendingEffects`'s own doc for why this is *not* the same kind of
+see `pendingEffects`'s own doc for why this is _not_ the same kind of
 thing `Thread`'s `resume` is, despite both living on `State`. The two
 variants differ in who defines them:
 
@@ -592,7 +600,8 @@ variants differ in who defines them:
 A `VTable`/`VArray` argument is queued as a reference, not a copy: the
 host reads its contents when it handles the effect, so it sees any change
 a script made in between. A native that needs a snapshot reads the plain
-fields out *before* queuing.
+fields out _before_ queuing.
+
 -}
 type Effect
     = Log LogLevel String
