@@ -61,7 +61,14 @@ player.position.x = 5   # fine: player.position is a table
 player.stats.level = 2  # error: there is no field named “stats”
 ```
 
-There's no way to remove a field. Setting a field to `nil` keeps it in the table, with `nil` as its value, so `in` still finds it.
+Setting a field to `nil` keeps it in the table, with `nil` as its value, so `in` still finds it. To take a field out, use `Table.remove`:
+
+```
+player.target = nil             # still a field: "target" in player is true
+Table.remove(player, "target")  # gone: "target" in player is false
+```
+
+After that, reading `player.target` is an error again, as for a field that was never there.
 
 ## Field names known at runtime
 
@@ -89,6 +96,8 @@ end)
 ```
 
 Fields are visited sorted by name, not in the order they were added. The sort is character by character, so uppercase names come before lowercase ones.
+
+The function may remove fields from the table. `Table.each` still visits every field the table had when it started, so a field removed partway through gets its turn later, with its old value.
 
 `for` only works on arrays, not tables.
 

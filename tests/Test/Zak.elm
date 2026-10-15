@@ -323,13 +323,27 @@ suite =
                             in
                             ( Zak.getField "a" table world1, Zak.getField "nope" table world1, Zak.fields table world1 )
                                 |> Expect.equal ( Just (Number 1), Nothing, Just (Dict.fromList [ ( "a", Number 1 ), ( "b", Bool True ) ]) )
+            , test "removeField takes a field out of a script's table, and the script sees it gone" <|
+                \_ ->
+                    withWorld (runIn [] "let t = { a = 1, b = nil }\nreturn t") <|
+                        \( table, world ) ->
+                            let
+                                world1 =
+                                    world
+                                        |> Zak.removeField "b" table
+                                        |> Zak.removeField "nope" table
+                            in
+                            ( Zak.fields table world1
+                            , Zak.run "return \"b\" in t" world1 |> Result.map Tuple.first
+                            )
+                                |> Expect.equal ( Just (Dict.fromList [ ( "a", Number 1 ) ]), Ok (Bool False) )
             , test "the table functions treat anything but a table as having no fields" <|
                 \_ ->
                     let
                         world =
                             Zak.init []
                     in
-                    ( Zak.getField "x" (Number 1) world, Zak.fields Nil world, Zak.threadCount (Zak.setField "x" Nil Nil world) )
+                    ( Zak.getField "x" (Number 1) world, Zak.fields Nil world, Zak.threadCount (Zak.setField "x" Nil Nil world |> Zak.removeField "x" Nil) )
                         |> Expect.equal ( Nothing, Nothing, 0 )
             , test "items reads a script's array, in order" <|
                 \_ ->

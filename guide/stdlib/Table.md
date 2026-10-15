@@ -1,6 +1,6 @@
 # Table
 
-Named-field collections. A table is a reference, not a plain value, the same as an array. Dot syntax (`table.field`, `table.field = value`) already covers reading and writing a field for most cases — the functions below are a callable spelling of the same two operations, needed when the field name itself is a runtime value rather than a literal identifier.
+Named-field collections. A table is a reference, not a plain value, the same as an array. Dot syntax (`table.field`, `table.field = value`) already covers reading and writing a field for most cases — `get` and `set` below are a callable spelling of the same two operations, needed when the field name itself is a runtime value rather than a literal identifier. Removing a field has no syntax: `Table.remove` is the only way.
 
 `table` is always the first argument of every function below, the same as with [Array](Array.md).
 
@@ -33,6 +33,16 @@ Table.set(r, "x", 99)   # r is now { x = 99 }
 Table.set(r, "y", 2)    # r is now { x = 99, y = 2 }
 ```
 
+## Table.remove(table, name)
+
+Removes the field named `name` from `table`, in place. Returns `true` if the field was there, `false` if it wasn't — not an error, the same as [`Array.remove`](Array.md). Setting a field to `nil` keeps it in the table, so this is the only way to take a field out.
+
+```
+let r = { x = 1, y = nil }
+Table.remove(r, "y")   # true; r is now { x = 1 }
+Table.remove(r, "z")   # false; r is unchanged
+```
+
 ## Table.contains(table, name)
 
 True if `table` has a field named `name`. The only way to test for a field's presence without risking the error `get`/dot access would raise for a missing one.
@@ -63,3 +73,5 @@ t   # { nested = { y = 99 } } — the nested table was shared, not copied
 ## Table.each(table, fn)
 
 Calls `fn(name, value)` once per field, sorted by field name (not in the order the fields were added), for the side effect alone — discards whatever `fn` returns and never mutates `table`. An empty `table` is a no-op.
+
+`fn` may remove fields with `Table.remove`: `each` still visits every field `table` had when it started, so a field removed partway through gets its turn later, with its old value.

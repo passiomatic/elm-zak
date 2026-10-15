@@ -22,7 +22,7 @@ runExpr =
 
 suite : Test
 suite =
-    describe "Zak.Table (get, get_default, set, contains, clone, each)"
+    describe "Zak.Table (get, get_default, set, remove, contains, clone, each)"
         [ describe "get (table first, matching Array's own argument order)" <|
             [ test "reads an existing field" <|
                 \_ -> runExpr "Table.get({ x = 1 }, \"x\")" |> Expect.equal (Ok (VNumber 1))
@@ -104,6 +104,78 @@ suite =
                 \_ ->
                     runExpr "Table.get_default({ x = 1 }, \"x\")"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 3, got = 2 })))
+            ]
+        , describe "remove (mutating, in place — true if the field was there, false if not, same as Array.remove)" <|
+            [ test "returns true when the field was there" <|
+                \_ -> runExpr "Table.remove({ x = 1 }, \"x\")" |> Expect.equal (Ok (VBool True))
+            , test "the field is gone: in no longer finds it, and dot access is an error again" <|
+                \_ ->
+                    run
+                        """
+                        let r = { x = 1, y = 2 }
+                        Table.remove(r, "x")
+                        return not ("x" in r) and not Table.contains(r, "x") and r.y == 2
+                        """
+                        |> Expect.equal (Ok (VBool True))
+            , test "reading a removed field is a hard error, same as one that was never there" <|
+                \_ ->
+                    run
+                        """
+                        let r = { x = 1 }
+                        Table.remove(r, "x")
+                        return r.x
+                        """
+                        |> Expect.equal (Err (RuntimeError (WithPosition { row = 4, col = 25 } (UndefinedField "x"))))
+            , test "removes a field holding nil — setting nil keeps a field, removing takes it out" <|
+                \_ ->
+                    run
+                        """
+                        let r = { x = nil }
+                        let removed = Table.remove(r, "x")
+                        return removed and not ("x" in r)
+                        """
+                        |> Expect.equal (Ok (VBool True))
+            , test "a missing field returns false and leaves the table unchanged, not an error" <|
+                \_ ->
+                    run
+                        """
+                        let r = { x = 1 }
+                        let removed = Table.remove(r, "y")
+                        return not removed and r.x == 1
+                        """
+                        |> Expect.equal (Ok (VBool True))
+            , test "mutates in place, visible through an alias" <|
+                \_ ->
+                    run
+                        """
+                        let r = { x = 1 }
+                        let s = r
+                        Table.remove(r, "x")
+                        return "x" in s
+                        """
+                        |> Expect.equal (Ok (VBool False))
+            , test "a removed field can be added back" <|
+                \_ ->
+                    run
+                        """
+                        let r = { x = 1 }
+                        Table.remove(r, "x")
+                        r.x = 2
+                        return r.x
+                        """
+                        |> Expect.equal (Ok (VNumber 2))
+            , test "wrong first argument type" <|
+                \_ ->
+                    runExpr "Table.remove(1, \"x\")"
+                        |> Expect.equal (Err (RuntimeError (NotATable (VNumber 1) "x")))
+            , test "wrong second argument type" <|
+                \_ ->
+                    runExpr "Table.remove({ x = 1 }, 1)"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
+            , test "wrong argument count" <|
+                \_ ->
+                    runExpr "Table.remove({ x = 1 })"
+                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
             ]
         , describe "contains (the only way to test for a field's presence without risking the hard error get/dot access raise)" <|
             [ test "true when the field exists" <|
@@ -211,6 +283,19 @@ suite =
                         return Table.get(r, "x")
                         """
                         |> Expect.equal (Ok (VNumber 1))
+            , test "fn can remove fields: each goes through the fields the table had when it started" <|
+                \_ ->
+                    run
+                        """
+                        let r = { a = 1, b = 2, c = 3 }
+                        let sum = 0
+                        Table.each(r, function(name, value):
+                            Table.remove(r, "c")
+                            sum = sum + value
+                        end)
+                        return sum * 10 + Array.length(Array.filter(["a", "b", "c"], function(name): return name in r end))
+                        """
+                        |> Expect.equal (Ok (VNumber 62))
             , test "returns nil" <|
                 \_ ->
                     runExpr "Table.each({ x = 1 }, function(name, value): value end)"

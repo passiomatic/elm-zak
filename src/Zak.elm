@@ -1,7 +1,7 @@
 module Zak exposing
     ( World, init, run, call, tick, reseed
     , Value(..), TableRef, ArrayRef, FunctionRef
-    , getGlobal, setGlobal, globals, newTable, getField, setField, fields, items
+    , getGlobal, setGlobal, globals, newTable, getField, setField, removeField, fields, items
     , ThreadOwner, startThread, stopThreads, hasThreads, setThreadOwner, threadCount
     , Effect(..), LogLevel(..), emitEffect, takeEffects
     , Error, Problem(..), Position, errorProblem, errorPosition, errorToString
@@ -48,7 +48,7 @@ second, so updates chain with `|>`.
 
 # Data
 
-@docs getGlobal, setGlobal, globals, newTable, getField, setField, fields, items
+@docs getGlobal, setGlobal, globals, newTable, getField, setField, removeField, fields, items
 
 
 # Threads
@@ -385,6 +385,25 @@ setField key value table (World state) =
     case table of
         Table (TableRef id) ->
             World { state | heap = Dict.update id (Maybe.map (Dict.insert key (toInternal value))) state.heap }
+
+        _ ->
+            World state
+
+
+{-| Removes the field `key` from `table`, as a script's `Table.remove`
+does. Does nothing if `table` isn't a table, or has no such field.
+Setting a field to `Nil` keeps it, so this is the only way to take one
+out.
+
+    world
+        |> Zak.removeField "x" point
+
+-}
+removeField : String -> Value -> World -> World
+removeField key table (World state) =
+    case table of
+        Table (TableRef id) ->
+            World { state | heap = Dict.update id (Maybe.map (Dict.remove key)) state.heap }
 
         _ ->
             World state

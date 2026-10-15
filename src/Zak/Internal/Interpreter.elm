@@ -771,6 +771,7 @@ builtinNatives =
                     [ ( "get", NativeFunction tableGet )
                     , ( "get_default", NativeFunction tableGetDefault )
                     , ( "set", NativeFunction tableSet )
+                    , ( "remove", NativeFunction tableRemove )
                     , ( "contains", NativeFunction tableContains )
                     , ( "clone", NativeFunction tableClone )
                     , ( "each", NativeFunction tableEach )
@@ -2666,6 +2667,33 @@ tableGetDefault state args =
             Err (WrongArgCount { expected = 3, got = List.length args })
 
 
+{-| `Table.remove(table, name)` — removes the field named `name` from
+`table`, in place. `true` if it was there, `false` if it wasn't (not an
+error), the same contract as `Array.remove`. A boolean rather than the
+removed value: a field can hold `nil`, so a returned `nil` couldn't tell
+a removed `nil` from a missing field. Setting a field to `nil` keeps it,
+so this is the only way to take one out.
+-}
+tableRemove : State -> List Value -> Result RuntimeError ( Value, State )
+tableRemove state args =
+    case args of
+        [ VTable id, VString name ] ->
+            if tableHasField state id name then
+                Ok ( VBool True, { state | heap = Dict.update id (Maybe.map (Dict.remove name)) state.heap } )
+
+            else
+                Ok ( VBool False, state )
+
+        [ other, VString name ] ->
+            Err (NotATable other name)
+
+        [ _, other ] ->
+            Err (TypeError { expected = "String", got = other })
+
+        _ ->
+            Err (WrongArgCount { expected = 2, got = List.length args })
+
+
 {-| `Table.contains(table, name)` — true if `table` has a field named
 `name`, without ever raising `UndefinedField` the way `.name`/`Table.get`
 would for a missing one. The only way a script can test for a field's
@@ -2729,7 +2757,9 @@ tableClone state args =
 `Dict.toList`'s natural (key-sorted, not insertion) order, discarding
 whatever `fn` returns; never mutates `table`. An empty `table` is a
 no-op, same as `Array.each` on an empty array. Field order is a known,
-deliberately deferred gap here.
+deliberately deferred gap here. The fields are read once, up front, so
+`fn` can `Table.remove` fields safely: a field removed partway through
+is still visited, with its old value.
 -}
 tableEach : State -> List Value -> Result RuntimeError ( Value, State )
 tableEach state args =
