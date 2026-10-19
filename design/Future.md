@@ -143,5 +143,59 @@ So the game would need to rename every engine hook and shared-internal name (e.g
 **Open question:** should `_` mean "private" (Dart-style)? If so, the game's naming has to be cleaned up first, and engine hooks need a different marker (e.g. `on_*` with no underscore). If `_` stays for engine hooks, a Lua-style keyword avoids the clash, but adds new syntax.
 
 
+## 8. Enums
+
+elm-adventure's `Helpers.zak` has 37 string constants (`const FRONT = "Front"`, `const OPEN = "open"`, ...). They exist so a typo in the *name* (`OPNE`) is an undefined-name error. Could an `enum` concept do better?
+
+**What constants catch, and what they don't.** They catch a mistyped constant name. They don't catch:
+
+- **Using the string directly.** The game already does this: `Actor.set_state(self, "off")` (`Alleyway.zak:169`), `"open"`/`"closed"` (`MainStreet.zak:58, 61`), `"open"` (`SystemHelpers.zak:204`). A typo there (`"opne"`) only fails when the engine gets it.
+- **Using the wrong group.** Everything is a string, so `Actor.face(actor, EASE_IN)` is accepted until the engine decodes it.
+
+**The constants are three different things** (as of 2026-10-19):
+
+| Group | Constants | Closed set? |
+|---|---|---|
+| Directions, scene effects, easing | `FRONT`, `BACK`, ...; `FX_FADE_IN`, ...; `LINEAR`, `EASE_IN`, ... | yes: the engine accepts exactly these (`Engine.Direction`, `Engine.SceneFx`, `Engine.Curve`) |
+| Object states | `OPEN`, `CLOSED`, `ON`, `OFF`, `GONE`, `HERE` | no: a state is any name an object defines; these are just the common ones |
+| Colors | `COLOR_*` | no: they're values with names |
+
+So an enum would only fit the first group, 12 constants.
+
+**Three ways it could work:**
+
+1. **No language change: group with tables.** Works today, and a missing field is already an error:
+
+   ```
+   const Direction = { front = "Front", back = "Back", left = "Left", right = "Right" }
+
+   Actor.face(actor, Direction.front)
+   Actor.face(actor, Direction.frnot)   # error: Direction has no field frnot
+   ```
+
+   Catches typos like `const` does, groups related values, and makes them easy to find. Doesn't stop raw strings or wrong groups, and fields can still be reassigned.
+2. **`enum` as syntax for named constants**, like Squirrel and GDScript: `enum Direction: Front, Back, Left, Right end`. Just a shorter way to write option 1: the values are still plain strings or numbers, so it catches nothing new.
+3. **A real enum type.** `Direction.Front` is a new kind of value, different from any string: `==` matches only itself, `type()` reports `"Direction"`, `String.from` shows `"Direction.Front"`, and a function expecting a direction can reject a string or another enum's value. The only option that catches raw strings and wrong groups, and by far the most expensive: a new `Value` variant through the interpreter, equality and display; a breaking change to the public `Zak.Value` type; and every engine native that takes a direction, effect or curve has to decode enum values instead of strings.
+
+**Prior art:**
+
+- **Lua:** no enums; plain strings or tables of constants (option 1).
+- **Squirrel:** `enum`, as compile-time named constants (option 2).
+- **GDScript:** named integers plus a dictionary (options 1 and 2).
+- **Ruby:** symbols (`:open`), interned strings of their own type. A lighter option 3.
+- **Python:** the `enum` module, a library, close to option 3.
+- **Elm:** custom types, the full option 3, checked at compile time.
+
+**Is it worth it?** Not now. In a dynamic language even option 3 catches the mistake at runtime, at the same moment the engine already rejects an unknown string. The gain is a better error message, at the cost of a new value type and a breaking API change, for 12 constants, with no bug from a mistyped one found so far.
+
+Cheaper steps that get most of the benefit:
+
+1. Make the engine's error for an unknown value list the valid ones ("`"Frnot"` isn't a direction: expected Front, Back, Left or Right"). Catches raw strings and wrong groups, with no language change.
+2. Optionally group the closed sets as tables (`Direction.front`, `Fx.fade_in`, `Ease.ease_in`).
+3. Replace the few raw `"open"`/`"off"` literals in the scenes with the constants, so the code doesn't mix both styles.
+
+Revisit option 3 if bugs from wrong strings show up. Ruby-style symbols would probably be the lightest way to give these values their own type.
+
+
 [q]: https://quirrel.io/doc/coming-from/squirrel.html
 
