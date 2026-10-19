@@ -1,15 +1,17 @@
 # Modulo
 
-A modulo operation for Zak: which semantics, operator or function, and how it relates to the existing `//`. Nothing is implemented yet. This page records the options and a recommendation so it can be revised before deciding.
+A modulo operation for Zak: which semantics, operator or function, and how it relates to the existing `//`.
+
+**Decided and implemented (2026-10-18):** a floored `%` operator, paired with the existing `//`, on fractional numbers too. See "Decision" at the end. The rest of the page records the options that led there.
 
 **Sources:**
 - Elm's `modBy` / `remainderBy`: https://package.elm-lang.org/packages/elm/core/latest/Basics#modBy
 - Daan Leijen, *Division and Modulus for Computer Scientists* (linked from Elm's docs): https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/divmodnote-letter.pdf
 - Python's `%` (floored).
 - Squirrel 3.2 (Homebrew `squirrel-lang`), run locally, plus its VM source `squirrel/sqvm.cpp` at tag `v3.2` (github.com/albertodemichelis/squirrel), fetched with `gh`.
-- Zak source: `src/Zak/Interpreter.elm` (`evalBinary`, `checkedDivide`), `src/Zak/Parser.elm` (`multiplicativeOp`).
+- Zak source: `src/Zak/Internal/Interpreter.elm` (`evalBinary`, `checkedDivide`), `src/Zak/Internal/Parser.elm` (`multiplicativeOp`).
 
-## What Zak has today
+## What Zak had before `%`
 
 - Every number is an Elm `Float`. There's no separate integer type.
 - `//` is already **floor division**. `evalBinary` computes it as `toFloat (floor (a / b))`, through `checkedDivide`.
@@ -84,7 +86,7 @@ It's a consistency requirement, not a technical one. Nothing in the interpreter 
 3. **Division by zero.** Reuse `checkedDivide` as it is, so `%` raises `DivisionByZero` like `/` and `//`.
 4. **Modulo and remainder both** (Haskell's `mod`/`rem`, Elm's `modBy`/`remainderBy`). No game need for a truncated remainder has come up, so leave it out until one does.
 
-## Recommendation (not decided)
+## Recommendation
 
 A **floored `%` operator**, paired with the existing `//`:
 - It works like Python's and Lua's, so it won't surprise anyone.
@@ -94,8 +96,14 @@ A **floored `%` operator**, paired with the existing `//`:
 
 Euclidean is the choice in principle, but it only wins for negative divisors and would mean redefining `//`.
 
-## Open
+## Decision
 
-- Floored `%` (recommended) or Euclidean with `//` redefined?
-- `%` operator or `Math.mod` function?
-- Fractional numbers allowed (recommended), or whole numbers only?
+The recommendation, as written:
+
+- **Floored**, not Euclidean. `//` is unchanged, and `a % b` is defined from it (`a - b * (a // b)`), so `a == b * (a // b) + a % b` always holds. The result takes the sign of the right number: `-7 % 3 == 2`, `7 % -3 == -2`.
+- **An operator**, `%`, at the same precedence as `*`, `/` and `//`, left-associative.
+- **Fractional numbers allowed**: `5.5 % 2 == 1.5`, `-90 % 360 == 270`. The edge case from "Other decisions" is real and pinned by a test: `-1e-20 % 360` gives exactly `360`, as in Python.
+- **Division by zero** goes through `checkedDivide`, so `7 % 0` is `DivisionByZero` ("7 % 0 is undefined"), like `/` and `//`.
+- **No truncated remainder** (`rem` / `remainderBy`) until a game needs one.
+
+Implemented in `src/Zak/Internal/Interpreter.elm` (`floorDivide`, `floorModulo`), `src/Zak/Internal/Parser.elm` (`multiplicativeOp`) and `src/Zak/Internal/AST.elm` (`Mod`), with tests in `tests/Test/Zak/Interpreter.elm` and `tests/Test/Zak/Parser.elm`, and documented in the guide's Expressions, Values and Lexical pages. `%=` will come with the compound-assignment phase, if that lands.

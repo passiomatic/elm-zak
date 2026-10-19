@@ -55,6 +55,7 @@ A keyword followed by `?` is an ordinary identifier, so `end?` is a valid name.
 | ------------------------------- | ------------------------------------ |
 | `+` `-` `*` `/`                 | arithmetic                           |
 | `//`                            | floor division                       |
+| `%`                             | modulo                               |
 | `-` (prefix)                    | negation                             |
 | `++`                            | string concatenation                 |
 | `==` `!=`                       | equality                             |

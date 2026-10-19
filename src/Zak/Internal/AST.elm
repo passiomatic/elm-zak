@@ -126,6 +126,7 @@ type BinaryOp
     | Mul
     | Div
     | FloorDiv
+    | Mod
     | Concat
     | Eq
     | NotEq

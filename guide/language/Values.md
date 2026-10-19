@@ -25,10 +25,11 @@ There is a single number type, used for both whole and fractional values. Number
 ```
 7 / 2              # 3.5
 7 // 2             # 3
+7 % 2              # 1
 0.1 + 0.2 == 0.3   # false
 ```
 
-Dividing by zero, with either `/` or `//`, stops the script with an error. A calculation never produces an "infinity" or "not a number" value.
+Dividing by zero, with `/`, `//` or `%`, stops the script with an error. A calculation never produces an "infinity" or "not a number" value.
 
 Some functions, such as `Array.get`, only accept a whole number; passing `1.5` there is an error.
 

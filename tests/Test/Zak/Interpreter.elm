@@ -110,6 +110,7 @@ suite =
                 , ( "1 - 2", Just (VNumber -1) )
                 , ( "7 / 2", Just (VNumber 3.5) )
                 , ( "7 // 2", Just (VNumber 3) )
+                , ( "7 % 3", Just (VNumber 1) )
                 , ( "-5", Just (VNumber -5) )
                 , ( "\"a\" ++ \"b\"", Just (VString "ab") )
                 , ( "1 + \"a\"", Nothing )
@@ -120,6 +121,7 @@ suite =
             List.map (testValue (I.runExpr noNatives))
                 [ ( "1 / 0", Nothing )
                 , ( "1 // 0", Nothing )
+                , ( "1 % 0", Nothing )
                 , ( "0 / 0", Nothing )
                 , ( "1 / 2", Just (VNumber 0.5) )
 
@@ -1365,7 +1367,51 @@ return function?(function?)"""
                 \_ ->
                     I.runExpr noNatives "1 // 0"
                         |> Expect.equal (Err (RuntimeError (DivisionByZero "1 // 0 is undefined")))
+            , test "modulo by zero" <|
+                \_ ->
+                    I.runExpr noNatives "7 % 0"
+                        |> Expect.equal (Err (RuntimeError (DivisionByZero "7 % 0 is undefined")))
+            , test "modulo: type error on the left" <|
+                \_ ->
+                    I.runExpr noNatives "\"a\" % 2"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Number", got = VString "a" })))
+            , test "modulo: type error on the right" <|
+                \_ ->
+                    I.runExpr noNatives "7 % \"a\""
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Number", got = VString "a" })))
             ]
+        , describe "runExpr: % is floored (the result takes the sign of the divisor), paired with //" <|
+            List.map (testValue (I.runExpr noNatives))
+                [ ( "7 % 3", Just (VNumber 1) )
+                , ( "-7 % 3", Just (VNumber 2) )
+                , ( "7 % -3", Just (VNumber -2) )
+                , ( "-7 % -3", Just (VNumber -1) )
+                , ( "6 % 3", Just (VNumber 0) )
+                , ( "0 % 5", Just (VNumber 0) )
+                , ( "2 % 5", Just (VNumber 2) )
+
+                -- wrapping an index backward: not -1, unlike a truncated %
+                , ( "(0 - 1) % 4", Just (VNumber 3) )
+
+                -- fractional numbers work, for angles and timers
+                , ( "5.5 % 2", Just (VNumber 1.5) )
+                , ( "-90 % 360", Just (VNumber 270) )
+                , ( "450.5 % 360", Just (VNumber 90.5) )
+
+                -- the floating-point edge case shared with Python's %:
+                -- a tiny negative number (-1e-20; Zak has no exponent
+                -- literals) rounds to exactly the divisor
+                , ( "-1 / 100000000000000000000 % 360", Just (VNumber 360) )
+                ]
+        , describe "runExpr: a == b * (a // b) + a % b, for every sign combination" <|
+            List.map
+                (\( a, b ) ->
+                    test (a ++ ", " ++ b) <|
+                        \_ ->
+                            I.runExpr noNatives (b ++ " * (" ++ a ++ " // " ++ b ++ ") + " ++ a ++ " % " ++ b ++ " == " ++ a)
+                                |> Expect.equal (Ok (VBool True))
+                )
+                [ ( "7", "3" ), ( "-7", "3" ), ( "7", "-3" ), ( "-7", "-3" ), ( "5.5", "2" ), ( "-5.5", "2" ) ]
         , describe "let/const shadowing an outer const queues a LogWarning (not an error — the binding still succeeds, same as shadowing anything else already does)" <|
             [ test "shadowing true at the top level warns, with the exact message" <|
                 \_ ->

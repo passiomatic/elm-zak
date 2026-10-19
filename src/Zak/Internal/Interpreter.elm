@@ -1680,7 +1680,10 @@ evalBinary op left right =
             checkedDivide "/" (/) left right
 
         FloorDiv ->
-            checkedDivide "//" (\a b -> toFloat (floor (a / b))) left right
+            checkedDivide "//" floorDivide left right
+
+        Mod ->
+            checkedDivide "%" floorModulo left right
 
         Concat ->
             stringOp (++) left right
@@ -1760,7 +1763,36 @@ numberOp f left right =
             Err (TypeError { expected = "Number", got = left })
 
 
-{-| Like `numberOp`, but for `/` and `//` specifically: a zero divisor is a
+{-| `a // b`: divides, then rounds down (toward negative infinity, not
+toward zero), so `-7 // 2` is `-4`.
+-}
+floorDivide : Float -> Float -> Float
+floorDivide a b =
+    toFloat (floor (a / b))
+
+
+{-| `a % b`: the remainder that goes with `//`, defined from it directly
+(`a - b * (a // b)`) so the pair always satisfies
+`a == b * (a // b) + a % b`. That makes it a _floored_ modulo — the
+result takes the sign of `b` — like Python's and Lua's `%` and Elm's
+`modBy`, not C's/JavaScript's/Squirrel's truncated one (whose result
+takes the sign of `a`, so stepping back with `(i - 1) % n` gives `-1` at
+`i == 0`). See `design/Modulo.md` for the full comparison, including
+the Euclidean option that would have meant redefining `//`.
+
+Works on fractional numbers (`5.5 % 2 == 1.5`, useful for angles and
+timers), with the usual floating-point caveats: computing it through
+`floor (a / b)` rather than C's `fmod` can lose precision for very large
+quotients, and like Python's `%` a tiny negative `a` can round to exactly
+`b` (`-1e-20 % 360` gives exactly `360`).
+
+-}
+floorModulo : Float -> Float -> Float
+floorModulo a b =
+    a - b * floorDivide a b
+
+
+{-| Like `numberOp`, but for `/`, `//` and `%` specifically: a zero divisor is a
 `DivisionByZero` runtime error rather than silently producing `Infinity` or
 `NaN` — which matters beyond just this operator, since `NaN` famously isn't
 even equal to itself (`NaN == NaN` is `False`, per IEEE 754), which would

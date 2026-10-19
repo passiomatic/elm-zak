@@ -511,7 +511,8 @@ multiplicativeExprHelp left =
 
 
 {-| `//` is tried before `/` for the same maximal-munch reason as `++`/`+`
-(same `oneOf`, so ordering alone resolves it).
+(same `oneOf`, so ordering alone resolves it). `%` shares the level, as it
+does in every language that has it: it's `//`'s remainder.
 -}
 multiplicativeOp : Parser BinaryOp
 multiplicativeOp =
@@ -519,6 +520,7 @@ multiplicativeOp =
         [ P.map (\_ -> FloorDiv) (L.symbol "//")
         , P.map (\_ -> Mul) (L.symbol "*")
         , P.map (\_ -> Div) (L.symbol "/")
+        , P.map (\_ -> Mod) (L.symbol "%")
         ]
 
 

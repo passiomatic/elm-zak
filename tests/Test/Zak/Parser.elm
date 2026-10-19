@@ -325,6 +325,12 @@ suite =
                 , ( "-5 - 3", Just (Binary Sub (Unary Negate (NumberLiteral 5)) (NumberLiteral 3)) )
                 , ( "1 + 2 - 3", Just (Binary Sub (Binary Add (NumberLiteral 1) (NumberLiteral 2)) (NumberLiteral 3)) )
                 , ( "2 * 3 // 4", Just (Binary FloorDiv (Binary Mul (NumberLiteral 2) (NumberLiteral 3)) (NumberLiteral 4)) )
+
+                -- % shares * / //'s level, left-associative
+                , ( "1 + 7 % 3", Just (Binary Add (NumberLiteral 1) (Binary Mod (NumberLiteral 7) (NumberLiteral 3))) )
+                , ( "2 * 7 % 3", Just (Binary Mod (Binary Mul (NumberLiteral 2) (NumberLiteral 7)) (NumberLiteral 3)) )
+                , ( "7 % 3 * 2", Just (Binary Mul (Binary Mod (NumberLiteral 7) (NumberLiteral 3)) (NumberLiteral 2)) )
+                , ( "-7 % 3", Just (Binary Mod (Unary Negate (NumberLiteral 7)) (NumberLiteral 3)) )
                 , ( "a == b", Just (Binary Eq (Name "a") (Name "b")) )
 
                 -- non-associative: parseExpr stops after the first

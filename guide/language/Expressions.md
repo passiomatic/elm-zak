@@ -21,15 +21,31 @@ Operands are always evaluated left to right, and so are a function call's argume
 | `*`      | multiplication   | `7 * 2`   | `14`   |
 | `/`      | division         | `7 / 2`   | `3.5`  |
 | `//`     | floor division   | `7 // 2`  | `3`    |
+| `%`      | modulo           | `7 % 3`   | `1`    |
 | `-x`     | negation         | `-7`      | `-7`   |
 
 All of them work on numbers only.
 
 Floor division divides, then rounds down to the nearest whole number — down, not toward zero, so `-7 // 2` is `-4`.
 
-Dividing by zero, with either `/` or `//`, is a runtime error.
+Modulo is what's left over from floor division, so the two always fit together: `a == b * (a // b) + a % b`. Because `//` rounds down, the result of `%` has the same sign as the number on its right. With a positive number on the right, it's never negative:
 
-There is no remainder operator.
+```
+7 % 3      # 1
+-7 % 3     # 2, not -1
+7 % -3     # -2
+```
+
+That makes it safe for wrapping around, even when counting backward:
+
+```
+frame = (frame + 1) % frame_count            # 0, 1, ..., frame_count - 1, 0, ...
+index = (index - 1) % Array.length(items)    # from 0, wraps to the last index
+```
+
+`%` works on fractional numbers too, which is useful for angles: `-90 % 360` is `270`, and `5.5 % 2` is `1.5`.
+
+Dividing by zero, with `/`, `//` or `%`, is a runtime error.
 
 ## String concatenation
 
@@ -115,7 +131,7 @@ When operators are mixed without parentheses, those with a higher precedence are
 | ---------- | ---------------------------------------- | ------------- |
 | 1          | `.field`, `[index]`, `(arguments)`       | left          |
 | 2          | `-` (negation)                           | right         |
-| 3          | `*`, `/`, `//`                           | left          |
+| 3          | `*`, `/`, `//`, `%`                      | left          |
 | 4          | `+`, `-`, `++`                           | left          |
 | 5          | `==`, `!=`, `<`, `<=`, `>`, `>=`, `in`   | none          |
 | 6          | `not`                                    | right         |

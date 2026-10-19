@@ -78,7 +78,7 @@
         { "name": "keyword.operator.comparison.zak", "match": "==" },
         { "name": "keyword.operator.comparison.zak", "match": ">=" },
         { "name": "keyword.operator.comparison.zak", "match": "<=" },
-        { "name": "keyword.operator.arithmetic.zak", "match": "[+\\-*/]" },
+        { "name": "keyword.operator.arithmetic.zak", "match": "[+\\-*/%]" },
         { "name": "keyword.operator.comparison.zak", "match": "[<>]" },
         { "name": "keyword.operator.assignment.zak", "match": "=" }
       ]
