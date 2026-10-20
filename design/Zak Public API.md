@@ -14,6 +14,33 @@ An item that would change a signature or remove a name has to be settled before 
 
 A `nativeExpression` that fails to parse or evaluate is left undefined, and `init` queues a `Log LogError` naming it. Nothing stops the host from booting, and its tests still pass. The stricter option is `init : List ( String, Native ) -> Result (List BrokenNative) World`, which lists every broken native with its error. Switching to it changes `init`'s signature.
 
+### Effects and waits named by strings
+
+Proposed (2026-10-20), not decided. A host tells its own effects and waits apart by matching strings: `Effect String (List Value)` and `Wait String (List Value)`. A native queues `emitEffect "say_line" [ id, text ]`, and the host matches `( "say_line", [ Number id, String text ] )` back into its own type. The engine does this for over thirty effects (`Engine.toWorldChange`) and for its waits (`Engine.Actor.stillWaiting`, which also turns the name back into a type by a reverse lookup). A misspelled name or a misshapen argument list is only caught at run time, where the compiler could catch both.
+
+The proposal: let the host pick the types, as type parameters.
+
+```elm
+type Effect effect
+    = Log LogLevel String
+    | Effect effect
+
+type Wait wait
+    = Wait wait
+
+emitEffect : effect -> World effect wait -> World effect wait
+tick : (wait -> World effect wait -> Bool) -> Float -> World effect wait -> ( List Error, World effect wait )
+nativeWaitingFunction : (List Value -> World effect wait -> Result Problem ( wait, World effect wait )) -> Native effect wait
+```
+
+A native would queue the host's own value, `emitEffect (ActorSay id text) world`, and wait on one, `Ok ( WhileWalking id, world )`. The host decodes nothing: the engine's natives could queue its `WorldChange`s directly, so `toWorldChange` goes away, and `stillWaiting` becomes a plain `case`. A host with no effects or waits of its own uses `World Never Never`.
+
+**Why it's strings now.** A waiting thread keeps its wait inside the interpreter's `State` (`Runtime.Host`), and so do the queued effects (`pendingEffects`). A type parameter on either makes `State` take it, and the interpreter's own `Value` holds natives that take `State` (`VNative`), so `Value` takes it too, and from there every type and function that mentions a value or the state: the heap, environments, threads, `Outcome`, `NativeValue`, the interpreter, and every standard-library module. It's mechanical, but it touches most of the package. Elm can't hide the parameter: a stored closure would need the host's state, which brings it back. `Wait` was shaped like `Effect` on purpose, so the two stay consistent; this changes both or neither.
+
+**What changes for a host.** `World` and `Native` take the two parameters. The public `Value` does too, as long as `FunctionRef` holds a runtime function; with the function store (see "Comparing functions crashes") it holds an id instead, and `Value` stays as it is. The standard library's natives are polymorphic (`Native effect wait`), so they fit any host. A host keeps its own signatures short with an alias, `type alias World = Zak.World EngineEffect EngineWait`.
+
+**One parameter or two.** Two, as above, keeps effects and waits apart, so `tick`'s answer can't be asked about an effect. One (`World host`) is shorter, but the host's single type then mixes effects and waits, and each side has to handle the other's cases as impossible. Two is the better fit; the alias makes the length moot.
+
 ## Later
 
 ### The thread model
