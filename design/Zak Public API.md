@@ -20,6 +20,12 @@ A `nativeExpression` that fails to parse or evaluate is left undefined, and `ini
 
 Decided (2026-10-08): every thread has an owner, a `ThreadOwner` the host names (Zak defines none). A thread started with `Thread.start` gets the owner of the code that starts it, so a thread's descendants share its owner, and `Zak.stopThreads` stops them all. Code the host runs directly uses the owner set with `Zak.setThreadOwner`. `Thread.start_global` and `Zak.stopLocalThreads` were removed: a host that wants a "start this under another owner" primitive adds its own native calling `Zak.startThread`, which gives back the new thread's id (since 2026-10-09) so a script can `Thread.join` it. The package docs describe it.
 
+Decided (2026-10-20), so a host can implement what its scripts wait on in Elm, instead of copying its state into the world for Zak code to poll (the engine had to, for a character walking or a cutscene ending):
+
+- **Waits the host defines.** `Zak.nativeWaitingFunction` builds a native that gives back a `Wait` (a name and arguments, shaped like `Effect`) instead of a result, and the script that called it waits there. `Zak.tick` now takes the host's answer for those waits, `Wait -> World -> Bool`, true while a wait is still on. A wait is first checked on the next tick, and the call gives back `nil`. No result value yet: a waiting call can only be a statement of its own, so a value couldn't be used; resuming with one, and waiting in a `let`, assignment or `return`, come together if something needs them.
+- **A thread exists from its first instruction.** It's registered before its body runs, so `hasThreads` and `join` count it during its first run, and it can be stopped then.
+- **Stopping a running thread counts.** `Thread.stop` and `Zak.stopThreads` drop a running thread too, which then ends at its next wait. It used to be put back there, so stopping the running thread did nothing. It can't end at once: a thread only stops running at a wait (a call that's a statement of its own), so there's nowhere else for it to end.
+
 Still open: **owners don't nest, but boundaries can.** Leaving a level should also stop the threads of a cutscene inside it, but they have different owners. With flat owners the host stops each owner it knows about, which is probably fine, since the host knows its own boundaries.
 
 ### A native expression only sees natives

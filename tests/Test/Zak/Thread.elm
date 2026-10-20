@@ -18,7 +18,7 @@ returns, before any later `tick` has run.
 import Dict
 import Expect
 import Test exposing (Test, describe, test)
-import Zak.Internal.Interpreter as I exposing (tick)
+import Zak.Internal.Interpreter as I
 import Zak.Internal.Runtime as Runtime exposing (NativeValue(..), RuntimeError(..), Value(..))
 
 
@@ -91,6 +91,13 @@ readTableField state table field =
 
         _ ->
             Nothing
+
+
+{-| `tick`, for a host that defines no waits.
+-}
+tick : Float -> Runtime.State -> ( Runtime.State, List RuntimeError )
+tick =
+    I.tick (\_ _ _ -> False)
 
 
 suite : Test
@@ -502,7 +509,7 @@ return log"""
                             , \_ -> Expect.equal (Just (VString "")) (readTableField state2 result "value")
                             ]
                             ()
-        , test "stop on the running thread itself is a no-op: it carries on and is re-registered at its next wait" <|
+        , test "stop on the running thread itself ends it at its next wait: the code up to there still runs" <|
             \_ ->
                 case
                     runWithState """let log = { value = "" }
@@ -529,12 +536,11 @@ return log"""
                         in
                         Expect.all
                             [ \_ -> Expect.equal (Just (VString "a")) (readTableField state1 result "value")
-                            , \_ -> Expect.equal 1 (Dict.size state1.threads)
-                            , \_ -> Expect.equal (Just (VString "ab")) (readTableField state2 result "value")
-                            , \_ -> Expect.equal 0 (Dict.size state2.threads)
+                            , \_ -> Expect.equal 0 (Dict.size state1.threads)
+                            , \_ -> Expect.equal (Just (VString "a")) (readTableField state2 result "value")
                             ]
                             ()
-        , test "a child stopping the running thread that just started it is a no-op too" <|
+        , test "a child stopping the running thread that just started it ends that thread at its next wait too" <|
             \_ ->
                 case
                     runWithState """let log = { value = "" }
@@ -561,7 +567,68 @@ return log"""
                         in
                         Expect.all
                             [ \_ -> Expect.equal (Just (VString "a")) (readTableField state1 result "value")
-                            , \_ -> Expect.equal (Just (VString "ab")) (readTableField state2 result "value")
+                            , \_ -> Expect.equal (Just (VString "a")) (readTableField state2 result "value")
+                            , \_ -> Expect.equal 0 (Dict.size state2.threads)
+                            ]
+                            ()
+        , test "a thread stopped in its first run, before Thread.start has returned, ends at its first wait" <|
+            \_ ->
+                -- The first thread's id is 0 (`nextThreadId` starts there).
+                case
+                    runWithState """let log = { value = "" }
+let stop_parent = function(id): Thread.stop(id) end
+let next = { id = 0 }
+Thread.start(function():
+    stop_parent(next.id)
+    log.value = log.value ++ "a"
+    Thread.wait_for(1.0)
+    log.value = log.value ++ "b"
+end)
+return log"""
+                of
+                    Err err ->
+                        Expect.fail ("expected success, got: " ++ Debug.toString err)
+
+                    Ok ( result, state0 ) ->
+                        let
+                            ( state1, _ ) =
+                                tick 1.0 state0
+                        in
+                        Expect.all
+                            [ \_ -> Expect.equal (Just (VString "a")) (readTableField state0 result "value")
+                            , \_ -> Expect.equal 0 (Dict.size state0.threads)
+                            , \_ -> Expect.equal (Just (VString "a")) (readTableField state1 result "value")
+                            ]
+                            ()
+        , test "a thread joining one stopped while it ran is released" <|
+            \_ ->
+                case
+                    runWithState """let log = { value = "" }
+let target = { id = nil }
+target.id = Thread.start(function():
+    Thread.wait_for(1.0)
+    Thread.stop(target.id)
+    Thread.wait_for(5.0)
+end)
+Thread.start(function():
+    Thread.join(target.id)
+    log.value = "released"
+end)
+return log"""
+                of
+                    Err err ->
+                        Expect.fail ("expected success, got: " ++ Debug.toString err)
+
+                    Ok ( result, state0 ) ->
+                        let
+                            ( state1, _ ) =
+                                tick 1.0 state0
+
+                            ( state2, _ ) =
+                                tick 0 state1
+                        in
+                        Expect.all
+                            [ \_ -> Expect.equal (Just (VString "released")) (readTableField state2 result "value")
                             , \_ -> Expect.equal 0 (Dict.size state2.threads)
                             ]
                             ()
@@ -707,7 +774,7 @@ end)"""
 
                         Err err ->
                             Expect.fail ("expected success, got: " ++ Debug.toString err)
-            , test "the running thread that asks for it isn't stopped: it carries on past its next wait, like Thread.stop on itself" <|
+            , test "the running thread that asks for it ends at its next wait, like Thread.stop on itself" <|
                 \_ ->
                     let
                         leave =
@@ -743,11 +810,66 @@ return log"""
                             in
                             Expect.all
                                 [ \_ -> Expect.equal (Just (VString "a")) (readTableField s1 result "value")
-                                , \_ -> Expect.equal 1 (I.threadCount s1)
-                                , \_ -> Expect.equal (Just (VString "ab")) (readTableField s2 result "value")
-                                , \_ -> Expect.equal 0 (I.threadCount s2)
+                                , \_ -> Expect.equal 0 (I.threadCount s1)
+                                , \_ -> Expect.equal (Just (VString "a")) (readTableField s2 result "value")
                                 ]
                                 ()
+
+                        Err err ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString err)
+            , test "so does a thread that asks for it in its first run, from a host-started body" <|
+                \_ ->
+                    let
+                        leave =
+                            NativeFunction (\state _ -> Ok ( VNil, I.stopThreads "scene" state ))
+
+                        ( env, state0 ) =
+                            I.initialWorld (Dict.singleton "leave" leave)
+                    in
+                    case I.runIncremental env state0 "let log = { value = \"\" }\nreturn { log = log, body = function():\n    leave()\n    log.value = \"a\"\n    Thread.wait_for(1.0)\n    log.value = \"b\"\nend }" of
+                        Ok ( script, s0 ) ->
+                            case ( readTableField s0 script "log", readTableField s0 script "body" ) of
+                                ( Just log, Just body ) ->
+                                    case I.startThread "scene" body [] s0 of
+                                        Ok ( _, s1 ) ->
+                                            let
+                                                ( s2, _ ) =
+                                                    tick 1.0 s1
+                                            in
+                                            ( I.hasThreads "scene" s1, readTableField s2 log "value" )
+                                                |> Expect.equal ( False, Just (VString "a") )
+
+                                        Err err ->
+                                            Expect.fail ("expected success, got: " ++ Debug.toString err)
+
+                                _ ->
+                                    Expect.fail "expected log and body"
+
+                        Err err ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString err)
+            , test "an owner has a thread from its first instruction: a native its body calls before its first wait finds it" <|
+                \_ ->
+                    let
+                        probe =
+                            NativeFunction (\state _ -> Ok ( VBool (I.hasThreads "cutscene" state), state ))
+
+                        ( env, state0 ) =
+                            I.initialWorld (Dict.singleton "probe" probe)
+                    in
+                    case I.runIncremental env state0 "let log = { value = nil }\nreturn { log = log, body = function(): log.value = probe() end }" of
+                        Ok ( script, s0 ) ->
+                            case ( readTableField s0 script "log", readTableField s0 script "body" ) of
+                                ( Just log, Just body ) ->
+                                    case I.startThread "cutscene" body [] s0 of
+                                        Ok ( _, s1 ) ->
+                                            ( readTableField s1 log "value", I.hasThreads "cutscene" s1 )
+                                                |> Expect.equal ( Just (VBool True), False )
+
+                                        Err err ->
+                                            Expect.fail ("expected success, got: " ++ Debug.toString err)
+
+                                _ ->
+                                    Expect.fail "expected log and body"
 
                         Err err ->
                             Expect.fail ("expected success, got: " ++ Debug.toString err)

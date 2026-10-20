@@ -196,7 +196,7 @@ update msg model =
                 Just (Ok ( value, world )) ->
                     let
                         ( _, world1 ) =
-                            Zak.tick (deltaMs / 1000) world
+                            Zak.tick (\_ _ -> False) (deltaMs / 1000) world
 
                         ( world2, cmd ) =
                             drainAndLog world1

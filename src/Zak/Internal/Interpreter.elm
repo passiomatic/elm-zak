@@ -69,6 +69,7 @@ import Zak.Internal.Runtime
         , Thread(..)
         , ThreadId
         , ThreadOwner
+        , ThreadStatus(..)
         , Value(..)
         , WaitCondition(..)
         , allocArrayCell
@@ -224,7 +225,7 @@ directly, not from inside a `Thread.start`-spawned body) is
 `Thread.start` (or the host's `startThread`) ever lets a
 script's own statements actually run as a suspend-capable thread, and
 it fully absorbs whatever their spawned body
-does (registering it with `State.threads` if it suspends) before
+does (keeping it in `State.threads` if it suspends) before
 returning here, so a `Suspended` reaching all the way out to
 `runIncremental` never happens for a _correctly_ written top-level
 script — only for one that calls a suspending native directly, which is
@@ -491,18 +492,20 @@ start state args =
 
 {-| Runs `callee` as a new thread owned by `owner`: its body runs
 _immediately_, synchronously, right here, up to its own first suspend
-point or completion -- _before_ this call itself returns anything. If the
-body suspends partway through, the resulting `Thread` (see
-`Zak.Internal.Runtime`'s own doc) is registered under a freshly-allocated
-id in `state.threads`, to be resumed later by `tick`; if the body runs to
-completion without ever suspending, nothing gets registered at all --
-there's nothing left to resume. Either way, the result is the new
+point or completion -- _before_ this call itself returns anything. The
+thread is registered in `state.threads` under a freshly-allocated id
+before its body starts, as `Running`, so it counts as one of `owner`'s
+threads (`hasThreads`), and can be stopped, from its very first
+instruction. If the body suspends, it stays registered, now `Waiting`, to
+be resumed later by `tick`; if it runs to completion, or was stopped
+while it ran, it's gone (`settle`). Either way, the result is the new
 thread's id, handed back so a caller can pass it to `join` later: starting
 a thread is not running one, so the caller is never blocked by it.
 
 While the body runs, `owner` is the current owner, so a thread it starts
 before its first wait is `owner`'s too; the caller's owner is restored
-afterwards.
+afterwards. An error before the first wait comes back as an `Err`, with
+the caller's state as it was, so nothing stays registered.
 
 -}
 spawn : ThreadOwner -> Value -> List Value -> State -> Result RuntimeError ( Value, State )
@@ -513,28 +516,46 @@ spawn owner callee args state =
 
         callerOwner =
             state.currentOwner
+
+        running =
+            { state
+                | nextThreadId = threadId + 1
+                , currentOwner = owner
+                , threads = Dict.insert threadId (Thread { owner = owner, status = Running }) state.threads
+            }
     in
-    callFunction { state | nextThreadId = threadId + 1, currentOwner = owner } callee args
+    callFunction running callee args
         |> Result.map
             (\( outcome, state1 ) ->
-                let
-                    state2 =
-                        { state1 | currentOwner = callerOwner }
-                in
-                case outcome of
-                    Done _ ->
-                        ( VNumber (toFloat threadId), state2 )
-
-                    Suspended waitCondition resume ->
-                        ( VNumber (toFloat threadId)
-                        , { state2
-                            | threads =
-                                Dict.insert threadId
-                                    (Thread { waitCondition = waitCondition, elapsed = 0, resume = resume, owner = owner })
-                                    state2.threads
-                          }
-                        )
+                ( VNumber (toFloat threadId)
+                , settle threadId owner outcome { state1 | currentOwner = callerOwner }
+                )
             )
+
+
+{-| Where a thread stands once its code stops running for now, in its
+first run (`spawn`) or a resume (`tick`): done, it's dropped; waiting
+again, it's registered as `Waiting` -- unless it was stopped while it ran
+(`stopThreads`, `Thread.stop`), which took it out of `state.threads`: then
+it stays out, and never resumes.
+-}
+settle : ThreadId -> ThreadOwner -> Outcome Value -> State -> State
+settle threadId owner outcome state =
+    case outcome of
+        Done _ ->
+            { state | threads = Dict.remove threadId state.threads }
+
+        Suspended waitCondition resume ->
+            if Dict.member threadId state.threads then
+                { state
+                    | threads =
+                        Dict.insert threadId
+                            (Thread { owner = owner, status = Waiting { waitCondition = waitCondition, elapsed = 0, resume = resume } })
+                            state.threads
+                }
+
+            else
+                state
 
 
 {-| The host's way to start a thread: `callee` called with `args`, as a
@@ -550,7 +571,9 @@ startThread owner callee args state =
 
 {-| The once-per-frame scheduler step: advances every currently-suspended
 thread's own wait condition by `dt` (seconds since the last `tick`),
-resuming any whose condition is now satisfied. Each thread gets at most
+resuming any whose condition is now satisfied. `hostWaiting` answers for
+the host's own waits (`Host`): whether the wait named by its name and
+arguments is still on. Each thread gets at most
 one `resume` call per `tick`, never more, so a thread that resumes and
 immediately suspends again on a condition that's _already_ satisfied
 still only advances one step this frame, picking up the rest on the next
@@ -567,10 +590,9 @@ but a thread can be removed mid-pass** — `Thread.stop`, called by a
 thread resumed earlier in the same pass. So each thread is first checked
 against `stateAcc`'s own `threads`, and skipped if it's gone; otherwise
 the `StillWaiting` branch would write a stopped thread straight back in,
-or `ReadyToResume` would run it. The opposite case is deliberate: a
-thread that stops _itself_ (or its caller) while being resumed here is
-re-registered at its next suspend, which is exactly what makes
-`Thread.stop` a no-op on a running thread (see `Zak.Internal.Library.Thread.stop`).
+or `ReadyToResume` would run it. A thread that stops _itself_ (or its
+caller) while being resumed here is out of `threads` by the time it waits
+again, so `settle` leaves it out: it ends at its next wait.
 
 **Known, confirmed latency: `Thread.join` can resolve one full tick later
 than the thread it's joining actually finishes, depending on thread-id
@@ -598,40 +620,39 @@ first-class suspend primitive at all, versus exposing an
 it with a `wait_for` + poll loop.
 
 -}
-tick : Float -> State -> ( State, List RuntimeError )
-tick dt state =
+tick : (String -> List Value -> State -> Bool) -> Float -> State -> ( State, List RuntimeError )
+tick hostWaiting dt state =
     Dict.foldl
         (\threadId (Thread thread) ( stateAcc, errorsAcc ) ->
-            if not (Dict.member threadId stateAcc.threads) then
-                ( stateAcc, errorsAcc )
+            case ( thread.status, Dict.member threadId stateAcc.threads ) of
+                ( Waiting waiting, True ) ->
+                    case checkWaitCondition hostWaiting dt waiting.elapsed waiting.waitCondition stateAcc of
+                        StillWaiting newElapsed ->
+                            ( { stateAcc | threads = Dict.insert threadId (Thread { thread | status = Waiting { waiting | elapsed = newElapsed } }) stateAcc.threads }
+                            , errorsAcc
+                            )
 
-            else
-                case checkWaitCondition dt thread.elapsed thread.waitCondition stateAcc of
-                    StillWaiting newElapsed ->
-                        ( { stateAcc | threads = Dict.insert threadId (Thread { thread | elapsed = newElapsed }) stateAcc.threads }
-                        , errorsAcc
-                        )
+                        ReadyToResume ->
+                            -- The thread runs as its own owner, so a thread it
+                            -- starts is its owner's too.
+                            let
+                                running =
+                                    { stateAcc
+                                        | currentOwner = thread.owner
+                                        , threads = Dict.insert threadId (Thread { thread | status = Running }) stateAcc.threads
+                                    }
+                            in
+                            case waiting.resume running of
+                                Ok ( outcome, state1 ) ->
+                                    ( settle threadId thread.owner outcome { state1 | currentOwner = stateAcc.currentOwner }, errorsAcc )
 
-                    ReadyToResume ->
-                        -- The thread runs as its own owner, so a thread it
-                        -- starts is its owner's too.
-                        case thread.resume { stateAcc | currentOwner = thread.owner } of
-                            Ok ( Done _, state1 ) ->
-                                ( { state1 | threads = Dict.remove threadId state1.threads, currentOwner = stateAcc.currentOwner }, errorsAcc )
+                                Err error ->
+                                    ( { stateAcc | threads = Dict.remove threadId stateAcc.threads }, error :: errorsAcc )
 
-                            Ok ( Suspended waitCondition resume, state1 ) ->
-                                ( { state1
-                                    | threads =
-                                        Dict.insert threadId
-                                            (Thread { waitCondition = waitCondition, elapsed = 0, resume = resume, owner = thread.owner })
-                                            state1.threads
-                                    , currentOwner = stateAcc.currentOwner
-                                  }
-                                , errorsAcc
-                                )
-
-                            Err error ->
-                                ( { stateAcc | threads = Dict.remove threadId stateAcc.threads }, error :: errorsAcc )
+                -- Stopped earlier in this pass. (A `Running` thread only
+                -- exists while code runs, never when `tick` starts.)
+                _ ->
+                    ( stateAcc, errorsAcc )
         )
         ( state, [] )
         state.threads
@@ -643,21 +664,33 @@ frame.
 -}
 threadCount : State -> Int
 threadCount state =
-    Dict.size state.threads
+    state.threads
+        |> Dict.values
+        |> List.filter
+            (\(Thread thread) ->
+                case thread.status of
+                    Waiting _ ->
+                        True
+
+                    Running ->
+                        False
+            )
+        |> List.length
 
 
 {-| Stops every thread `owner` owns -- its descendants included, since
-they share its owner. The same rule as `Thread.stop`: only a _suspended_
-thread can be stopped. The thread that's running when this is called --
-the one whose native asked for it -- isn't affected, since `tick`
-re-registers it at its next wait.
+they share its owner -- the same way `Thread.stop` stops one: a waiting
+thread never resumes, and a running one (the one whose native asked for
+this, or one further up the call chain) carries on to its next wait and
+ends there (`settle`).
 -}
 stopThreads : ThreadOwner -> State -> State
 stopThreads owner state =
     { state | threads = Dict.filter (\_ (Thread thread) -> thread.owner /= owner) state.threads }
 
 
-{-| Whether any thread `owner` owns is waiting for `tick`.
+{-| Whether `owner` owns any thread: waiting for `tick`, or running now,
+its first run included.
 -}
 hasThreads : ThreadOwner -> State -> Bool
 hasThreads owner state =
@@ -703,9 +736,16 @@ type WaitCheck
     | ReadyToResume
 
 
-checkWaitCondition : Float -> Float -> WaitCondition -> State -> WaitCheck
-checkWaitCondition dt elapsed waitCondition state =
+checkWaitCondition : (String -> List Value -> State -> Bool) -> Float -> Float -> WaitCondition -> State -> WaitCheck
+checkWaitCondition hostWaiting dt elapsed waitCondition state =
     case waitCondition of
+        Host name args ->
+            if hostWaiting name args state then
+                StillWaiting elapsed
+
+            else
+                ReadyToResume
+
         Seconds seconds ->
             if elapsed + dt >= seconds then
                 ReadyToResume

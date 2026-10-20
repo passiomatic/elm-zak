@@ -49,9 +49,9 @@ end)
 
 ## Thread.stop(thread_id)
 
-Ends the thread named by `thread_id` while it's waiting. It never resumes, even once its wait would have been over, and it can't be restarted; any thread `join`ing on it carries on. Returns `nil`. An unknown, already-finished, or already-stopped `thread_id` isn't an error — the call does nothing.
+Ends the thread named by `thread_id`. It never resumes, even once its wait would have been over, and it can't be restarted; any thread `join`ing on it carries on. Returns `nil`. An unknown, already-finished, or already-stopped `thread_id` isn't an error — the call does nothing.
 
-Only a waiting thread can be stopped: calling `stop` on the thread that's currently running (the caller itself, or the thread that started it) has no effect. To end itself, a thread returns from its function.
+Stopping the thread that's currently running (the caller itself, or the thread that started it) ends it at its next wait: the code up to there still runs. To end at once, a thread returns from its function.
 
 ```
 let blink_id = Thread.start(function():

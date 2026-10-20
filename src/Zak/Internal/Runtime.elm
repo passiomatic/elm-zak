@@ -12,6 +12,7 @@ module Zak.Internal.Runtime exposing
     , Thread(..)
     , ThreadId
     , ThreadOwner
+    , ThreadStatus(..)
     , Value(..)
     , WaitCondition(..)
     , allocArrayCell
@@ -188,7 +189,8 @@ runs as `Outcome Signal`, but the call itself needs to report `Outcome
 Value` to its own caller).
 
 Deliberately narrow in this first pass: only `Zak.Internal.Library.Thread`'s
-`wait_for`/`join` (and, inside
+`wait_for`/`join`, the host's own waiting natives (`Zak.nativeWaitingFunction`)
+(and, inside
 `Zak.Internal.Interpreter` itself, `start`/`startThread`'s own
 closure body, transitively) ever construct a `Suspended` value — see
 `WaitCondition`'s doc for what a thread can wait on. A suspend attempted from
@@ -208,14 +210,14 @@ type Outcome a
 
 {-| What a suspended thread is waiting on, checked once per scheduler
 `tick` (`Zak.Internal.Interpreter.tick`): a fixed number of elapsed seconds
-(`wait_for`), or another thread's own completion (`join`,
-the one generic "wait on something else" primitive kept in this pass).
-Host-specific conditions are left to the embedder rather than folded in
-here as a `Custom` case.
+(`wait_for`), another thread's own completion (`join`), or a wait the host
+names (`Host`, from a native built with `Zak.nativeWaitingFunction`), which
+`tick` asks the host about.
 -}
 type WaitCondition
     = Seconds Float
     | ThreadRunning ThreadId
+    | Host String (List Value)
 
 
 type alias ThreadId =
@@ -231,39 +233,54 @@ type alias ThreadOwner =
     String
 
 
-{-| One suspended, independently-scheduled thread, as registered in
-`State.threads` by `start`/`startThread` — see
-`Zak.Internal.Interpreter`'s own doc for why those two natives (unlike
-`wait_for`/`join`) have to live in
-`Zak.Internal.Interpreter` itself rather than `Zak.Internal.Library.Thread`. `resume` is
-`Outcome Value`, not `Outcome Signal`, even though a thread's body is a
-statement sequence — spawning a thread is really just calling its closure
-argument (via `Zak.Internal.Interpreter.callFunction`, zero args), and a function
-call's own result is always a `Value` (`Zak.Internal.Interpreter.signalValue`
-already collapses the body's own `Signal` into one, the same conversion
-any other call goes through) — `Thread` only ever needs to carry that
-call forward to completion, resuming it exactly like any other suspended
-call. `elapsed` is reset to `0` every time `waitCondition` changes (a
-fresh suspend point starts its own fresh countdown); `owner` is what
-`Zak.Internal.Interpreter.stopThreads` reads, and what threads it starts
-inherit.
+{-| One thread, as registered in `State.threads` by `start`/`startThread`
+from the moment its body starts running until it ends: by returning, by
+failing, or by being stopped (`Zak.Internal.Interpreter.stopThreads`,
+`Thread.stop`). `owner` is what `stopThreads` reads, and what the threads
+it starts inherit; `status` says whether it's running now or waiting for
+`tick`. See `Zak.Internal.Interpreter`'s own doc for why `start`/
+`startThread` (unlike `wait_for`/`join`) have to live in
+`Zak.Internal.Interpreter` itself rather than `Zak.Internal.Library.Thread`.
 
 A real `type` (not a `type alias`) for the same reason `Env` already is
-one: `Thread`'s own `resume` field refers back to `State`, and `State`
-holds a `Dict ThreadId Thread` — a plain record alias can't be mutually
-recursive with another alias like that (Elm rejects it outright, the same
-way it would for `Env`/`State` if `Env` weren't already wrapped this way),
-so this needs a real constructor to break the cycle. `Zak.Internal.Interpreter`
-pattern-matches `Thread record` to get at the fields, the same way it
-already does for `Env frameId parent`.
+one: a waiting thread's `resume` refers back to `State`, and `State` holds
+a `Dict ThreadId Thread` — a plain record alias can't be mutually
+recursive with another alias like that, so this needs a real constructor
+to break the cycle. `Zak.Internal.Interpreter` pattern-matches `Thread
+record` to get at the fields, the same way it already does for `Env
+frameId parent`.
 
 -}
 type Thread
     = Thread
+        { owner : ThreadOwner
+        , status : ThreadStatus
+        }
+
+
+{-| Whether a thread is running now (its body's first run, or a `tick`
+resuming it), or waiting for `tick` to resume it.
+
+A waiting thread's `resume` is `Outcome Value`, not `Outcome Signal`, even
+though a thread's body is a statement sequence — spawning a thread is
+really just calling its closure argument (via
+`Zak.Internal.Interpreter.callFunction`), and a function call's own result
+is always a `Value` (`Zak.Internal.Interpreter.signalValue` already
+collapses the body's own `Signal` into one). `elapsed` is reset to `0`
+every time the thread waits again (a fresh wait starts its own fresh
+countdown).
+
+A thread that's stopped while running is no longer in `State.threads`:
+that's how the code running it knows not to register it again at its next
+wait (`Zak.Internal.Interpreter.settle`).
+
+-}
+type ThreadStatus
+    = Running
+    | Waiting
         { waitCondition : WaitCondition
         , elapsed : Float
         , resume : State -> Result RuntimeError ( Outcome Value, State )
-        , owner : ThreadOwner
         }
 
 
@@ -356,7 +373,7 @@ built-in `Array.*` natives in `Zak.Internal.Interpreter`) genuinely needs it.
 _only_ difference is `Outcome Value` instead of a bare `Value` as the
 success payload, needed by exactly the natives that can themselves
 suspend their caller directly (`Zak.Internal.Library.Thread`'s `wait_for`/
-`join`). Every other native — including
+`join`, and a host's own `Zak.nativeWaitingFunction`). Every other native — including
 `start`/`startThread`, which spawn a thread but never
 suspend the _caller_ — stays a plain `NativeFunction`; see `Outcome`'s own
 doc for why suspension is deliberately this narrow in the first pass.

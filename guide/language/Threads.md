@@ -53,6 +53,8 @@ A thread pauses by calling one of the waiting functions:
 | `Thread.join(thread_id)`         | the thread `thread_id` has finished or stopped    |
 | `Thread.wait_while(predicate)`   | calling `predicate()` returns `false`             |
 
+The program that runs your scripts can add waiting functions of its own, for things only it knows about: a game might add one that waits while a character walks. They work like these: the thread waits from the call, the program checks on every tick whether the wait is over, and the thread resumes on the tick after it is.
+
 `Thread.wait_while` calls its function once per tick, so the condition is checked afresh each time. Pass a function, not the condition itself: `Thread.wait_while(function(): return not door.open end)`, not `Thread.wait_while(not door.open)`.
 
 ```
@@ -106,7 +108,7 @@ a waiting call must be a statement on its own, inside a thread
 
 A thread ends when its function returns, or reaches its `end`.
 
-`Thread.stop(thread_id)` ends another thread while it's waiting: it never resumes, and any thread joining it carries on. Stopping a thread that has already finished does nothing.
+`Thread.stop(thread_id)` ends a thread: it never resumes, and any thread joining it carries on. Stopping a thread that has already finished does nothing.
 
 ```
 Thread.start(function():
@@ -115,7 +117,7 @@ Thread.start(function():
 end)
 ```
 
-A thread can't stop itself with `Thread.stop`. To end itself, it returns.
+Stopping the thread that's running, the caller itself or the thread that started it, ends it at its next wait: the code up to there still runs. To end at once, a thread returns.
 
 ## Errors in threads
 

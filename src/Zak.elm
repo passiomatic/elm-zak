@@ -2,10 +2,10 @@ module Zak exposing
     ( World, init, run, call, tick, reseed
     , Value(..), TableRef, ArrayRef, FunctionRef
     , getGlobal, setGlobal, globals, newTable, getField, setField, removeField, fields, items
-    , ThreadOwner, startThread, stopThreads, hasThreads, setThreadOwner, threadCount
+    , ThreadOwner, startThread, stopThreads, hasThreads, setThreadOwner, threadCount, Wait(..)
     , Effect(..), LogLevel(..), emitEffect, takeEffects
     , Error, Problem(..), Position, errorProblem, errorPosition, errorToString
-    , Native, nativeFunction, nativeTable, nativeExpression, nativeConstant, nativeInclude
+    , Native, nativeFunction, nativeWaitingFunction, nativeTable, nativeExpression, nativeConstant, nativeInclude
     )
 
 {-| Embed Zak, a small scripting language, in an Elm program.
@@ -53,7 +53,7 @@ second, so updates chain with `|>`.
 
 # Threads
 
-@docs ThreadOwner, startThread, stopThreads, hasThreads, setThreadOwner, threadCount
+@docs ThreadOwner, startThread, stopThreads, hasThreads, setThreadOwner, threadCount, Wait
 
 
 # Effects
@@ -68,7 +68,7 @@ second, so updates chain with `|>`.
 
 # Writing natives
 
-@docs Native, nativeFunction, nativeTable, nativeExpression, nativeConstant, nativeInclude
+@docs Native, nativeFunction, nativeWaitingFunction, nativeTable, nativeExpression, nativeConstant, nativeInclude
 
 -}
 
@@ -146,15 +146,25 @@ call fn args (World state) =
 is over. A thread that fails is dropped, and its error is returned; the
 errors come in the order the threads failed.
 
+`waiting` answers for the host's own waits (see [`Wait`](#Wait)): for
+each thread waiting on one, `tick` asks whether it's still on, and
+resumes the thread once it says `False`. A host that defines no waits
+passes `(\_ _ -> False)`.
+
+    Zak.tick (stillWaiting model) dt world
+
 See [`ThreadOwner`](#ThreadOwner) for the other ways a host manages
 threads.
 
 -}
-tick : Float -> World -> ( List Error, World )
-tick seconds (World state) =
+tick : (Wait -> World -> Bool) -> Float -> World -> ( List Error, World )
+tick waiting seconds (World state) =
     let
+        hostWaiting name args state0 =
+            waiting (Wait name (List.map fromInternal args)) (World state0)
+
         ( state1, errors ) =
-            Interpreter.tick seconds state
+            Interpreter.tick hostWaiting seconds state
     in
     ( List.map (Interpreter.RuntimeError >> Error) (List.reverse errors), World state1 )
 
@@ -461,8 +471,11 @@ type alias ThreadOwner =
 
 {-| Calls a function as a new thread owned by `owner`, and gives back
 its id, as `Thread.start` does. Like `Thread.start`, its body runs at
-once, up to its first wait, and [`tick`](#tick) resumes it from there. A
-body that never waits leaves no thread behind.
+once, up to its first wait, and [`tick`](#tick) resumes it from there. The
+thread is `owner`'s from its first instruction, so a native its body
+calls before that first wait already finds it with
+[`hasThreads`](#hasThreads). A body that never waits leaves no thread
+behind.
 
 The id is what `Thread.join` and `Thread.stop` take, so a native can start
 a thread under another owner and hand its id to a script to wait on:
@@ -483,9 +496,10 @@ startThread owner fn args (World state) =
 {-| Stops every thread `owner` owns, including those its threads started.
 
 It takes effect at once: called from a native, it stops the threads that
-are waiting at that moment, and threads the script starts after the call
-keep running. Like `Thread.stop`, it doesn't stop the thread that's
-running when it's called.
+exist at that moment, and threads the script starts after the call keep
+running. A waiting thread never resumes. A running one, such as the
+thread whose native called this, carries on to its next wait and ends
+there, as with `Thread.stop`.
 
 -}
 stopThreads : ThreadOwner -> World -> World
@@ -493,7 +507,8 @@ stopThreads owner (World state) =
     World (Interpreter.stopThreads owner state)
 
 
-{-| Whether any thread `owner` owns is waiting for [`tick`](#tick).
+{-| Whether `owner` owns any thread: waiting for [`tick`](#tick), or
+running now, from its first instruction.
 -}
 hasThreads : ThreadOwner -> World -> Bool
 hasThreads owner (World state) =
@@ -515,6 +530,20 @@ nothing to advance, so a host can stop calling `tick` on every frame.
 threadCount : World -> Int
 threadCount (World state) =
     Interpreter.threadCount state
+
+
+{-| A wait the host defines, for a script to wait on what only the host
+knows, such as a character walking: a name the host chooses, and
+arguments. A native built with
+[`nativeWaitingFunction`](#nativeWaitingFunction) gives one back, and the
+script that called it waits there; on every [`tick`](#tick), the host
+says whether it's still on, and the script carries on once it isn't.
+
+    Wait "walking" [ hero ]
+
+-}
+type Wait
+    = Wait String (List Value)
 
 
 
@@ -867,6 +896,45 @@ nativeFunction fn =
             (\state args ->
                 fn (List.map fromInternal args) (World state)
                     |> Result.map (\( value, World state1 ) -> ( toInternal value, state1 ))
+                    |> Result.mapError problemToInternal
+            )
+        )
+
+
+{-| A function written in Elm that makes the script calling it wait, on a
+[`Wait`](#Wait) it gives back instead of a result. The script carries on
+once [`tick`](#tick) is told the wait is over, never earlier than the
+next `tick`, and the call gives back `nil`.
+
+    waitWhileWalking : Native
+    waitWhileWalking =
+        Zak.nativeWaitingFunction
+            (\args world ->
+                case args of
+                    [ hero ] ->
+                        Ok ( Wait "walking" [ hero ], world )
+
+                    _ ->
+                        Err (WrongArgCount { expected = 1, got = List.length args })
+            )
+
+Like `Thread.wait_for`, only a thread can wait, and only in a call that
+is a statement of its own: `wait_while_walking(hero)`, not `let x =
+wait_while_walking(hero)`. Anywhere else, the call is an error.
+
+-}
+nativeWaitingFunction : (List Value -> World -> Result Problem ( Wait, World )) -> Native
+nativeWaitingFunction fn =
+    Native
+        (Runtime.NativeThreadFunction
+            (\state args ->
+                fn (List.map fromInternal args) (World state)
+                    |> Result.map
+                        (\( Wait name waitArgs, World state1 ) ->
+                            ( Runtime.Suspended (Runtime.Host name (List.map toInternal waitArgs)) (\resumed -> Ok ( Runtime.Done Runtime.VNil, resumed ))
+                            , state1
+                            )
+                        )
                     |> Result.mapError problemToInternal
             )
         )
