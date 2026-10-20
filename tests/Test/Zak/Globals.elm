@@ -85,4 +85,69 @@ suite =
                     run "let type = function(v): return 999 end\nreturn type(1)"
                         |> Expect.equal (Ok (VNumber 999))
             ]
+        , describe "is_string/is_number/is_bool/is_array/is_table/is_function (type(value) == name)" <|
+            let
+                -- One value of every type, including a native function.
+                samples =
+                    [ ( "\"hi\"", "string" )
+                    , ( "\"\"", "string" )
+                    , ( "1", "number" )
+                    , ( "0", "number" )
+                    , ( "true", "bool" )
+                    , ( "false", "bool" )
+                    , ( "nil", "nil" )
+                    , ( "[1, 2]", "array" )
+                    , ( "[]", "array" )
+                    , ( "{ x = 1 }", "table" )
+                    , ( "function(): return 1 end", "function" )
+                    , ( "type", "function" )
+                    ]
+
+                predicates =
+                    [ ( "is_string", "string" )
+                    , ( "is_number", "number" )
+                    , ( "is_bool", "bool" )
+                    , ( "is_array", "array" )
+                    , ( "is_table", "table" )
+                    , ( "is_function", "function" )
+                    ]
+            in
+            List.concatMap
+                (\( predicate, typeName ) ->
+                    List.map
+                        (\( source, sampleType ) ->
+                            test (predicate ++ "(" ++ source ++ ")") <|
+                                \_ ->
+                                    runExpr (predicate ++ "(" ++ source ++ ")")
+                                        |> Expect.equal (Ok (VBool (sampleType == typeName)))
+                        )
+                        samples
+                        ++ [ test (predicate ++ ": wrong argument count") <|
+                                \_ ->
+                                    runExpr (predicate ++ "(1, 2)")
+                                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 2 })))
+                           ]
+                )
+                predicates
+                ++ [ test "always agrees with type(), for every value" <|
+                        \_ ->
+                            run
+                                """
+                                let values = ["hi", 1, true, nil, [1], { x = 1 }, function(): return 1 end, type]
+                                let ok = true
+                                for v in values:
+                                    if is_string(v) != (type(v) == "string") or is_number(v) != (type(v) == "number") or is_bool(v) != (type(v) == "bool") or is_array(v) != (type(v) == "array") or is_table(v) != (type(v) == "table") or is_function(v) != (type(v) == "function"):
+                                        ok = false
+                                    end
+                                end
+                                return ok
+                                """
+                                |> Expect.equal (Ok (VBool True))
+                   , test "available in run without passing any natives" <|
+                        \_ -> run "return is_string(\"x\")" |> Expect.equal (Ok (VBool True))
+                   , test "a script's own let is_string still shadows it, so existing helper definitions keep working" <|
+                        \_ ->
+                            run "let is_string = function(value): return type(value) == \"string\" end\nreturn is_string(1)"
+                                |> Expect.equal (Ok (VBool False))
+                   ]
         ]

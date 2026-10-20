@@ -1,7 +1,8 @@
 module Zak.Internal.Library.Globals exposing (natives)
 
 {-| Bare global functions — not grouped into a namespace at all, because
-none of them belong to any particular category. Just `type` for now:
+none of them belong to any particular category. `type`, plus the
+`is_*` type checks built on it:
 logging (`print`/`debug`/`info`/`warning`/`error`, as they used to be
 called) used to live here too, for the same "no better home" reason, but
 moved out into its own `Zak.Internal.Library.Debug` namespace once there were enough of
@@ -29,6 +30,12 @@ natives : Dict String NativeValue
 natives =
     Dict.fromList
         [ ( "type", NativeFunction typeNative )
+        , ( "is_string", NativeFunction (isType "string") )
+        , ( "is_number", NativeFunction (isType "number") )
+        , ( "is_bool", NativeFunction (isType "bool") )
+        , ( "is_array", NativeFunction (isType "array") )
+        , ( "is_table", NativeFunction (isType "table") )
+        , ( "is_function", NativeFunction (isType "function") )
         ]
 
 
@@ -50,6 +57,25 @@ typeNative state args =
     case args of
         [ value ] ->
             Ok ( VString (typeName value), state )
+
+        _ ->
+            Err (WrongArgCount { expected = 1, got = List.length args })
+
+
+{-| `is_string(value)`/`is_number`/`is_bool`/`is_array`/`is_table`/
+`is_function` — `type(value) == name`, for the six type names a script
+actually checks. They started as script helpers in elm-adventure and
+proved useful enough to move here. Built on the same `typeName` as
+`type`, so the two can never disagree (`is_function` is `true` for a
+native too, exactly as `type` reports `"function"` for one). No
+`is_nil`: `value == nil` already says it. Like `type`, they accept any
+value, so the only possible error is arity.
+-}
+isType : String -> State -> List Value -> Result RuntimeError ( Value, State )
+isType name state args =
+    case args of
+        [ value ] ->
+            Ok ( VBool (typeName value == name), state )
 
         _ ->
             Err (WrongArgCount { expected = 1, got = List.length args })

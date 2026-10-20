@@ -14,7 +14,7 @@ There are seven types:
 | Table      | `{ x = 1, y = 2 }`          | `"table"`        |
 | Function   | `function(x): return x end` | `"function"`     |
 
-Use [`type(value)`](../stdlib/Global.md) to find out a value's type at runtime.
+Use [`type(value)`](../stdlib/Global.md) to find out a value's type at runtime, or [`is_string(value)`](../stdlib/Global.md) and its siblings to check for one type.
 
 Zak never converts a value from one type to another on its own. An operator or function that expects a `Number` and gets a `String` stops the script with a type error, rather than guessing what was meant.
 
