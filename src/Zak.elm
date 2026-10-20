@@ -95,6 +95,13 @@ type World
 {-| A new world, with the standard library and `natives`. When two
 natives share a name, the last one wins.
 
+`natives` can add to the standard library, but never replace any of it. A
+[`nativeTable`](#nativeTable) named like a standard one, such as
+`Thread`, adds its fields to it, so scripts call `Thread.with_input_off`
+next to `Thread.start`. A native the standard library already has, such
+as `Thread.start` or `Math`, is ignored, and a `Log LogError` naming it is
+queued.
+
 A [`nativeExpression`](#nativeExpression) that fails to parse or evaluate
 is left undefined, and a `Log LogError` naming it is queued, so the host
 sees it on its first [`takeEffects`](#takeEffects).

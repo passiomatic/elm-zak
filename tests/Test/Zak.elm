@@ -252,6 +252,48 @@ suite =
 
                         other ->
                             Expect.fail ("expected one LogError, got: " ++ Debug.toString (Tuple.first other))
+            , test "a host namespace named like a standard one adds to it" <|
+                \_ ->
+                    case Zak.takeEffects (Zak.init [ ( "Thread", Zak.nativeTable [ ( "double", double ) ] ) ]) of
+                        ( [], world ) ->
+                            Zak.run "return [Thread.double(4), type(Thread.wait_for)]" world
+                                |> Result.map (\( value, world1 ) -> Zak.items value world1)
+                                |> Expect.equal (Ok (Just [ Number 8, String "function" ]))
+
+                        other ->
+                            Expect.fail ("expected no logs, got: " ++ Debug.toString (Tuple.first other))
+            , test "Array and Table take a host's additions too" <|
+                \_ ->
+                    returns
+                        [ ( "Array", Zak.nativeTable [ ( "double", double ) ] )
+                        , ( "Table", Zak.nativeTable [ ( "double", double ) ] )
+                        ]
+                        "return Array.double(2) + Table.double(3) + Array.length([1])"
+                        |> Expect.equal (Ok (Number 11))
+            , test "a host native can't replace a standard one, and is logged by name" <|
+                \_ ->
+                    case Zak.takeEffects (Zak.init [ ( "Thread", Zak.nativeTable [ ( "start", Zak.nativeConstant (Number 1) ) ] ) ]) of
+                        ( [ Log LogError message ], world ) ->
+                            Expect.all
+                                [ \_ -> message |> Expect.equal "native “Thread.start” is ignored, because the standard library already defines it."
+                                , \_ -> Zak.run "return type(Thread.start)" world |> Result.map Tuple.first |> Expect.equal (Ok (String "function"))
+                                ]
+                                ()
+
+                        other ->
+                            Expect.fail ("expected one LogError, got: " ++ Debug.toString (Tuple.first other))
+            , test "a host native that isn't a namespace keeps the standard one, and is logged" <|
+                \_ ->
+                    case Zak.takeEffects (Zak.init [ ( "Math", Zak.nativeConstant (Number 1) ) ]) of
+                        ( [ Log LogError message ], world ) ->
+                            Expect.all
+                                [ \_ -> message |> Expect.equal "native “Math” is ignored, because the standard library already defines it."
+                                , \_ -> Zak.run "return Math.abs(-2)" world |> Result.map Tuple.first |> Expect.equal (Ok (Number 2))
+                                ]
+                                ()
+
+                        other ->
+                            Expect.fail ("expected one LogError, got: " ++ Debug.toString (Tuple.first other))
             ]
         , describe "including"
             [ test "nativeInclude runs a file's definitions into the world" <|

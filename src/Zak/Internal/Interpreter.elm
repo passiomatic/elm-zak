@@ -344,15 +344,12 @@ globalEnv =
 
 
 {-| Seeds the global frame with `builtinNatives` merged with `natives`
-(resolving each `NativeNamespace` into a real heap-allocated `VTable`, and
-each `NativeZakExpr` by parsing and evaluating it, along the way), plus
-`true`/`false`/`nil`. `natives` is whatever the embedder chooses to
-wire up — merged in _after_ `builtinNatives` so a caller can never shadow
-`Array`/`Table` this way (`Dict.union` prefers its first argument's
-keys), the same protection `true`/`false`/`nil` already get below. A
-_script_ can still shadow `Array`/`Table` locally with its own `let`,
-same as any other global — this only stops a native-Elm-code caller from
-redefining what they mean for every script it runs.
+(see `seedWithHost`), plus `true`/`false`/`nil`. `natives` is whatever
+the embedder chooses to wire up. It can add to `Array`/`Table` but never
+replace what they hold, the same protection `true`/`false`/`nil` already
+get below. A _script_ can still shadow `Array`/`Table` locally with its
+own `let`, same as any other global — this only stops a native-Elm-code
+caller from redefining what they mean for every script it runs.
 
 Used directly by `runExpr`, which deliberately stops here (no
 `stdlibNatives`) — see `initialStateFull` for the version `run`/
@@ -361,7 +358,7 @@ Used directly by `runExpr`, which deliberately stops here (no
 -}
 initialState : Dict String NativeValue -> State
 initialState natives =
-    seedState (Dict.union builtinNatives natives)
+    seedWithHost builtinNatives natives
 
 
 {-| Same as `initialState`, but also seeds `stdlibNatives`
@@ -369,14 +366,55 @@ initialState natives =
 `Array`/`Table`. Used by `run` and
 `initialWorld` (and, through it, `runIncremental` — see that pair's own
 docs), which are meant to run a complete, real program rather than a
-single already-scoped expression. Precedence is `builtinNatives` over
-`stdlibNatives` over caller `natives`, same "nothing a caller passes in
-can shadow the guaranteed built-ins" rule `initialState` already
-enforces for `Array`/`Table`, just extended one tier further.
+single already-scoped expression. The same rule as `initialState`, for
+the whole standard library: a caller adds to it, and never replaces any
+of it.
 -}
 initialStateFull : Dict String NativeValue -> State
 initialStateFull natives =
-    seedState (Dict.union builtinNatives (Dict.union stdlibNatives natives))
+    seedWithHost (Dict.union builtinNatives stdlibNatives) natives
+
+
+{-| Seeds the state with the `standard` natives and the `host`'s, merged
+by `mergeNatives`, and logs each of the host's that was ignored.
+-}
+seedWithHost : Dict String NativeValue -> Dict String NativeValue -> State
+seedWithHost standard host =
+    let
+        ( natives, ignored ) =
+            mergeNatives "" standard host
+    in
+    List.foldl logIgnoredNative (seedState natives) ignored
+
+
+{-| The `standard` natives with the `host`'s added, and the full names of
+the host's it ignored. A host namespace named like a standard one adds its
+fields to it (`Thread.with_input_off`), merged the same way at every
+level. Anything else the standard library already has keeps the standard
+one: the host can add to the standard library, never replace it.
+`prefix` is the dotted path of the namespace being merged, as in
+`resolveNatives`.
+-}
+mergeNatives : String -> Dict String NativeValue -> Dict String NativeValue -> ( Dict String NativeValue, List String )
+mergeNatives prefix standard host =
+    Dict.foldl
+        (\name hostNative ( merged, ignored ) ->
+            case ( Dict.get name merged, hostNative ) of
+                ( Nothing, _ ) ->
+                    ( Dict.insert name hostNative merged, ignored )
+
+                ( Just (NativeNamespace standardFields), NativeNamespace hostFields ) ->
+                    let
+                        ( fields, ignoredFields ) =
+                            mergeNatives (prefix ++ name ++ ".") standardFields hostFields
+                    in
+                    ( Dict.insert name (NativeNamespace fields) merged, ignored ++ ignoredFields )
+
+                ( Just _, _ ) ->
+                    ( merged, ignored ++ [ prefix ++ name ] )
+        )
+        ( standard, [] )
+        host
 
 
 {-| `true`/`false`/`nil` are const in frame 0, so a bare `true = ...`
@@ -910,6 +948,18 @@ logBrokenNative path message state =
         | pendingEffects =
             state.pendingEffects
                 ++ [ Log LogError ("native “" ++ path ++ "” is left undefined, because its expression is broken.\n\n" ++ message) ]
+    }
+
+
+{-| Queues the `LogError` for a host native at `path` that `mergeNatives`
+ignored, because the standard library already defines that name.
+-}
+logIgnoredNative : String -> State -> State
+logIgnoredNative path state =
+    { state
+        | pendingEffects =
+            state.pendingEffects
+                ++ [ Log LogError ("native “" ++ path ++ "” is ignored, because the standard library already defines it.") ]
     }
 
 

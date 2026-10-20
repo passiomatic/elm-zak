@@ -14,6 +14,8 @@ An item that would change a signature or remove a name has to be settled before 
 
 A `nativeExpression` that fails to parse or evaluate is left undefined, and `init` queues a `Log LogError` naming it. Nothing stops the host from booting, and its tests still pass. The stricter option is `init : List ( String, Native ) -> Result (List BrokenNative) World`, which lists every broken native with its error. Switching to it changes `init`'s signature.
 
+Since 2026-10-20, `init` logs a native it ignores the same way: one the standard library already has. A host's `nativeTable` named like a standard namespace (`Thread`, `Array`) adds its fields to it, so the engine can offer `Thread.with_input_off` next to `Thread.start`; it can't replace a standard function. Before, the standard library's namespace won whole and the host's was dropped without a word, so an engine native could only go in a namespace of its own. The stricter option above would list these too.
+
 ### Effects and waits named by strings
 
 Proposed (2026-10-20), not decided. A host tells its own effects and waits apart by matching strings: `Effect String (List Value)` and `Wait String (List Value)`. A native queues `emitEffect "say_line" [ id, text ]`, and the host matches `( "say_line", [ Number id, String text ] )` back into its own type. The engine does this for over thirty effects (`Engine.toWorldChange`) and for its waits (`Engine.Actor.stillWaiting`, which also turns the name back into a type by a reverse lookup). A misspelled name or a misshapen argument list is only caught at run time, where the compiler could catch both.
