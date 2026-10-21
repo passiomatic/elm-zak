@@ -26,7 +26,7 @@ import Dict exposing (Dict)
 import Zak.Internal.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..))
 
 
-natives : Dict String NativeValue
+natives : Dict String (NativeValue game)
 natives =
     Dict.fromList
         [ ( "type", NativeFunction typeNative )
@@ -52,7 +52,7 @@ Number") — a deliberate difference in register, not an inconsistency:
 `TypeError` reads like a sentence fragment, `type(value)` returns a token
 meant for direct `==` comparison against a string literal.
 -}
-typeNative : State -> List Value -> Result RuntimeError ( Value, State )
+typeNative : State game -> List Value -> Result RuntimeError ( Value, State game )
 typeNative state args =
     case args of
         [ value ] ->
@@ -71,7 +71,7 @@ native too, exactly as `type` reports `"function"` for one). No
 `is_nil`: `value == nil` already says it. Like `type`, they accept any
 value, so the only possible error is arity.
 -}
-isType : String -> State -> List Value -> Result RuntimeError ( Value, State )
+isType : String -> State game -> List Value -> Result RuntimeError ( Value, State game )
 isType name state args =
     case args of
         [ value ] ->

@@ -12,9 +12,22 @@ An item that would change a signature or remove a name has to be settled before 
 
 ### How `init` reports broken natives
 
-A `nativeExpression` that fails to parse or evaluate is left undefined, and `init` queues a `Log LogError` naming it. Nothing stops the host from booting, and its tests still pass. The stricter option is `init : List ( String, Native ) -> Result (List BrokenNative) World`, which lists every broken native with its error. Switching to it changes `init`'s signature.
+A `nativeExpression` that fails to parse or evaluate is left undefined, and `init` queues a `Log LogError` naming it. Nothing stops the host from booting, and its tests still pass. The stricter option is `init : game -> List ( String, Native game ) -> Result (List BrokenNative) (World game)`, which lists every broken native with its error. Switching to it changes `init`'s signature.
 
 Since 2026-10-20, `init` logs a native it ignores the same way: one the standard library already has. A host's `nativeTable` named like a standard namespace (`Thread`, `Array`) adds its fields to it, so the engine can offer `Thread.with_input_off` next to `Thread.start`; it can't replace a standard function. Before, the standard library's namespace won whole and the host's was dropped without a word, so an engine native could only go in a namespace of its own. The stricter option above would list these too.
+
+### The world carries the game
+
+Decided and done (2026-10-21), on the `twp` branch: step 2 of elm-adventure's TWP-like model (`design/TWP-like Model.md` there), whose natives act on the game at once, as TWP's reach its engine through a global, instead of queuing effects.
+
+- `World game` and `Native game` take the host's own type; `init : game -> List ( String, Native game ) -> World game` takes its first value. A host with nothing to share uses `()`.
+- `Zak.game` reads it and `Zak.updateGame` changes it, from a native or from the host's own code between calls. No `setGame` (`updateGame (always g)` does it), and no way to change the type of an existing world's game, since its natives are typed for it.
+- Zak only carries it. The standard library is written for any `game`, so it can't look inside; only the host's natives, written for its type, can.
+- It's part of the world like the heap: a call that fails gives back no world, and a thread that fails while `tick` resumes it is rolled back, so the game changes made there are lost too.
+- `Value`, `Effect`, `Wait`, `Error`, `Problem` and the refs don't take the parameter: since the function store, none of them holds an Elm function.
+- Named `game` rather than something host-neutral, since Zak is meant for games. Squirrel has the same idea, a host pointer attached to the VM (`sq_setforeignptr`).
+
+Still to come on `twp`: waits as predicates (step 3), and what's left of effects (step 4).
 
 ### Effects and waits named by strings
 

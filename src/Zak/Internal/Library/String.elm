@@ -60,7 +60,7 @@ import Hex
 import Zak.Internal.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..), allocArrayCell, arrayContents, nonNegativeIndex)
 
 
-natives : Dict String NativeValue
+natives : Dict String (NativeValue game)
 natives =
     Dict.singleton "String"
         (NativeNamespace
@@ -88,7 +88,7 @@ natives =
 so the only possible error is calling it with the wrong number of
 arguments.
 -}
-stringFrom : State -> List Value -> Result RuntimeError ( Value, State )
+stringFrom : State game -> List Value -> Result RuntimeError ( Value, State game )
 stringFrom state args =
     case args of
         [ value ] ->
@@ -105,7 +105,7 @@ not 1 — inherited rather than adjusted for, the same way `Math.round`
 inherits Elm's own round-half-up tie-breaking rather than reimplementing
 rounding some other way.
 -}
-stringLength : State -> List Value -> Result RuntimeError ( Value, State )
+stringLength : State game -> List Value -> Result RuntimeError ( Value, State game )
 stringLength state args =
     case args of
         [ VString string ] ->
@@ -122,7 +122,7 @@ stringLength state args =
 `Array.is_empty`, same naming and same shape: a plain predicate, no way
 for this to fail beyond a wrong type or wrong arg count.
 -}
-stringIsEmpty : State -> List Value -> Result RuntimeError ( Value, State )
+stringIsEmpty : State game -> List Value -> Result RuntimeError ( Value, State game )
 stringIsEmpty state args =
     case args of
         [ VString string ] ->
@@ -145,7 +145,7 @@ case-sensitive (`String.lower` both sides for a case-insensitive check).
 No Python/JavaScript-style position argument: `String.slice` already
 covers checking from a position.
 -}
-stringAffixCheck : (String -> String -> Bool) -> State -> List Value -> Result RuntimeError ( Value, State )
+stringAffixCheck : (String -> String -> Bool) -> State game -> List Value -> Result RuntimeError ( Value, State game )
 stringAffixCheck check state args =
     case args of
         [ VString string, VString affix ] ->
@@ -173,7 +173,7 @@ combining-diacritic code point would still come back scrambled. Worth
 knowing, not worth blocking on: no grapheme-cluster support exists
 anywhere else in Zak either.
 -}
-stringReverse : State -> List Value -> Result RuntimeError ( Value, State )
+stringReverse : State game -> List Value -> Result RuntimeError ( Value, State game )
 stringReverse state args =
     case args of
         [ VString string ] ->
@@ -192,7 +192,7 @@ ASCII-only, so a single character can map to several and change the
 string's length (`"ß"` becomes `"SS"`). Inherited rather than adjusted
 for, the same way `String.length` inherits Elm's UTF-16 counting.
 -}
-stringUpper : State -> List Value -> Result RuntimeError ( Value, State )
+stringUpper : State game -> List Value -> Result RuntimeError ( Value, State game )
 stringUpper state args =
     case args of
         [ VString string ] ->
@@ -209,7 +209,7 @@ stringUpper state args =
 mirror of `String.upper`: full Unicode case mapping via JavaScript's
 `toLowerCase`, not ASCII-only.
 -}
-stringLower : State -> List Value -> Result RuntimeError ( Value, State )
+stringLower : State game -> List Value -> Result RuntimeError ( Value, State game )
 stringLower state args =
     case args of
         [ VString string ] ->
@@ -247,7 +247,7 @@ deterministic Elm behavior, inherited and documented rather than
 guarded against.
 
 -}
-stringReplace : State -> List Value -> Result RuntimeError ( Value, State )
+stringReplace : State game -> List Value -> Result RuntimeError ( Value, State game )
 stringReplace state args =
     case args of
         [ VString string, VString needle, VString replacement ] ->
@@ -299,7 +299,7 @@ string]`, Elm's own behavior for whatever's left to resolve is exactly
 what's wanted, not something to guard against.
 
 -}
-stringSlice : State -> List Value -> Result RuntimeError ( Value, State )
+stringSlice : State game -> List Value -> Result RuntimeError ( Value, State game )
 stringSlice state args =
     case args of
         [ VString string, VNumber startFloat, VNumber endFloat ] ->
@@ -345,7 +345,7 @@ ever calling Elm's own `String.slice`, then resolves an omitted `end` to
 `string`'s own length and clamps both bounds into
 `[0, String.length string]`.
 -}
-sliceChecked : State -> String -> Float -> Maybe Float -> Result RuntimeError ( Value, State )
+sliceChecked : State game -> String -> Float -> Maybe Float -> Result RuntimeError ( Value, State game )
 sliceChecked state string startFloat maybeEndFloat =
     nonNegativeIndex startFloat
         |> Result.andThen
@@ -383,7 +383,7 @@ The one string function that returns an `Array`, so the one that
 allocates: a fresh array cell, never shared with anything else.
 
 -}
-stringSplit : State -> List Value -> Result RuntimeError ( Value, State )
+stringSplit : State game -> List Value -> Result RuntimeError ( Value, State game )
 stringSplit state args =
     case args of
         [ VString string, VString separator ] ->
@@ -414,7 +414,7 @@ converted. A mixed array goes through `Array.map(array, String.from)`
 first, keeping the conversion explicit.
 
 -}
-stringJoin : State -> List Value -> Result RuntimeError ( Value, State )
+stringJoin : State game -> List Value -> Result RuntimeError ( Value, State game )
 stringJoin state args =
     case args of
         [ VArray id, VString separator ] ->
@@ -467,7 +467,7 @@ callback convention is `fn(element, accumulator)`, so
 `"abc"` — only `Array.foldr(["a","b","c"], String.append, "")` gives the
 expected `"abc"`.
 -}
-stringAppend : State -> List Value -> Result RuntimeError ( Value, State )
+stringAppend : State game -> List Value -> Result RuntimeError ( Value, State game )
 stringAppend state args =
     case args of
         [ VString a, VString b ] ->
@@ -522,7 +522,7 @@ own `Number` case already uses (no fixed decimal-place count yet — that's
 what precision support would add, once it's ever needed).
 
 -}
-stringFormat : State -> List Value -> Result RuntimeError ( Value, State )
+stringFormat : State game -> List Value -> Result RuntimeError ( Value, State game )
 stringFormat state args =
     case args of
         [ VString format, VArray arrayId ] ->

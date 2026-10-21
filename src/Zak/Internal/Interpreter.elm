@@ -109,9 +109,9 @@ against a `Result RuntimeError ( Signal, State )` now writes `andThenOutcome
 same shape, suspension handled once, here, rather than at every call site.
 -}
 andThenOutcome :
-    (a -> State -> Result RuntimeError ( Outcome b, State ))
-    -> Result RuntimeError ( Outcome a, State )
-    -> Result RuntimeError ( Outcome b, State )
+    (a -> State game -> Result RuntimeError ( Outcome game b, State game ))
+    -> Result RuntimeError ( Outcome game a, State game )
+    -> Result RuntimeError ( Outcome game b, State game )
 andThenOutcome f result =
     result
         |> Result.andThen
@@ -139,11 +139,11 @@ real program, so it gets `stdlibNatives` (`Math`/`String`/`Debug`/`type`)
 seeded automatically too — see `initialStateFull`, which `initialWorld`
 itself seeds with.
 -}
-run : Dict String NativeValue -> String -> Result Error Value
+run : Dict String (NativeValue ()) -> String -> Result Error Value
 run natives source =
     let
         ( env, state ) =
-            initialWorld natives
+            initialWorld () natives
     in
     runIncremental env state source
         |> Result.map Tuple.first
@@ -158,14 +158,14 @@ doesn't need the same "real program" guarantee `run`/`initialWorld` do,
 and a caller that wants them here can still pass them in explicitly via
 `natives`.
 -}
-runExpr : Dict String NativeValue -> String -> Result Error Value
+runExpr : Dict String (NativeValue ()) -> String -> Result Error Value
 runExpr natives source =
     case Parser.parseExpr source of
         Err parserError ->
             Err (SyntaxError parserError)
 
         Ok expression ->
-            evalExpr globalEnv (initialState natives) expression
+            evalExpr globalEnv (initialState () natives) expression
                 |> Result.map Tuple.first
                 |> Result.mapError RuntimeError
 
@@ -192,11 +192,11 @@ world loaded incrementally (or via `run`) gets `Math`/`String`/`Debug`/
 `type` at all.
 
 -}
-initialWorld : Dict String NativeValue -> ( Env, State )
-initialWorld natives =
+initialWorld : game -> Dict String (NativeValue game) -> ( Env, State game )
+initialWorld game natives =
     let
         ( frameId, state1 ) =
-            allocCell (initialStateFull natives)
+            allocCell (initialStateFull game natives)
     in
     ( Env frameId (Just globalEnv), { state1 | globalFrameId = frameId } )
 
@@ -205,7 +205,7 @@ initialWorld natives =
 frame, under `globalEnv`. Lets a caller that only kept the `State` run
 more source into the same world.
 -}
-worldEnv : State -> Env
+worldEnv : State game -> Env
 worldEnv state =
     Env state.globalFrameId (Just globalEnv)
 
@@ -234,7 +234,7 @@ script — only for one that calls a suspending native directly, which is
 exactly the case this should reject.
 
 -}
-runIncremental : Env -> State -> String -> Result Error ( Value, State )
+runIncremental : Env -> State game -> String -> Result Error ( Value, State game )
 runIncremental env state source =
     case Parser.parseProgram source of
         Err parserError ->
@@ -252,7 +252,7 @@ factored out once `include` needed the exact same collapsing logic
 but a `RuntimeError`-only result (a native mid-execution has no
 `Error`/`SyntaxError` channel to report through, only `RuntimeError`).
 -}
-runProgramInto : Env -> State -> Block -> Result RuntimeError ( Value, State )
+runProgramInto : Env -> State game -> Block -> Result RuntimeError ( Value, State game )
 runProgramInto env state program =
     execStatements env state program
         |> Result.andThen
@@ -286,7 +286,7 @@ included by the time `B`'s own `include("A")` runs, so it resolves to
 `VNil` instead of looping.
 
 -}
-include : String -> String -> State -> Result RuntimeError ( Value, State )
+include : String -> String -> State game -> Result RuntimeError ( Value, State game )
 include path source state =
     if Set.member path state.includedFiles then
         Ok ( VNil, state )
@@ -322,7 +322,7 @@ raw `Outcome`/`RuntimeError` pair here would let a caller route around
 it.
 
 -}
-call : State -> Value -> List Value -> Result Error ( Value, State )
+call : State game -> Value -> List Value -> Result Error ( Value, State game )
 call state callee args =
     callFunction state callee args
         |> Result.mapError RuntimeError
@@ -358,9 +358,9 @@ Used directly by `runExpr`, which deliberately stops here (no
 `initialWorld` use instead.
 
 -}
-initialState : Dict String NativeValue -> State
-initialState natives =
-    seedWithHost builtinNatives natives
+initialState : game -> Dict String (NativeValue game) -> State game
+initialState game natives =
+    seedWithHost game builtinNatives natives
 
 
 {-| Same as `initialState`, but also seeds `stdlibNatives`
@@ -372,21 +372,22 @@ single already-scoped expression. The same rule as `initialState`, for
 the whole standard library: a caller adds to it, and never replaces any
 of it.
 -}
-initialStateFull : Dict String NativeValue -> State
-initialStateFull natives =
-    seedWithHost (Dict.union builtinNatives stdlibNatives) natives
+initialStateFull : game -> Dict String (NativeValue game) -> State game
+initialStateFull game natives =
+    seedWithHost game (Dict.union builtinNatives stdlibNatives) natives
 
 
-{-| Seeds the state with the `standard` natives and the `host`'s, merged
-by `mergeNatives`, and logs each of the host's that was ignored.
+{-| Seeds the state with the embedder's `game`, the `standard` natives
+and the `host`'s, merged by `mergeNatives`, and logs each of the host's
+that was ignored.
 -}
-seedWithHost : Dict String NativeValue -> Dict String NativeValue -> State
-seedWithHost standard host =
+seedWithHost : game -> Dict String (NativeValue game) -> Dict String (NativeValue game) -> State game
+seedWithHost game standard host =
     let
         ( natives, ignored ) =
             mergeNatives "" standard host
     in
-    List.foldl logIgnoredNative (seedState natives) ignored
+    List.foldl logIgnoredNative (seedState game natives) ignored
 
 
 {-| The `standard` natives with the `host`'s added, and the full names of
@@ -397,7 +398,7 @@ one: the host can add to the standard library, never replace it.
 `prefix` is the dotted path of the namespace being merged, as in
 `resolveNatives`.
 -}
-mergeNatives : String -> Dict String NativeValue -> Dict String NativeValue -> ( Dict String NativeValue, List String )
+mergeNatives : String -> Dict String (NativeValue game) -> Dict String (NativeValue game) -> ( Dict String (NativeValue game), List String )
 mergeNatives prefix standard host =
     Dict.foldl
         (\name hostNative ( merged, ignored ) ->
@@ -431,8 +432,8 @@ first step. This only blocks _reassignment_: a script's own
 before — that's a new binding in a child frame, `defineVar`
 never even looks at frame 0's `constNames`.
 -}
-seedState : Dict String NativeValue -> State
-seedState natives =
+seedState : game -> Dict String (NativeValue game) -> State game
+seedState game natives =
     let
         ( resolvedNatives, state1 ) =
             resolveNatives ""
@@ -453,6 +454,7 @@ seedState natives =
                 -- reads either field before that happens.
                 , globalFrameId = 0
                 , includedFiles = Set.empty
+                , game = game
                 }
                 natives
 
@@ -479,7 +481,7 @@ function's own doc). Precedence mirrors `Zak.Internal.Library.Math`/`Zak.Interna
 `Zak.Internal.Library.String`/`Zak.Internal.Library.Debug`/`Zak.Internal.Library.Random`'s own declaration order; none of
 the five share any keys, so the order doesn't actually matter today.
 -}
-stdlibNatives : Dict String NativeValue
+stdlibNatives : Dict String (NativeValue game)
 stdlibNatives =
     Dict.union (Dict.union Math.natives Globals.natives) ZakString.natives
         |> Dict.union threadNatives
@@ -506,7 +508,7 @@ threads is a technical necessity the way `Array`/`Table`'s sharing is,
 it's a "what a real program should be able to assume" design choice.
 
 -}
-threadNatives : Dict String NativeValue
+threadNatives : Dict String (NativeValue game)
 threadNatives =
     Dict.singleton "Thread"
         (NativeNamespace
@@ -521,7 +523,7 @@ arguments) as a new thread, owned by the owner of the code that starts it
 (`state.currentOwner`): a thread's descendants share its owner. See
 `spawn`.
 -}
-start : State -> List Value -> Result RuntimeError ( Value, State )
+start : State game -> List Value -> Result RuntimeError ( Value, State game )
 start state args =
     case args of
         [ closure ] ->
@@ -549,7 +551,7 @@ afterwards. An error before the first wait comes back as an `Err`, with
 the caller's state as it was, so nothing stays registered.
 
 -}
-spawn : ThreadOwner -> Value -> List Value -> State -> Result RuntimeError ( Value, State )
+spawn : ThreadOwner -> Value -> List Value -> State game -> Result RuntimeError ( Value, State game )
 spawn owner callee args state =
     let
         threadId =
@@ -580,7 +582,7 @@ again, it's registered as `Waiting` -- unless it was stopped while it ran
 (`stopThreads`, `Thread.stop`), which took it out of `state.threads`: then
 it stays out, and never resumes.
 -}
-settle : ThreadId -> ThreadOwner -> Outcome Value -> State -> State
+settle : ThreadId -> ThreadOwner -> Outcome game Value -> State game -> State game
 settle threadId owner outcome state =
     case outcome of
         Done _ ->
@@ -604,7 +606,7 @@ thread owned by `owner` (see `spawn`), giving back its id. An error raised
 before the body's first wait comes back as an `Err`, and nothing is
 registered.
 -}
-startThread : ThreadOwner -> Value -> List Value -> State -> Result Error ( Value, State )
+startThread : ThreadOwner -> Value -> List Value -> State game -> Result Error ( Value, State game )
 startThread owner callee args state =
     spawn owner callee args state
         |> Result.mapError RuntimeError
@@ -661,7 +663,7 @@ first-class suspend primitive at all, versus exposing an
 it with a `wait_for` + poll loop.
 
 -}
-tick : (String -> List Value -> State -> Bool) -> Float -> State -> ( State, List RuntimeError )
+tick : (String -> List Value -> State game -> Bool) -> Float -> State game -> ( State game, List RuntimeError )
 tick hostWaiting dt state =
     Dict.foldl
         (\threadId (Thread thread) ( stateAcc, errorsAcc ) ->
@@ -703,7 +705,7 @@ tick hostWaiting dt state =
 there's nothing to advance, so a host can stop calling `tick` on every
 frame.
 -}
-threadCount : State -> Int
+threadCount : State game -> Int
 threadCount state =
     state.threads
         |> Dict.values
@@ -725,7 +727,7 @@ thread never resumes, and a running one (the one whose native asked for
 this, or one further up the call chain) carries on to its next wait and
 ends there (`settle`).
 -}
-stopThreads : ThreadOwner -> State -> State
+stopThreads : ThreadOwner -> State game -> State game
 stopThreads owner state =
     { state | threads = Dict.filter (\_ (Thread thread) -> thread.owner /= owner) state.threads }
 
@@ -733,7 +735,7 @@ stopThreads owner state =
 {-| Whether `owner` owns any thread: waiting for `tick`, or running now,
 its first run included.
 -}
-hasThreads : ThreadOwner -> State -> Bool
+hasThreads : ThreadOwner -> State game -> Bool
 hasThreads owner state =
     state.threads
         |> Dict.values
@@ -743,7 +745,7 @@ hasThreads owner state =
 {-| Sets the owner of the code that runs outside any thread (what the
 host runs or calls), so the threads it starts belong to `owner`.
 -}
-setThreadOwner : ThreadOwner -> State -> State
+setThreadOwner : ThreadOwner -> State game -> State game
 setThreadOwner owner state =
     { state | currentOwner = owner }
 
@@ -767,7 +769,7 @@ itself, on purpose, and it never inspects an `Effect`'s name or arguments
 (see `Zak.Internal.Runtime`'s own `pendingEffects` doc for why).
 
 -}
-drainEffects : State -> ( List Effect, State )
+drainEffects : State game -> ( List Effect, State game )
 drainEffects state =
     ( state.pendingEffects, { state | pendingEffects = [] } )
 
@@ -777,7 +779,7 @@ type WaitCheck
     | ReadyToResume
 
 
-checkWaitCondition : (String -> List Value -> State -> Bool) -> Float -> Float -> WaitCondition -> State -> WaitCheck
+checkWaitCondition : (String -> List Value -> State game -> Bool) -> Float -> Float -> WaitCondition -> State game -> WaitCheck
 checkWaitCondition hostWaiting dt elapsed waitCondition state =
     case waitCondition of
         Host name args ->
@@ -829,7 +831,7 @@ script's own functions, just no longer used by the stdlib itself (see
 "Identifiers and reserved words" in the language reference).
 
 -}
-builtinNatives : Dict String NativeValue
+builtinNatives : Dict String (NativeValue game)
 builtinNatives =
     Dict.fromList
         [ ( "Array"
@@ -879,7 +881,7 @@ each `NativeNamespace` along the way can allocate its own heap cell.
 top, `"Math."` inside `Math`), so a broken native can be logged by its
 full name.
 -}
-resolveNatives : String -> State -> Dict String NativeValue -> ( Dict String Value, State )
+resolveNatives : String -> State game -> Dict String (NativeValue game) -> ( Dict String Value, State game )
 resolveNatives prefix state natives =
     Dict.foldl
         (\name native ( acc, st ) ->
@@ -894,7 +896,7 @@ resolveNatives prefix state natives =
         natives
 
 
-resolveNative : String -> State -> NativeValue -> ( Maybe Value, State )
+resolveNative : String -> State game -> NativeValue game -> ( Maybe Value, State game )
 resolveNative path state native =
     case native of
         NativeFunction fn ->
@@ -945,7 +947,7 @@ resolveNative path state native =
 {-| Queues the `LogError` for a `NativeZakExpr` at `path` whose expression
 failed to parse or evaluate; `message` is the error's own text.
 -}
-logBrokenNative : String -> String -> State -> State
+logBrokenNative : String -> String -> State game -> State game
 logBrokenNative path message state =
     { state
         | pendingEffects =
@@ -957,7 +959,7 @@ logBrokenNative path message state =
 {-| Queues the `LogError` for a host native at `path` that `mergeNatives`
 ignored, because the standard library already defines that name.
 -}
-logIgnoredNative : String -> State -> State
+logIgnoredNative : String -> State game -> State game
 logIgnoredNative path state =
     { state
         | pendingEffects =
@@ -995,7 +997,7 @@ signalValue signal =
 this is the one place a new scope gets created, used uniformly for an `if`
 branch, a `while` body, a function call, and the top-level program alike.
 -}
-execBlock : Env -> State -> Block -> Result RuntimeError ( Outcome Signal, State )
+execBlock : Env -> State game -> Block -> Result RuntimeError ( Outcome game Signal, State game )
 execBlock parentEnv state statements =
     let
         ( frameId, state1 ) =
@@ -1017,7 +1019,7 @@ calls `tagPosition`, but `tagPosition` is a deliberate no-op on an
 already-tagged error, so the innermost, most useful position is the one
 that survives, not the outermost/least specific one.
 -}
-execStatements : Env -> State -> Block -> Result RuntimeError ( Outcome Signal, State )
+execStatements : Env -> State game -> Block -> Result RuntimeError ( Outcome game Signal, State game )
 execStatements env state statements =
     case statements of
         [] ->
@@ -1071,7 +1073,7 @@ here, via `evalExpr`) for what happens if a suspending native is called
 from anywhere else instead (a `SuspendedNotAllowed` error, not silent
 wrong behavior).
 -}
-execStatement : Env -> State -> Statement -> Result RuntimeError ( Outcome Signal, State )
+execStatement : Env -> State game -> Statement -> Result RuntimeError ( Outcome game Signal, State game )
 execStatement env state statement =
     case statement of
         Let "_" valueExpr ->
@@ -1153,7 +1155,7 @@ execStatement env state statement =
                 |> Result.map (\( _, state1 ) -> ( Done Normal, state1 ))
 
 
-execWhile : Env -> State -> Expr -> Block -> Result RuntimeError ( Outcome Signal, State )
+execWhile : Env -> State game -> Expr -> Block -> Result RuntimeError ( Outcome game Signal, State game )
 execWhile env state condExpr body =
     evalExpr env state condExpr
         |> Result.andThen
@@ -1195,7 +1197,7 @@ and throws the value away. Nothing is bound, so repeating it in the same
 scope is never `AlreadyDefined`, and the parser already rejects any read
 of `_` (`Zak.Internal.Parser.rejectThrowaway`).
 -}
-discard : Env -> State -> Expr -> Result RuntimeError ( Outcome Signal, State )
+discard : Env -> State game -> Expr -> Result RuntimeError ( Outcome game Signal, State game )
 discard env state valueExpr =
     evalExpr env state valueExpr
         |> Result.map (\( _, state1 ) -> ( Done Normal, state1 ))
@@ -1214,7 +1216,7 @@ once, up front, to fix _which_ array is being iterated (re-evaluating it
 every pass isn't something most dynamic languages do either); iteration
 itself is live, per `execForLoop` below.
 -}
-execFor : Env -> State -> String -> Expr -> Block -> Result RuntimeError ( Outcome Signal, State )
+execFor : Env -> State game -> String -> Expr -> Block -> Result RuntimeError ( Outcome game Signal, State game )
 execFor env state loopVar collectionExpr body =
     evalExpr env state collectionExpr
         |> Result.andThen
@@ -1241,7 +1243,7 @@ underneath that — so a `let` inside the body never collides with `loopVar`,
 the same separation a function's own parameters and its body's `let`s have.
 
 -}
-execForLoop : Env -> State -> String -> Int -> Block -> Int -> Result RuntimeError ( Outcome Signal, State )
+execForLoop : Env -> State game -> String -> Int -> Block -> Int -> Result RuntimeError ( Outcome game Signal, State game )
 execForLoop env state loopVar id body index =
     let
         contents =
@@ -1307,7 +1309,7 @@ no behavior change at all: `evalExpr`'s own `Name` branch is exactly
 hand.
 
 -}
-execAssign : Env -> State -> AssignTarget -> Value -> Result RuntimeError State
+execAssign : Env -> State game -> AssignTarget -> Value -> Result RuntimeError (State game)
 execAssign env state (AssignTarget base segments) value =
     case ( base, segments ) of
         ( Name name, [] ) ->
@@ -1318,7 +1320,7 @@ execAssign env state (AssignTarget base segments) value =
                 |> Result.andThen (\( baseValue, state1 ) -> setPath env state1 baseValue segments value)
 
 
-setPath : Env -> State -> Value -> List PathSegment -> Value -> Result RuntimeError State
+setPath : Env -> State game -> Value -> List PathSegment -> Value -> Result RuntimeError (State game)
 setPath env state target segments value =
     case segments of
         [ FieldSegment field ] ->
@@ -1356,7 +1358,7 @@ function: `[index]`/`[index] = value` and `Array.get`/`Array.set` are two
 spellings of the exact same operation (see this module's own doc for why
 that sharing lives here rather than in a separate module).
 -}
-getArrayIndex : State -> Value -> Value -> Result RuntimeError Value
+getArrayIndex : State game -> Value -> Value -> Result RuntimeError Value
 getArrayIndex state target indexValue =
     case ( target, indexValue ) of
         ( VArray id, VNumber indexFloat ) ->
@@ -1382,7 +1384,7 @@ getArrayIndex state target indexValue =
             Err (TypeError { expected = "Array", got = target })
 
 
-setArrayIndex : State -> Value -> Value -> Value -> Result RuntimeError State
+setArrayIndex : State game -> Value -> Value -> Value -> Result RuntimeError (State game)
 setArrayIndex state target indexValue value =
     case ( target, indexValue ) of
         ( VArray id, VNumber indexFloat ) ->
@@ -1413,7 +1415,7 @@ down — same relationship `getArrayIndex`/`setArrayIndex` have with
 `Array.get`/`Array.set`: not just the same error, the literal same
 function.
 -}
-getTableField : State -> Value -> String -> Result RuntimeError Value
+getTableField : State game -> Value -> String -> Result RuntimeError Value
 getTableField state target field =
     case target of
         VTable id ->
@@ -1425,7 +1427,7 @@ getTableField state target field =
             Err (NotATable target field)
 
 
-setTableField : State -> Value -> String -> Value -> Result RuntimeError State
+setTableField : State game -> Value -> String -> Value -> Result RuntimeError (State game)
 setTableField state target field value =
     case target of
         VTable id ->
@@ -1443,7 +1445,7 @@ setTableField state target field value =
 -- EXPRESSIONS
 
 
-evalExpr : Env -> State -> Expr -> Result RuntimeError ( Value, State )
+evalExpr : Env -> State game -> Expr -> Result RuntimeError ( Value, State game )
 evalExpr env state expression =
     case expression of
         StringLiteral s ->
@@ -1563,7 +1565,7 @@ evalExpr env state expression =
 left one didn't already decide the answer. `shortCircuitsOn` is the Bool
 value that stops evaluation early (`False` for `and`, `True` for `or`).
 -}
-evalShortCircuit : Env -> State -> Bool -> Expr -> Expr -> Result RuntimeError ( Value, State )
+evalShortCircuit : Env -> State game -> Bool -> Expr -> Expr -> Result RuntimeError ( Value, State game )
 evalShortCircuit env state shortCircuitsOn leftExpr rightExpr =
     evalExpr env state leftExpr
         |> Result.andThen
@@ -1590,7 +1592,7 @@ evalShortCircuit env state shortCircuitsOn leftExpr rightExpr =
             )
 
 
-evalExprList : Env -> State -> List Expr -> Result RuntimeError ( List Value, State )
+evalExprList : Env -> State game -> List Expr -> Result RuntimeError ( List Value, State game )
 evalExprList env state exprs =
     case exprs of
         [] ->
@@ -1605,7 +1607,7 @@ evalExprList env state exprs =
                     )
 
 
-evalFieldExprs : Env -> State -> List ( String, Expr ) -> Result RuntimeError ( List ( String, Value ), State )
+evalFieldExprs : Env -> State game -> List ( String, Expr ) -> Result RuntimeError ( List ( String, Value ), State game )
 evalFieldExprs env state fields =
     case fields of
         [] ->
@@ -1642,7 +1644,7 @@ argument has a default. Falls back to `VNil` rather than crashing if
 that guarantee were somehow ever violated.
 
 -}
-evalDefaultArgs : Env -> State -> List ( String, Maybe Expr ) -> Result RuntimeError ( List ( String, Value ), State )
+evalDefaultArgs : Env -> State game -> List ( String, Maybe Expr ) -> Result RuntimeError ( List ( String, Value ), State game )
 evalDefaultArgs env state remainingParams =
     case remainingParams of
         [] ->
@@ -1679,7 +1681,7 @@ isRequiredParam ( _, default ) =
 {-| Calls `callee`, which must be a `VFunction`: the function in
 `functionHeap` its id points at (`callFunctionCell`).
 -}
-callFunction : State -> Value -> List Value -> Result RuntimeError ( Outcome Value, State )
+callFunction : State game -> Value -> List Value -> Result RuntimeError ( Outcome game Value, State game )
 callFunction state callee args =
     case callee of
         VFunction id ->
@@ -1703,7 +1705,7 @@ see `execStatement`'s `ExprStatement (Call ...)` case), whose `Outcome
 Signal` from running the body is mapped to the `Outcome Value` this
 function itself promises via `signalValue`/`mapOutcome`.
 -}
-callFunctionCell : State -> Function -> List Value -> Result RuntimeError ( Outcome Value, State )
+callFunctionCell : State game -> Function game -> List Value -> Result RuntimeError ( Outcome game Value, State game )
 callFunctionCell state function args =
     case function of
         Native fn ->
@@ -1839,7 +1841,7 @@ A right-hand side that's neither an `Array` nor a `Table` is a hard
 `TypeError` rather than silently `false`; every other operator/native in
 Zak already refuses that kind of silent tolerance.
 -}
-evalIn : State -> Value -> Value -> Result RuntimeError Value
+evalIn : State game -> Value -> Value -> Result RuntimeError Value
 evalIn state left right =
     case right of
         VArray id ->
@@ -2010,7 +2012,7 @@ valuesEqual a b =
 -- ENVIRONMENT / HEAP
 
 
-lookupVar : Env -> State -> String -> Maybe Value
+lookupVar : Env -> State game -> String -> Maybe Value
 lookupVar (Env frameId parent) state name =
     case Dict.get frameId state.heap |> Maybe.andThen (Dict.get name) of
         Just value ->
@@ -2025,7 +2027,7 @@ that exact frame already has one (shadowing an _outer_ scope's binding of
 the same name is fine, and goes through this same function, since the
 current frame starts out empty for a freshly-entered block).
 -}
-defineVar : Env -> State -> String -> Value -> Result RuntimeError State
+defineVar : Env -> State game -> String -> Value -> Result RuntimeError (State game)
 defineVar (Env frameId _) state name value =
     let
         frame =
@@ -2048,7 +2050,7 @@ scope"/shadowing behavior is _identical_ to `let`'s, by construction —
 both funnel through the exact same `defineVar`, so there's no second
 copy of that logic to keep in sync.
 -}
-markConst : Env -> State -> String -> State
+markConst : Env -> State game -> String -> State game
 markConst (Env frameId _) state name =
     { state
         | constNames =
@@ -2069,7 +2071,7 @@ non-empty `AssignTarget` path) never reach this function at all (see
 table's/array's own _contents_ is still allowed — only rebinding the
 name itself isn't.
 -}
-assignVar : Env -> State -> String -> Value -> Result RuntimeError State
+assignVar : Env -> State game -> String -> Value -> Result RuntimeError (State game)
 assignVar (Env frameId parent) state name value =
     let
         frame =
@@ -2091,7 +2093,7 @@ assignVar (Env frameId parent) state name value =
                 Err (UndefinedName name)
 
 
-isConst : Int -> String -> State -> Bool
+isConst : Int -> String -> State game -> Bool
 isConst frameId name state =
     Dict.get frameId state.constNames
         |> Maybe.map (Set.member name)
@@ -2106,7 +2108,7 @@ ever reached, so the two checks never overlap. Walks outward the same way
 covers every nesting level for free, since `execBlock` already gives every
 `if`/`while`/`for`/function body its own fresh frame.
 -}
-shadowsConst : Env -> String -> State -> Bool
+shadowsConst : Env -> String -> State game -> Bool
 shadowsConst (Env _ parent) name state =
     case parent of
         Nothing ->
@@ -2126,7 +2128,7 @@ exactly as shadowing already worked before `const` existed — this only
 makes the one case most likely to be a mistake, rather than a deliberate
 choice, loud instead of silent.
 -}
-warnIfShadowsConst : Env -> String -> State -> State
+warnIfShadowsConst : Env -> String -> State game -> State game
 warnIfShadowsConst env name state =
     if shadowsConst env name state then
         { state
@@ -2148,7 +2150,7 @@ warnIfShadowsConst env name state =
 -- this way.
 
 
-arrayLength : State -> List Value -> Result RuntimeError ( Value, State )
+arrayLength : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayLength state args =
     case args of
         [ VArray id ] ->
@@ -2161,7 +2163,7 @@ arrayLength state args =
             Err (WrongArgCount { expected = 1, got = List.length args })
 
 
-arrayIsEmpty : State -> List Value -> Result RuntimeError ( Value, State )
+arrayIsEmpty : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayIsEmpty state args =
     case args of
         [ VArray id ] ->
@@ -2177,7 +2179,7 @@ arrayIsEmpty state args =
 {-| `Array.get(array, index)` — a callable spelling of `array[index]`,
 delegating to the same `getArrayIndex` that backs it.
 -}
-arrayGet : State -> List Value -> Result RuntimeError ( Value, State )
+arrayGet : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayGet state args =
     case args of
         [ arrayValue, indexValue ] ->
@@ -2196,7 +2198,7 @@ same split `Table.get_default` draws between a missing _field_ (softened)
 and a wrong-typed target (still an error). The `Array` counterpart to
 `Table.get_default`, kept symmetric with it.
 -}
-arrayGetDefault : State -> List Value -> Result RuntimeError ( Value, State )
+arrayGetDefault : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayGetDefault state args =
     case args of
         [ VArray id, VNumber indexFloat, default ] ->
@@ -2221,7 +2223,7 @@ arrayGetDefault state args =
 {-| `Array.set(array, index, value)` — a callable spelling of `array[index]
 = value`, delegating to the same `setArrayIndex` that backs it.
 -}
-arraySet : State -> List Value -> Result RuntimeError ( Value, State )
+arraySet : State game -> List Value -> Result RuntimeError ( Value, State game )
 arraySet state args =
     case args of
         [ arrayValue, indexValue, value ] ->
@@ -2237,7 +2239,7 @@ always mutates `array` directly, growing it by one, and returns the array
 itself. No bounds to check — appending is always valid, unlike `set`. No
 dedicated syntax of its own (unlike `get`/`set`), so this is its only form.
 -}
-arrayPush : State -> List Value -> Result RuntimeError ( Value, State )
+arrayPush : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayPush state args =
     case args of
         [ VArray id, value ] ->
@@ -2276,7 +2278,7 @@ Elm's own last-argument convention is a consequence of currying + `|>`,
 neither of which Zak has).
 
 -}
-arrayAppend : State -> List Value -> Result RuntimeError ( Value, State )
+arrayAppend : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayAppend state args =
     case args of
         [ VArray id, VArray otherId ] ->
@@ -2306,7 +2308,7 @@ established preference for a hard error over a silently-forgiving
 result on a degenerate input (division by zero, an out-of-bounds index,
 a non-integer index all already work this way).
 -}
-arrayPop : State -> List Value -> Result RuntimeError ( Value, State )
+arrayPop : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayPop state args =
     case args of
         [ VArray id ] ->
@@ -2346,7 +2348,7 @@ nothing to return on an empty array, `remove` always has an answer, and
 inventory item that's already gone). Only the first match goes; to drop
 every match, `Array.filter` already does that, as a new array.
 -}
-arrayRemove : State -> List Value -> Result RuntimeError ( Value, State )
+arrayRemove : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayRemove state args =
     case args of
         [ VArray id, value ] ->
@@ -2383,7 +2385,7 @@ firstIndexOf value contents =
         |> Maybe.map Tuple.first
 
 
-arrayContains : State -> List Value -> Result RuntimeError ( Value, State )
+arrayContains : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayContains state args =
     case args of
         [ VArray id, value ] ->
@@ -2400,7 +2402,7 @@ arrayContains state args =
 the same error, the literal same function," the same relationship
 `getArrayIndex`/`getTableField` already have with `Array.get`/`Table.get`.
 -}
-arrayHasValue : State -> Int -> Value -> Bool
+arrayHasValue : State game -> Int -> Value -> Bool
 arrayHasValue state id value =
     arrayContents state id |> Array.toList |> List.any (valuesEqual value)
 
@@ -2420,7 +2422,7 @@ count-from-the-end), an `end` past the length clamps to the length, and
 array/table element is shared with the original, not copied.
 
 -}
-arraySlice : State -> List Value -> Result RuntimeError ( Value, State )
+arraySlice : State game -> List Value -> Result RuntimeError ( Value, State game )
 arraySlice state args =
     case args of
         [ VArray id, VNumber startFloat, VNumber endFloat ] ->
@@ -2459,7 +2461,7 @@ length, and clamps both into `[0, length]` before calling Elm's own
 `Array.slice` (whose negative-index wraparound the validation keeps out
 of reach) — the same steps as `String.slice`'s `sliceChecked`.
 -}
-arraySliceChecked : State -> Int -> Float -> Maybe Float -> Result RuntimeError ( Value, State )
+arraySliceChecked : State game -> Int -> Float -> Maybe Float -> Result RuntimeError ( Value, State game )
 arraySliceChecked state id startFloat maybeEndFloat =
     let
         contents =
@@ -2494,7 +2496,7 @@ independent afterward, but a `VArray`/`VTable` element is just a heap
 id, so a nested array/table inside is still the _same_ one, shared by
 reference — cloning never walks into it.
 -}
-arrayClone : State -> List Value -> Result RuntimeError ( Value, State )
+arrayClone : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayClone state args =
     case args of
         [ VArray id ] ->
@@ -2517,7 +2519,7 @@ effect per element, not a transform — see `Array.map` for that. An empty
 `array` is a no-op: `fn` is never called, falling straight out of
 `eachValue`'s own base case below.
 -}
-arrayEach : State -> List Value -> Result RuntimeError ( Value, State )
+arrayEach : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayEach state args =
     case args of
         [ VArray id, fn ] ->
@@ -2536,7 +2538,7 @@ collected — same shape, kept separate since `mapValues` returns
 `List Value`, not `State`, and threading a throwaway accumulator through
 it would be less clear than this own three-line recursion.
 -}
-eachValue : State -> Value -> List Value -> Result RuntimeError State
+eachValue : State game -> Value -> List Value -> Result RuntimeError (State game)
 eachValue state fn values =
     case values of
         [] ->
@@ -2553,7 +2555,7 @@ eachValue state fn values =
 once per element, threading `State` through since `fn` may itself touch
 the heap (e.g. it could allocate more arrays/tables of its own).
 -}
-arrayMap : State -> List Value -> Result RuntimeError ( Value, State )
+arrayMap : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayMap state args =
     case args of
         [ VArray id, fn ] ->
@@ -2574,7 +2576,7 @@ arrayMap state args =
             Err (WrongArgCount { expected = 2, got = List.length args })
 
 
-mapValues : State -> Value -> List Value -> Result RuntimeError ( List Value, State )
+mapValues : State game -> Value -> List Value -> Result RuntimeError ( List Value, State game )
 mapValues state fn values =
     case values of
         [] ->
@@ -2600,7 +2602,7 @@ elements `predicate` returned `true` for. `predicate` must return a `Bool`,
 same as any other Boolean-position value in the language (see the `if`/
 `while` condition rule in the language reference).
 -}
-arrayFilter : State -> List Value -> Result RuntimeError ( Value, State )
+arrayFilter : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayFilter state args =
     case args of
         [ VArray id, predicate ] ->
@@ -2621,7 +2623,7 @@ arrayFilter state args =
             Err (WrongArgCount { expected = 2, got = List.length args })
 
 
-filterValues : State -> Value -> List Value -> Result RuntimeError ( List Value, State )
+filterValues : State game -> Value -> List Value -> Result RuntimeError ( List Value, State game )
 filterValues state predicate values =
     case values of
         [] ->
@@ -2651,7 +2653,7 @@ all (e.g. summing to a `Number`). `fn` takes `(element, accumulator)`,
 matching Elm's own `foldl`/`foldr` argument order, not the reversed
 `(accumulator, element)` order some languages use.
 -}
-arrayFoldl : State -> List Value -> Result RuntimeError ( Value, State )
+arrayFoldl : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayFoldl state args =
     case args of
         [ VArray id, fn, initial ] ->
@@ -2668,7 +2670,7 @@ arrayFoldl state args =
 right-to-left; implemented by reversing the element order first and
 reusing the same left-to-right walk.
 -}
-arrayFoldr : State -> List Value -> Result RuntimeError ( Value, State )
+arrayFoldr : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayFoldr state args =
     case args of
         [ VArray id, fn, initial ] ->
@@ -2681,7 +2683,7 @@ arrayFoldr state args =
             Err (WrongArgCount { expected = 3, got = List.length args })
 
 
-foldValues : State -> Value -> Value -> List Value -> Result RuntimeError ( Value, State )
+foldValues : State game -> Value -> Value -> List Value -> Result RuntimeError ( Value, State game )
 foldValues state fn acc values =
     case values of
         [] ->
@@ -2700,7 +2702,7 @@ it just always allocates and returns a new array. Matches Elm's real
 `List.range` exactly: inclusive of both `lo` and `hi`, and simply empty — not an
 error — when `lo > hi` (`Array.range(6, 3) == []`).
 -}
-arrayRange : State -> List Value -> Result RuntimeError ( Value, State )
+arrayRange : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayRange state args =
     case args of
         [ VNumber loFloat, VNumber hiFloat ] ->
@@ -2736,7 +2738,7 @@ arrayRange state args =
 {-| `Table.get(table, name)` — a callable spelling of `table.name`,
 delegating to the same `getTableField` that backs it.
 -}
-tableGet : State -> List Value -> Result RuntimeError ( Value, State )
+tableGet : State game -> List Value -> Result RuntimeError ( Value, State game )
 tableGet state args =
     case args of
         [ tableValue, VString name ] ->
@@ -2754,7 +2756,7 @@ tableGet state args =
 `table.name = value`, delegating to the same `setTableField` that backs
 it (which creates `name` if it doesn't already exist).
 -}
-tableSet : State -> List Value -> Result RuntimeError ( Value, State )
+tableSet : State game -> List Value -> Result RuntimeError ( Value, State game )
 tableSet state args =
     case args of
         [ tableValue, VString name, value ] ->
@@ -2776,7 +2778,7 @@ function rather than new operator syntax, per Zak's own design goal of preferrin
 Still raises `NotATable` if `table` isn't a `VTable` at all — only a
 missing _field_ gets the default, not a wrong-typed target.
 -}
-tableGetDefault : State -> List Value -> Result RuntimeError ( Value, State )
+tableGetDefault : State game -> List Value -> Result RuntimeError ( Value, State game )
 tableGetDefault state args =
     case args of
         [ VTable id, VString name, default ] ->
@@ -2805,7 +2807,7 @@ removed value: a field can hold `nil`, so a returned `nil` couldn't tell
 a removed `nil` from a missing field. Setting a field to `nil` keeps it,
 so this is the only way to take one out.
 -}
-tableRemove : State -> List Value -> Result RuntimeError ( Value, State )
+tableRemove : State game -> List Value -> Result RuntimeError ( Value, State game )
 tableRemove state args =
     case args of
         [ VTable id, VString name ] ->
@@ -2834,7 +2836,7 @@ it checks a different thing on each side (element _contents_ for
 `Array.contains`, field _name_ existence here), the same way Python's own
 `in` checks values on a list but keys on a dict.
 -}
-tableContains : State -> List Value -> Result RuntimeError ( Value, State )
+tableContains : State game -> List Value -> Result RuntimeError ( Value, State game )
 tableContains state args =
     case args of
         [ VTable id, VString name ] ->
@@ -2854,7 +2856,7 @@ tableContains state args =
 `arrayHasValue`'s own doc for why this is the literal same function, not
 a parallel reimplementation.
 -}
-tableHasField : State -> Int -> String -> Bool
+tableHasField : State game -> Int -> String -> Bool
 tableHasField state id name =
     Dict.get id state.heap
         |> Maybe.map (Dict.member name)
@@ -2864,7 +2866,7 @@ tableHasField state id name =
 {-| `Table.clone(table)` — same semantics as `Array.clone`, see its own
 doc; a new table with the same fields, shallow.
 -}
-tableClone : State -> List Value -> Result RuntimeError ( Value, State )
+tableClone : State game -> List Value -> Result RuntimeError ( Value, State game )
 tableClone state args =
     case args of
         [ VTable id ] ->
@@ -2892,7 +2894,7 @@ deliberately deferred gap here. The fields are read once, up front, so
 `fn` can `Table.remove` fields safely: a field removed partway through
 is still visited, with its old value.
 -}
-tableEach : State -> List Value -> Result RuntimeError ( Value, State )
+tableEach : State game -> List Value -> Result RuntimeError ( Value, State game )
 tableEach state args =
     case args of
         [ VTable id, fn ] ->
@@ -2910,7 +2912,7 @@ tableEach state args =
             Err (WrongArgCount { expected = 2, got = List.length args })
 
 
-eachField : State -> Value -> List ( String, Value ) -> Result RuntimeError State
+eachField : State game -> Value -> List ( String, Value ) -> Result RuntimeError (State game)
 eachField state fn fields =
     case fields of
         [] ->

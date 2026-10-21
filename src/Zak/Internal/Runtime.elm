@@ -94,11 +94,12 @@ see `NativeValue`'s own doc for how this threads through.
 
 Kept out of `Value` so a `Value` never holds an Elm function: Elm can't
 compare functions, and `==` on one crashes at run time.
+
 -}
-type Function
+type Function game
     = Closure (List ( String, Maybe Expr )) Block Env
-    | Native (State -> List Value -> Result RuntimeError ( Value, State ))
-    | NativeThread (State -> List Value -> Result RuntimeError ( Outcome Value, State ))
+    | Native (State game -> List Value -> Result RuntimeError ( Value, State game ))
+    | NativeThread (State game -> List Value -> Result RuntimeError ( Outcome game Value, State game ))
 
 
 {-| `WithPosition` is different in kind from the other 15 constructors here —
@@ -218,9 +219,9 @@ silently doing the wrong thing. Only a bare top-level statement call
 wired to actually preserve and propagate a `Suspended` result.
 
 -}
-type Outcome a
+type Outcome game a
     = Done a
-    | Suspended WaitCondition (State -> Result RuntimeError ( Outcome a, State ))
+    | Suspended WaitCondition (State game -> Result RuntimeError ( Outcome game a, State game ))
 
 
 {-| What a suspended thread is waiting on, checked once per scheduler
@@ -266,10 +267,10 @@ record` to get at the fields, the same way it already does for `Env
 frameId parent`.
 
 -}
-type Thread
+type Thread game
     = Thread
         { owner : ThreadOwner
-        , status : ThreadStatus
+        , status : ThreadStatus game
         }
 
 
@@ -290,12 +291,12 @@ that's how the code running it knows not to register it again at its next
 wait (`Zak.Internal.Interpreter.settle`).
 
 -}
-type ThreadStatus
+type ThreadStatus game
     = Running
     | Waiting
         { waitCondition : WaitCondition
         , elapsed : Float
-        , resume : State -> Result RuntimeError ( Outcome Value, State )
+        , resume : State game -> Result RuntimeError ( Outcome game Value, State game )
         }
 
 
@@ -305,7 +306,7 @@ equivalent of `Result.map`/`Maybe.map`. Used by `Zak.Internal.Interpreter.callFu
 to turn a `VFunction` call's `Outcome Signal` (from running its body) into
 the `Outcome Value` the call itself needs to report, via `signalValue`.
 -}
-mapOutcome : (a -> b) -> Outcome a -> Outcome b
+mapOutcome : (a -> b) -> Outcome game a -> Outcome game b
 mapOutcome f outcome =
     case outcome of
         Done value ->
@@ -320,7 +321,7 @@ away for a `Done` outcome, or when a `Suspended` one eventually resumes.
 Used by `Zak.Internal.Interpreter.callFunction`, whose `signalValue` rejects a
 `break`/`continue` signal that escaped its loop.
 -}
-mapOutcomeResult : (a -> Result RuntimeError b) -> Outcome a -> Result RuntimeError (Outcome b)
+mapOutcomeResult : (a -> Result RuntimeError b) -> Outcome game a -> Result RuntimeError (Outcome game b)
 mapOutcomeResult f outcome =
     case outcome of
         Done value ->
@@ -346,7 +347,7 @@ every native that calls a Zak function as a callback (`Array.map`'s `fn`,
 reasoning on why suspension is deliberately restricted to bare top-level
 statement calls in this pass.
 -}
-requireDone : Outcome a -> Result RuntimeError a
+requireDone : Outcome game a -> Result RuntimeError a
 requireDone outcome =
     case outcome of
         Done value ->
@@ -394,10 +395,10 @@ suspend the _caller_ — stays a plain `NativeFunction`; see `Outcome`'s own
 doc for why suspension is deliberately this narrow in the first pass.
 
 -}
-type NativeValue
-    = NativeFunction (State -> List Value -> Result RuntimeError ( Value, State ))
-    | NativeThreadFunction (State -> List Value -> Result RuntimeError ( Outcome Value, State ))
-    | NativeNamespace (Dict String NativeValue)
+type NativeValue game
+    = NativeFunction (State game -> List Value -> Result RuntimeError ( Value, State game ))
+    | NativeThreadFunction (State game -> List Value -> Result RuntimeError ( Outcome game Value, State game ))
+    | NativeNamespace (Dict String (NativeValue game))
     | NativeZakExpr String
     | NativeConstant Value
 
@@ -435,8 +436,8 @@ same `nextId` counter as `Heap` and `ArrayHeap`. A function is allocated
 when it's created: once per native when the world is seeded, and once per
 evaluation of a function literal, as a table literal allocates a table.
 -}
-type alias FunctionHeap =
-    Dict Int Function
+type alias FunctionHeap game =
+    Dict Int (Function game)
 
 
 {-| `threads`/`nextThreadId` hold every currently-suspended thread spawned
@@ -475,14 +476,21 @@ to check. Consulted from exactly one place, `Zak.Internal.Interpreter`'s
 `assignVar` — a `let` binding never appears here at all, since `let`
 never marks anything in it in the first place.
 
+`game` is the embedder's own data, which the interpreter only carries:
+it never looks inside, and neither can the standard library, written for
+any `game`. Only the embedder's natives, written for its own type, read
+and change it (`Zak.game`, `Zak.updateGame`). It's part of `State` like
+everything else, so a failed call or thread resume, which drops the
+`State` it changed, drops the changes to `game` with it.
+
 -}
-type alias State =
+type alias State game =
     { heap : Heap
     , arrayHeap : ArrayHeap
-    , functionHeap : FunctionHeap
+    , functionHeap : FunctionHeap game
     , constNames : Dict Int (Set String)
     , nextId : Int
-    , threads : Dict ThreadId Thread
+    , threads : Dict ThreadId (Thread game)
     , nextThreadId : ThreadId
 
     {- The owner of the code running right now: the resumed thread's own
@@ -516,6 +524,7 @@ type alias State =
        resolves to nothing rather than looping.
     -}
     , includedFiles : Set String
+    , game : game
     }
 
 
@@ -525,14 +534,14 @@ in `heap`, returning its id. The heap-cell operations (`allocCell`,
 `State`/`Heap`/`ArrayHeap` types they work on, so the interpreter, the
 library natives, and `Zak` itself all share one implementation.
 -}
-allocCell : State -> ( Int, State )
+allocCell : State game -> ( Int, State game )
 allocCell state =
     ( state.nextId, { state | heap = Dict.insert state.nextId Dict.empty state.heap, nextId = state.nextId + 1 } )
 
 
 {-| Like `allocCell`, but for a new `VFunction` cell in `functionHeap`.
 -}
-allocFunction : State -> Function -> ( Int, State )
+allocFunction : State game -> Function game -> ( Int, State game )
 allocFunction state function =
     ( state.nextId, { state | functionHeap = Dict.insert state.nextId function state.functionHeap, nextId = state.nextId + 1 } )
 
@@ -541,7 +550,7 @@ allocFunction state function =
 its initial contents directly, since (unlike a frame or a fresh table)
 an array is never allocated empty-then-filled-in.
 -}
-allocArrayCell : State -> Array Value -> ( Int, State )
+allocArrayCell : State game -> Array Value -> ( Int, State game )
 allocArrayCell state contents =
     ( state.nextId, { state | arrayHeap = Dict.insert state.nextId contents state.arrayHeap, nextId = state.nextId + 1 } )
 
@@ -553,7 +562,7 @@ interpreter itself ever produces — ids only ever come from
 a new error case through every caller for something that would be an
 interpreter bug, not a runtime condition a script could trigger.
 -}
-arrayContents : State -> Int -> Array Value
+arrayContents : State game -> Int -> Array Value
 arrayContents state id =
     Dict.get id state.arrayHeap |> Maybe.withDefault Array.empty
 
@@ -610,7 +619,7 @@ call is nested inside another function (e.g. a script helper called from
 lexically scoped in Zak by design -- a `let` inside a function body binds
 locally to that call, not globally.
 -}
-bindGlobal : String -> Value -> State -> State
+bindGlobal : String -> Value -> State game -> State game
 bindGlobal name value state =
     { state | heap = Dict.update state.globalFrameId (Maybe.map (Dict.insert name value)) state.heap }
 

@@ -48,11 +48,11 @@ same reason: `run`/`runExpr` above both discard `State`, but the logging
 tests below need to inspect `state.pendingEffects` directly, not just a
 script's own return value.
 -}
-runWithState : String -> Result Error ( Value, State )
+runWithState : String -> Result Error ( Value, State () )
 runWithState source =
     let
         ( env, state ) =
-            I.initialWorld Dict.empty
+            I.initialWorld () Dict.empty
     in
     I.runIncremental env state source
 
@@ -184,7 +184,7 @@ suite =
                             NativeFunction (\state _ -> Ok ( VNil, { state | pendingEffects = state.pendingEffects ++ [ Effect "ping" [ VNumber 1 ] ] } ))
 
                         ( env, state0 ) =
-                            I.initialWorld (Dict.singleton "ping" ping)
+                            I.initialWorld () (Dict.singleton "ping" ping)
                     in
                     case I.runIncremental env state0 "Debug.log(\"a\")\nping()\nDebug.log(\"b\")\nreturn nil" of
                         Ok ( _, state ) ->

@@ -63,7 +63,7 @@ error to a since-changed line.
 type alias Model =
     { source : String
     , lastRunSource : String
-    , result : Maybe (Result Error ( Value, World ))
+    , result : Maybe (Result Error ( Value, World () ))
     }
 
 
@@ -88,7 +88,7 @@ either way, but there's no reason to make one). Called from both
 `Debug.log_error` call (`ClickedRun` from the script's own top level,
 `Tick` from a resumed thread's body).
 -}
-drainAndLog : World -> ( World, Cmd Msg )
+drainAndLog : World () -> ( World (), Cmd Msg )
 drainAndLog world =
     let
         ( effects, world1 ) =
@@ -148,7 +148,7 @@ update msg model =
             ( { model | source = source }, Cmd.none )
 
         ClickedRun ->
-            case Zak.run model.source (Zak.init []) of
+            case Zak.run model.source (Zak.init () []) of
                 Ok ( _, world1 ) ->
                     -- A required main(): a missing one surfaces as an
                     -- ordinary UndefinedName "main" failure, not a
@@ -298,7 +298,7 @@ place this tool makes the scheduler itself observable. Nothing to show once ever
 has finished (or none were ever spawned), matching `subscriptions`'s own
 "nothing to advance" check.
 -}
-viewThreads : Maybe (Result Error ( Value, World )) -> Html Msg
+viewThreads : Maybe (Result Error ( Value, World () )) -> Html Msg
 viewThreads result =
     case result of
         Just (Ok ( _, world )) ->
@@ -487,7 +487,7 @@ sidesteps this by not recursing into `Array`/`Table` at all; this tool can
 afford to recurse, since it's for interactive exploration.
 
 -}
-renderValue : World -> List Value -> Value -> String
+renderValue : World () -> List Value -> Value -> String
 renderValue world seen value =
     case value of
         String s ->
@@ -537,7 +537,7 @@ renderValue world seen value =
 currently in the textarea) — needed here only to print the offending
 line an error points at.
 -}
-viewResult : String -> Maybe (Result Error ( Value, World )) -> String
+viewResult : String -> Maybe (Result Error ( Value, World () )) -> String
 viewResult source maybeResult =
     case maybeResult of
         Nothing ->
@@ -550,7 +550,7 @@ viewResult source maybeResult =
             Zak.errorToString source error
 
 
-isError : Maybe (Result Error ( Value, World )) -> Bool
+isError : Maybe (Result Error ( Value, World () )) -> Bool
 isError maybeResult =
     case maybeResult of
         Just (Err _) ->

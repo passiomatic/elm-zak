@@ -14,14 +14,14 @@ import Zak exposing (Effect(..), Error, LogLevel(..), Problem(..), Value(..), Wo
 
 {-| A world with `natives`, then `source` run into it.
 -}
-runIn : List ( String, Zak.Native ) -> String -> Result Error ( Value, World )
+runIn : List ( String, Zak.Native () ) -> String -> Result Error ( Value, World () )
 runIn natives source =
-    Zak.run source (Zak.init natives)
+    Zak.run source (Zak.init () natives)
 
 
 {-| The value `source` returns, in a world with `natives`.
 -}
-returns : List ( String, Zak.Native ) -> String -> Result Error Value
+returns : List ( String, Zak.Native () ) -> String -> Result Error Value
 returns natives source =
     runIn natives source |> Result.map Tuple.first
 
@@ -40,12 +40,12 @@ problem result =
 
 {-| A world with `files` to include, then `source` run into it.
 -}
-withFiles : List ( String, String ) -> String -> Result Error ( Value, World )
+withFiles : List ( String, String ) -> String -> Result Error ( Value, World () )
 withFiles files source =
     runIn [ ( "include", Zak.nativeInclude (\path -> Dict.get path (Dict.fromList files)) ) ] source
 
 
-double : Zak.Native
+double : Zak.Native ()
 double =
     Zak.nativeFunction
         (\args world ->
@@ -63,7 +63,7 @@ double =
 
 {-| Queues `Effect "ping" [ the argument ]` and returns `nil`.
 -}
-ping : Zak.Native
+ping : Zak.Native ()
 ping =
     Zak.nativeFunction (\args world -> Ok ( Nil, Zak.emitEffect "ping" args world ))
 
@@ -71,7 +71,7 @@ ping =
 {-| Fails with "expected success" instead of a `Result` mismatch, so a test
 can go on with the world.
 -}
-withWorld : Result Error ( Value, World ) -> (( Value, World ) -> Expect.Expectation) -> Expect.Expectation
+withWorld : Result Error ( Value, World () ) -> (( Value, World () ) -> Expect.Expectation) -> Expect.Expectation
 withWorld result expect =
     case result of
         Ok pair ->
@@ -83,7 +83,7 @@ withWorld result expect =
 
 {-| A waiting native: `wait_door(name)` waits on `Wait "door" [ name ]`.
 -}
-waitDoor : Zak.Native
+waitDoor : Zak.Native ()
 waitDoor =
     Zak.nativeWaitingFunction
         (\args world ->
@@ -98,9 +98,28 @@ waitDoor =
 
 {-| What a host that defines no waits tells `tick`.
 -}
-noWaits : Zak.Wait -> World -> Bool
+noWaits : Zak.Wait -> World game -> Bool
 noWaits _ _ =
     False
+
+
+{-| `count()`: the game, a counter, as a number.
+-}
+count : Zak.Native Int
+count =
+    Zak.nativeFunction (\_ world -> Ok ( Number (toFloat (Zak.game world)), world ))
+
+
+{-| `bump()`: adds one to the game, a counter.
+-}
+bump : Zak.Native Int
+bump =
+    Zak.nativeFunction (\_ world -> Ok ( Nil, Zak.updateGame ((+) 1) world ))
+
+
+counterWorld : World Int
+counterWorld =
+    Zak.init 0 [ ( "count", count ), ( "bump", bump ) ]
 
 
 suite : Test
@@ -111,7 +130,7 @@ suite =
                 \_ -> returns [] "return 1 + 2" |> Expect.equal (Ok (Number 3))
             , test "each run sees the globals earlier runs defined" <|
                 \_ ->
-                    Zak.init []
+                    Zak.init () []
                         |> Zak.run "let x = 20"
                         |> Result.andThen (\( _, world ) -> Zak.run "return x + 1" world)
                         |> Result.map Tuple.first
@@ -138,7 +157,7 @@ suite =
                 \_ ->
                     let
                         roll seed =
-                            Zak.init []
+                            Zak.init () []
                                 |> Zak.reseed seed
                                 |> Zak.run "return [Random.number(1, 1000), Random.number(1, 1000)]"
                                 |> Result.map (\( value, world ) -> Zak.items value world)
@@ -160,14 +179,14 @@ suite =
                                     Expect.fail "add isn't defined"
             , test "call on a value that isn't a function is NotAFunction" <|
                 \_ ->
-                    Zak.call (Number 1) [] (Zak.init [])
+                    Zak.call (Number 1) [] (Zak.init () [])
                         |> problem
                         |> Expect.equal (Just (NotAFunction (Number 1)))
             , test "a native can be called from the host too" <|
                 \_ ->
                     let
                         world =
-                            Zak.init [ ( "double", double ) ]
+                            Zak.init () [ ( "double", double ) ]
                     in
                     case Zak.getGlobal "double" world of
                         Just fn ->
@@ -242,7 +261,7 @@ suite =
                         |> Expect.equal (Ok (Number 15))
             , test "a broken nativeExpression is left undefined, and logged by name" <|
                 \_ ->
-                    case Zak.takeEffects (Zak.init [ ( "broken", Zak.nativeExpression "function(:" ) ]) of
+                    case Zak.takeEffects (Zak.init () [ ( "broken", Zak.nativeExpression "function(:" ) ]) of
                         ( [ Log LogError message ], world ) ->
                             Expect.all
                                 [ \_ -> message |> String.startsWith "native “broken” is left undefined" |> Expect.equal True
@@ -254,7 +273,7 @@ suite =
                             Expect.fail ("expected one LogError, got: " ++ Debug.toString (Tuple.first other))
             , test "a host namespace named like a standard one adds to it" <|
                 \_ ->
-                    case Zak.takeEffects (Zak.init [ ( "Thread", Zak.nativeTable [ ( "double", double ) ] ) ]) of
+                    case Zak.takeEffects (Zak.init () [ ( "Thread", Zak.nativeTable [ ( "double", double ) ] ) ]) of
                         ( [], world ) ->
                             Zak.run "return [Thread.double(4), type(Thread.wait_for)]" world
                                 |> Result.map (\( value, world1 ) -> Zak.items value world1)
@@ -272,7 +291,7 @@ suite =
                         |> Expect.equal (Ok (Number 11))
             , test "a host native can't replace a standard one, and is logged by name" <|
                 \_ ->
-                    case Zak.takeEffects (Zak.init [ ( "Thread", Zak.nativeTable [ ( "start", Zak.nativeConstant (Number 1) ) ] ) ]) of
+                    case Zak.takeEffects (Zak.init () [ ( "Thread", Zak.nativeTable [ ( "start", Zak.nativeConstant (Number 1) ) ] ) ]) of
                         ( [ Log LogError message ], world ) ->
                             Expect.all
                                 [ \_ -> message |> Expect.equal "native “Thread.start” is ignored, because the standard library already defines it."
@@ -284,7 +303,7 @@ suite =
                             Expect.fail ("expected one LogError, got: " ++ Debug.toString (Tuple.first other))
             , test "a host native that isn't a namespace keeps the standard one, and is logged" <|
                 \_ ->
-                    case Zak.takeEffects (Zak.init [ ( "Math", Zak.nativeConstant (Number 1) ) ]) of
+                    case Zak.takeEffects (Zak.init () [ ( "Math", Zak.nativeConstant (Number 1) ) ]) of
                         ( [ Log LogError message ], world ) ->
                             Expect.all
                                 [ \_ -> message |> Expect.equal "native “Math” is ignored, because the standard library already defines it."
@@ -332,6 +351,57 @@ suite =
                         Ok _ ->
                             Expect.fail "expected a SyntaxError"
             ]
+        , describe "the game"
+            [ test "a native reads the game the world was created with" <|
+                \_ ->
+                    Zak.init 7 [ ( "count", count ) ]
+                        |> Zak.run "return count()"
+                        |> Result.map Tuple.first
+                        |> Expect.equal (Ok (Number 7))
+            , test "a native's change to the game is there once the call returns" <|
+                \_ ->
+                    Zak.run "bump()\nbump()" counterWorld
+                        |> Result.map (Tuple.second >> Zak.game)
+                        |> Expect.equal (Ok 2)
+            , test "a native sees what the host changed between calls" <|
+                \_ ->
+                    counterWorld
+                        |> Zak.updateGame (always 40)
+                        |> Zak.run "bump()\nbump()\nreturn count()"
+                        |> Result.map Tuple.first
+                        |> Expect.equal (Ok (Number 42))
+            , test "a thread's changes to the game survive its waits" <|
+                \_ ->
+                    case Zak.run "Thread.start(function():\n    bump()\n    Thread.wait_for(1)\n    bump()\nend)" counterWorld of
+                        Ok ( _, world ) ->
+                            Expect.all
+                                [ \_ -> Zak.game world |> Expect.equal 1
+                                , \_ -> Zak.tick noWaits 1.5 world |> Tuple.second |> Zak.game |> Expect.equal 2
+                                ]
+                                ()
+
+                        Err error ->
+                            Expect.fail (Zak.errorToString "" error)
+            , test "a thread that fails while resumed loses its changes to the game" <|
+                \_ ->
+                    case Zak.run "Thread.start(function():\n    Thread.wait_for(1)\n    bump()\n    let broken = 1 + nil\nend)" counterWorld of
+                        Ok ( _, world ) ->
+                            case Zak.tick noWaits 1.5 world of
+                                ( [ _ ], world1 ) ->
+                                    Zak.game world1 |> Expect.equal 0
+
+                                ( errors, _ ) ->
+                                    Expect.fail ("expected one error, got: " ++ String.fromInt (List.length errors))
+
+                        Err error ->
+                            Expect.fail (Zak.errorToString "" error)
+            , test "the standard library works whatever the game's type" <|
+                \_ ->
+                    Zak.init { score = 3, name = "test" } []
+                        |> Zak.run "return Math.abs(-2) + Array.length([1])"
+                        |> Result.map Tuple.first
+                        |> Expect.equal (Ok (Number 3))
+            ]
         , describe "data"
             [ test "two references to the same function are ==, and comparing functions doesn't crash" <|
                 \_ ->
@@ -347,7 +417,7 @@ suite =
                                 |> Expect.equal ( Just (String "Zak"), Just (Number 7), Nothing )
             , test "setGlobal defines a new global the scripts can read" <|
                 \_ ->
-                    Zak.init []
+                    Zak.init () []
                         |> Zak.setGlobal "greeting" (String "hi")
                         |> Zak.run "return greeting"
                         |> Result.map Tuple.first
@@ -363,7 +433,7 @@ suite =
                                 |> Expect.equal (Ok (Number 2))
             , test "setGlobal on a name declared as a native is seen by a nativeExpression" <|
                 \_ ->
-                    Zak.init [ ( "_current", Zak.nativeConstant Nil ), ( "current", Zak.nativeExpression "function(): return _current end" ) ]
+                    Zak.init () [ ( "_current", Zak.nativeConstant Nil ), ( "current", Zak.nativeExpression "function(): return _current end" ) ]
                         |> Zak.setGlobal "_current" (String "Diner")
                         |> Zak.run "return current()"
                         |> Result.map Tuple.first
@@ -381,7 +451,7 @@ suite =
                 \_ ->
                     let
                         ( point, world ) =
-                            Zak.newTable [ ( "x", Number 10 ), ( "y", Number 20 ) ] (Zak.init [])
+                            Zak.newTable [ ( "x", Number 10 ), ( "y", Number 20 ) ] (Zak.init () [])
                     in
                     world
                         |> Zak.setGlobal "point" point
@@ -416,7 +486,7 @@ suite =
                 \_ ->
                     let
                         world =
-                            Zak.init []
+                            Zak.init () []
                     in
                     ( Zak.getField "x" (Number 1) world, Zak.fields Nil world, Zak.threadCount (Zak.setField "x" Nil Nil world |> Zak.removeField "x" Nil) )
                         |> Expect.equal ( Nothing, Nothing, 0 )
@@ -450,7 +520,7 @@ suite =
                         start world =
                             Zak.run "Thread.start(function(): Thread.wait_for(1.0) end)" world |> Result.map Tuple.second
                     in
-                    Zak.init []
+                    Zak.init () []
                         |> Zak.setThreadOwner "level"
                         |> start
                         |> Result.map (Zak.setThreadOwner "music")

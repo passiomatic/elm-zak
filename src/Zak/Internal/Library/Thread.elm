@@ -37,7 +37,7 @@ import Dict exposing (Dict)
 import Zak.Internal.Runtime exposing (NativeValue(..), Outcome(..), RuntimeError(..), State, Value(..), WaitCondition(..))
 
 
-natives : Dict String NativeValue
+natives : Dict String (NativeValue game)
 natives =
     Dict.fromList
         [ ( "wait_for", NativeThreadFunction waitFor )
@@ -101,7 +101,7 @@ waitWhileSource =
 `seconds` of elapsed tick time (summed `dt` across `Zak.Internal.Interpreter.tick`
 calls) have passed. `seconds` may be fractional.
 -}
-waitFor : State -> List Value -> Result RuntimeError ( Outcome Value, State )
+waitFor : State game -> List Value -> Result RuntimeError ( Outcome game Value, State game )
 waitFor state args =
     case args of
         [ VNumber seconds ] ->
@@ -136,7 +136,7 @@ completion by one extra `tick` depending on thread-id ordering — see
 as is.
 
 -}
-join : State -> List Value -> Result RuntimeError ( Outcome Value, State )
+join : State game -> List Value -> Result RuntimeError ( Outcome game Value, State game )
 join state args =
     case args of
         [ VNumber idFloat ] ->
@@ -176,7 +176,7 @@ next waits, and then isn't registered again
 (`Zak.Internal.Interpreter.settle`).
 
 -}
-stop : State -> List Value -> Result RuntimeError ( Value, State )
+stop : State game -> List Value -> Result RuntimeError ( Value, State game )
 stop state args =
     case args of
         [ VNumber idFloat ] ->

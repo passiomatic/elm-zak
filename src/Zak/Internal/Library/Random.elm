@@ -35,7 +35,7 @@ import Random
 import Zak.Internal.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..), allocArrayCell, arrayContents)
 
 
-natives : Dict String NativeValue
+natives : Dict String (NativeValue game)
 natives =
     Dict.singleton "Random"
         (NativeNamespace
@@ -53,7 +53,7 @@ natives =
 and `end`. There's no int-vs-float-by-argument-type overload: Zak's
 `Value` only ever has `VNumber Float`, so this always returns a float.
 -}
-number : State -> List Value -> Result RuntimeError ( Value, State )
+number : State game -> List Value -> Result RuntimeError ( Value, State game )
 number state args =
     case args of
         [ VNumber start, VNumber end ] ->
@@ -82,7 +82,7 @@ already-split-into-head/tail shape. Errors on an empty array
 (`EmptyArray`), matching `Array.pop`'s own existing precedent for this
 degenerate input rather than returning `nil`.
 -}
-pick : State -> List Value -> Result RuntimeError ( Value, State )
+pick : State game -> List Value -> Result RuntimeError ( Value, State game )
 pick state args =
     case args of
         [ VArray id ] ->
@@ -118,7 +118,7 @@ perfectly good answer, `[]`.
 (`shuffleFrom`), stepping `state.randomSeed` once per swap.
 
 -}
-shuffle : State -> List Value -> Result RuntimeError ( Value, State )
+shuffle : State game -> List Value -> Result RuntimeError ( Value, State game )
 shuffle state args =
     case args of
         [ VArray id ] ->
@@ -176,7 +176,7 @@ from weighted pairs, probability proportional to weight) rather than
 `Random.uniform`, which would only ever give a fixed 50/50 split
 regardless of `p`.
 -}
-odds : State -> List Value -> Result RuntimeError ( Value, State )
+odds : State game -> List Value -> Result RuntimeError ( Value, State game )
 odds state args =
     case args of
         [ VNumber p ] ->

@@ -64,7 +64,7 @@ import Dict exposing (Dict)
 import Zak.Internal.Runtime exposing (NativeValue(..), RuntimeError(..), State, Value(..))
 
 
-natives : Dict String NativeValue
+natives : Dict String (NativeValue game)
 natives =
     Dict.singleton "Math"
         (NativeNamespace
@@ -103,7 +103,7 @@ native: checks arity and argument type, then calls straight through. Takes
 threads — Math's own functions never touch the heap, but the signature is
 shared with natives that do (see `Zak.Internal.Interpreter`'s `Array.*`).
 -}
-unaryNumber : (Float -> Float) -> (State -> List Value -> Result RuntimeError ( Value, State ))
+unaryNumber : (Float -> Float) -> (State game -> List Value -> Result RuntimeError ( Value, State game ))
 unaryNumber f state args =
     case args of
         [ VNumber n ] ->
@@ -132,7 +132,7 @@ already guards `/`/`//` against for a zero divisor (see that function's
 own doc). `sqrt`/`acos`/`asin` (below) get the same treatment here,
 sharing this one check rather than each hand-rolling it.
 -}
-domainChecked : (Float -> Bool) -> (Float -> String) -> (Float -> Float) -> (State -> List Value -> Result RuntimeError ( Value, State ))
+domainChecked : (Float -> Bool) -> (Float -> String) -> (Float -> Float) -> (State game -> List Value -> Result RuntimeError ( Value, State game ))
 domainChecked isValid describeError f state args =
     case args of
         [ VNumber n ] ->
@@ -149,21 +149,21 @@ domainChecked isValid describeError f state args =
             Err (WrongArgCount { expected = 1, got = List.length args })
 
 
-sqrtNative : State -> List Value -> Result RuntimeError ( Value, State )
+sqrtNative : State game -> List Value -> Result RuntimeError ( Value, State game )
 sqrtNative =
     domainChecked (\n -> n >= 0)
         (\n -> "Math.sqrt(" ++ String.fromFloat n ++ ") is undefined (negative input)")
         sqrt
 
 
-acosNative : State -> List Value -> Result RuntimeError ( Value, State )
+acosNative : State game -> List Value -> Result RuntimeError ( Value, State game )
 acosNative =
     domainChecked (\n -> n >= -1 && n <= 1)
         (\n -> "Math.acos(" ++ String.fromFloat n ++ ") is undefined (must be between -1 and 1)")
         acos
 
 
-asinNative : State -> List Value -> Result RuntimeError ( Value, State )
+asinNative : State game -> List Value -> Result RuntimeError ( Value, State game )
 asinNative =
     domainChecked (\n -> n >= -1 && n <= 1)
         (\n -> "Math.asin(" ++ String.fromFloat n ++ ") is undefined (must be between -1 and 1)")
@@ -174,7 +174,7 @@ asinNative =
 function like `atan2`. Checks the first argument's type before the
 second's, matching `Zak.Internal.Interpreter`'s own `numberOp` convention.
 -}
-binaryNumber : (Float -> Float -> Float) -> (State -> List Value -> Result RuntimeError ( Value, State ))
+binaryNumber : (Float -> Float -> Float) -> (State game -> List Value -> Result RuntimeError ( Value, State game ))
 binaryNumber f state args =
     case args of
         [ VNumber a, VNumber b ] ->

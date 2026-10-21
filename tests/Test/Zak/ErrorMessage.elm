@@ -9,7 +9,7 @@ import Zak
 -}
 errorMessage : String -> String
 errorMessage source =
-    case Zak.run source (Zak.init []) of
+    case Zak.run source (Zak.init () []) of
         Ok _ ->
             ""
 

@@ -16,7 +16,7 @@ happened has its own dedicated describe block below
 `I.runExpr` deliberately isn't wrapped the same way — it never gets
 `WithPosition` in the first place, per `Zak.Internal.Interpreter`'s own doc.
 -}
-run : Dict String NativeValue -> String -> Result Error Value
+run : Dict String (NativeValue ()) -> String -> Result Error Value
 run natives source =
     I.run natives source |> Result.mapError dropRuntimePosition
 
@@ -55,7 +55,7 @@ testValue runFn ( input, expected ) =
                     Expect.fail ("expected " ++ Debug.toString wanted ++ ", but failed: " ++ Debug.toString err)
 
 
-noNatives : Dict String NativeValue
+noNatives : Dict String (NativeValue ())
 noNatives =
     Dict.empty
 
@@ -808,7 +808,7 @@ return Array.length(seen)"""
                 \_ ->
                     let
                         ( env, state1 ) =
-                            I.initialWorld noNatives
+                            I.initialWorld () noNatives
                     in
                     case I.runIncremental env state1 "let x = 1" of
                         Err _ ->
@@ -822,7 +822,7 @@ return Array.length(seen)"""
                 \_ ->
                     let
                         ( env, state1 ) =
-                            I.initialWorld noNatives
+                            I.initialWorld () noNatives
                     in
                     case I.runIncremental env state1 "let get_y = function(): return y end" of
                         Err _ ->
@@ -841,7 +841,7 @@ return Array.length(seen)"""
                 \_ ->
                     let
                         ( env, state1 ) =
-                            I.initialWorld noNatives
+                            I.initialWorld () noNatives
                     in
                     case I.runIncremental env state1 "let x = 1" of
                         Err _ ->
@@ -855,7 +855,7 @@ return Array.length(seen)"""
                 \_ ->
                     let
                         ( env, state1 ) =
-                            I.initialWorld noNatives
+                            I.initialWorld () noNatives
                     in
                     case I.runIncremental env state1 "let r = { count = 0 }" of
                         Err _ ->
@@ -874,7 +874,7 @@ return Array.length(seen)"""
                 \_ ->
                     let
                         ( env, state1 ) =
-                            I.initialWorld noNatives
+                            I.initialWorld () noNatives
                     in
                     I.runIncremental env state1 "return Array.length([1, 2, 3])"
                         |> Result.map Tuple.first
@@ -886,7 +886,7 @@ return Array.length(seen)"""
                             Dict.singleton "walk_to" (NativeFunction (\state _ -> Ok ( VNumber 42, state )))
 
                         ( env, state1 ) =
-                            I.initialWorld natives
+                            I.initialWorld () natives
                     in
                     I.runIncremental env state1 "return walk_to()"
                         |> Result.map Tuple.first
@@ -913,7 +913,7 @@ return Array.length(seen)"""
                 \_ ->
                     let
                         ( _, state ) =
-                            I.initialWorld (Dict.singleton "broken" (NativeZakExpr "function(:"))
+                            I.initialWorld () (Dict.singleton "broken" (NativeZakExpr "function(:"))
                     in
                     case state.pendingEffects of
                         [ Log LogError message ] ->
@@ -929,7 +929,7 @@ return Array.length(seen)"""
                 \_ ->
                     let
                         ( _, state ) =
-                            I.initialWorld (Dict.singleton "broken" (NativeZakExpr "not_defined_anywhere"))
+                            I.initialWorld () (Dict.singleton "broken" (NativeZakExpr "not_defined_anywhere"))
                     in
                     state.pendingEffects
                         |> Expect.equal [ Log LogError "native “broken” is left undefined, because its expression is broken.\n\nRuntime error: “not_defined_anywhere” is not defined" ]
@@ -937,7 +937,7 @@ return Array.length(seen)"""
                 \_ ->
                     let
                         ( _, state ) =
-                            I.initialWorld (Dict.singleton "Util" (NativeNamespace (Dict.singleton "triple" (NativeZakExpr "not_defined_anywhere"))))
+                            I.initialWorld () (Dict.singleton "Util" (NativeNamespace (Dict.singleton "triple" (NativeZakExpr "not_defined_anywhere"))))
                     in
                     case state.pendingEffects of
                         [ Log LogError message ] ->
@@ -949,7 +949,7 @@ return Array.length(seen)"""
                 \_ ->
                     let
                         ( _, state ) =
-                            I.initialWorld (Dict.singleton "one" (NativeZakExpr "function(): return 1 end"))
+                            I.initialWorld () (Dict.singleton "one" (NativeZakExpr "function(): return 1 end"))
                     in
                     state.pendingEffects |> Expect.equal []
             ]
@@ -963,7 +963,7 @@ return Array.length(seen)"""
                         Err (InternalError "not positive")
 
                 ( _, state ) =
-                    I.initialWorld noNatives
+                    I.initialWorld () noNatives
 
                 resumed outcome =
                     case outcome of
@@ -999,7 +999,7 @@ return Array.length(seen)"""
                 \_ ->
                     let
                         ( env, state1 ) =
-                            I.initialWorld noNatives
+                            I.initialWorld () noNatives
                     in
                     case I.include "Helpers.zak" "let x = 1" state1 of
                         Err _ ->
@@ -1013,7 +1013,7 @@ return Array.length(seen)"""
                 \_ ->
                     let
                         ( _, state1 ) =
-                            I.initialWorld noNatives
+                            I.initialWorld () noNatives
                     in
                     case I.include "Helpers.zak" "let x = 1" state1 of
                         Err _ ->
@@ -1027,7 +1027,7 @@ return Array.length(seen)"""
                 \_ ->
                     let
                         ( env, state1 ) =
-                            I.initialWorld noNatives
+                            I.initialWorld () noNatives
                     in
                     case I.include "A.zak" "let x = 1" state1 of
                         Err _ ->
@@ -1046,7 +1046,7 @@ return Array.length(seen)"""
                 \_ ->
                     let
                         ( _, state1 ) =
-                            I.initialWorld noNatives
+                            I.initialWorld () noNatives
                     in
                     case I.include "Broken.zak" "let x = " state1 of
                         Err (IncludeParseError path _) ->
@@ -1436,7 +1436,7 @@ return function?(function?)"""
                 \_ ->
                     let
                         ( env, state1 ) =
-                            I.initialWorld noNatives
+                            I.initialWorld () noNatives
                     in
                     case I.runIncremental env state1 "let true = false\nreturn true" of
                         Ok ( value, state2 ) ->
@@ -1454,7 +1454,7 @@ return function?(function?)"""
                 \_ ->
                     let
                         ( env, state1 ) =
-                            I.initialWorld noNatives
+                            I.initialWorld () noNatives
                     in
                     case I.runIncremental env state1 "const x = 1\nlet y = 0\nif true:\n    let x = 2\n    y = x\nend\nreturn y" of
                         Ok ( value, state2 ) ->
@@ -1472,7 +1472,7 @@ return function?(function?)"""
                 \_ ->
                     let
                         ( env, state1 ) =
-                            I.initialWorld noNatives
+                            I.initialWorld () noNatives
                     in
                     case I.runIncremental env state1 "const x = 1\nif true:\n    const x = 2\nend\nreturn x" of
                         Ok ( _, state2 ) ->
@@ -1485,7 +1485,7 @@ return function?(function?)"""
                 \_ ->
                     let
                         ( env, state1 ) =
-                            I.initialWorld noNatives
+                            I.initialWorld () noNatives
                     in
                     case I.runIncremental env state1 "let x = 1\nif true:\n    let x = 2\nend\nreturn x" of
                         Ok ( _, state2 ) ->
@@ -1497,7 +1497,7 @@ return function?(function?)"""
                 \_ ->
                     let
                         ( env, state1 ) =
-                            I.initialWorld noNatives
+                            I.initialWorld () noNatives
                     in
                     case I.runIncremental env state1 "let x = 1\nreturn x" of
                         Ok ( _, state2 ) ->
@@ -1509,7 +1509,7 @@ return function?(function?)"""
                 \_ ->
                     let
                         ( env, state1 ) =
-                            I.initialWorld noNatives
+                            I.initialWorld () noNatives
                     in
                     I.runIncremental env state1 "const x = 1\nlet x = 2"
                         |> Expect.equal (Err (RuntimeError (WithPosition { row = 2, col = 1 } (AlreadyDefined "x"))))
@@ -1535,7 +1535,7 @@ return function?(function?)"""
                 \_ ->
                     let
                         ( env, state1 ) =
-                            I.initialWorld noNatives
+                            I.initialWorld () noNatives
                     in
                     case I.runIncremental env state1 "let x = 1" of
                         Err _ ->

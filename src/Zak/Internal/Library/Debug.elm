@@ -36,7 +36,7 @@ import Zak.Internal.Library.String
 import Zak.Internal.Runtime exposing (Effect(..), LogLevel(..), NativeValue(..), RuntimeError(..), State, Value(..))
 
 
-natives : Dict String NativeValue
+natives : Dict String (NativeValue game)
 natives =
     Dict.singleton "Debug"
         (NativeNamespace
@@ -86,7 +86,7 @@ different machinery than `Thread`'s `state.threads`, not just a
 same-shaped copy of it).
 
 -}
-logNative : LogLevel -> State -> List Value -> Result RuntimeError ( Value, State )
+logNative : LogLevel -> State game -> List Value -> Result RuntimeError ( Value, State game )
 logNative level state args =
     case args of
         [ value ] ->
@@ -121,7 +121,7 @@ truthy/falsy rules is a separate, still-open, unrelated design question
 not a new decision of its own.
 
 -}
-assertNative : State -> List Value -> Result RuntimeError ( Value, State )
+assertNative : State game -> List Value -> Result RuntimeError ( Value, State game )
 assertNative state args =
     case args of
         [ VBool True ] ->

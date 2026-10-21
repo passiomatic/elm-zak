@@ -35,11 +35,11 @@ before position-tracking existed; _where_ it happened is exercised by
 not re-asserted here.
 
 -}
-runWithState : String -> Result I.Error ( Value, Runtime.State )
+runWithState : String -> Result I.Error ( Value, Runtime.State () )
 runWithState source =
     let
         ( env, state ) =
-            I.initialWorld Dict.empty
+            I.initialWorld () Dict.empty
     in
     I.runIncremental env state source |> Result.mapError dropRuntimePosition
 
@@ -47,11 +47,11 @@ runWithState source =
 {-| Runs each source in turn, the host setting the owner before each one
 (`setThreadOwner`), as a host running scripts for different owners would.
 -}
-runAs : List ( String, String ) -> Result I.Error ( Value, Runtime.State )
+runAs : List ( String, String ) -> Result I.Error ( Value, Runtime.State () )
 runAs steps =
     let
         ( env, state0 ) =
-            I.initialWorld Dict.empty
+            I.initialWorld () Dict.empty
     in
     List.foldl
         (\( owner, source ) result ->
@@ -63,7 +63,7 @@ runAs steps =
 
 {-| The owner of each waiting thread, by id.
 -}
-owners : Runtime.State -> List String
+owners : Runtime.State () -> List String
 owners state =
     state.threads |> Dict.values |> List.map (\(Runtime.Thread thread) -> thread.owner)
 
@@ -83,7 +83,7 @@ used to check what a `start`-spawned body actually did _after_
 being resumed by `tick`, since the top-level script's own return value
 only reflects a snapshot taken before any tick ever ran.
 -}
-readTableField : Runtime.State -> Value -> String -> Maybe Value
+readTableField : Runtime.State () -> Value -> String -> Maybe Value
 readTableField state table field =
     case table of
         VTable id ->
@@ -95,7 +95,7 @@ readTableField state table field =
 
 {-| `tick`, for a host that defines no waits.
 -}
-tick : Float -> Runtime.State -> ( Runtime.State, List RuntimeError )
+tick : Float -> Runtime.State () -> ( Runtime.State (), List RuntimeError )
 tick =
     I.tick (\_ _ _ -> False)
 
@@ -766,7 +766,7 @@ end)"""
                             NativeFunction (\state _ -> Ok ( VNil, I.stopThreads "" state ))
 
                         ( env, state0 ) =
-                            I.initialWorld (Dict.singleton "leave" leave)
+                            I.initialWorld () (Dict.singleton "leave" leave)
                     in
                     case I.runIncremental env state0 "Thread.start(function(): Thread.wait_for(1.0) end)\nleave()\nThread.start(function(): Thread.wait_for(1.0) end)\nreturn nil" of
                         Ok ( _, state ) ->
@@ -781,7 +781,7 @@ end)"""
                             NativeFunction (\state _ -> Ok ( VNil, I.stopThreads "" state ))
 
                         ( env, state0 ) =
-                            I.initialWorld (Dict.singleton "leave" leave)
+                            I.initialWorld () (Dict.singleton "leave" leave)
                     in
                     case
                         I.runIncremental env
@@ -824,7 +824,7 @@ return log"""
                             NativeFunction (\state _ -> Ok ( VNil, I.stopThreads "scene" state ))
 
                         ( env, state0 ) =
-                            I.initialWorld (Dict.singleton "leave" leave)
+                            I.initialWorld () (Dict.singleton "leave" leave)
                     in
                     case I.runIncremental env state0 "let log = { value = \"\" }\nreturn { log = log, body = function():\n    leave()\n    log.value = \"a\"\n    Thread.wait_for(1.0)\n    log.value = \"b\"\nend }" of
                         Ok ( script, s0 ) ->
@@ -854,7 +854,7 @@ return log"""
                             NativeFunction (\state _ -> Ok ( VBool (I.hasThreads "cutscene" state), state ))
 
                         ( env, state0 ) =
-                            I.initialWorld (Dict.singleton "probe" probe)
+                            I.initialWorld () (Dict.singleton "probe" probe)
                     in
                     case I.runIncremental env state0 "let log = { value = nil }\nreturn { log = log, body = function(): log.value = probe() end }" of
                         Ok ( script, s0 ) ->

@@ -1,5 +1,5 @@
 module Zak exposing
-    ( World, init, run, call, tick, reseed
+    ( World, init, game, updateGame, run, call, tick, reseed
     , Value(..), TableRef, ArrayRef, FunctionRef
     , getGlobal, setGlobal, globals, newTable, getField, setField, removeField, fields, items
     , ThreadOwner, startThread, stopThreads, hasThreads, setThreadOwner, threadCount, Wait(..)
@@ -16,14 +16,16 @@ functions, but a native can also be a table of natives, a Zak
 expression or a constant (see [`Native`](#Native)). Scripts use natives
 the way they use their own globals.
 
-A host creates a [`World`](#World) with its own natives, runs Zak source
-into it, calls the functions the scripts define, and advances their
-threads once per frame. Natives and scripts never perform effects
-themselves: they queue them in the world, and the host takes them out
-with [`takeEffects`](#takeEffects) and turns them into commands.
+A host creates a [`World`](#World) with its own natives and its own
+game, runs Zak source into it, calls the functions the scripts define,
+and advances their threads once per frame. The world carries the game:
+the host's natives read and change it as scripts call them (see
+[`game`](#game)). Natives and scripts never perform effects themselves:
+they queue them in the world, and the host takes them out with
+[`takeEffects`](#takeEffects) and turns them into commands.
 
     world =
-        Zak.init [ ( "say", say ) ]
+        Zak.init initialGame [ ( "say", say ) ]
 
     case Zak.run "say(\"Hello!\")" world of
         Ok ( _, world1 ) ->
@@ -38,7 +40,7 @@ second, so updates chain with `|>`.
 
 # Running
 
-@docs World, init, run, call, tick, reseed
+@docs World, init, game, updateGame, run, call, tick, reseed
 
 
 # Values
@@ -86,10 +88,16 @@ import Zak.Internal.Runtime as Runtime
 
 
 {-| Everything a running program has: its globals, tables and arrays,
-waiting threads, queued effects and random seed.
+waiting threads, queued effects and random seed, and the host's `game`.
+
+`game` is the host's own data, whatever type it picks: its characters,
+its rooms, its score. Zak only carries it, and never looks inside; the
+host's own natives read and change it while scripts run (see
+[`game`](#game)). A host with nothing to share uses `()`.
+
 -}
-type World
-    = World Runtime.State
+type World game
+    = World (Runtime.State game)
 
 
 {-| A new world, with the standard library and `natives`. When two
@@ -107,21 +115,63 @@ is left undefined, and a `Log LogError` naming it is queued, so the host
 sees it on its first [`takeEffects`](#takeEffects).
 
 -}
-init : List ( String, Native ) -> World
-init natives =
+init : game -> List ( String, Native game ) -> World game
+init initialGame natives =
     natives
         |> List.map (\( name, Native native ) -> ( name, native ))
         |> Dict.fromList
-        |> Interpreter.initialWorld
+        |> Interpreter.initialWorld initialGame
         |> Tuple.second
         |> World
+
+
+{-| The game `world` carries: what the host gave [`init`](#init), as its
+natives and its own code have changed it since.
+
+    position : List Value -> World Game -> Result Problem ( Value, World Game )
+    position args world =
+        case args of
+            [ actor ] ->
+                Ok ( Number (actorX actor (Zak.game world)), world )
+
+            _ ->
+                Err (WrongArgCount { expected = 1, got = List.length args })
+
+-}
+game : World game -> game
+game (World state) =
+    state.game
+
+
+{-| Changes the game `world` carries. A native calls it to act on the game
+right away, and the host to update its game from its own code, between
+calls into Zak.
+
+A change a native makes is part of the world like any other: if the call
+that made it fails, the host gets an error and no world, and the change
+is lost with it. The same goes for a thread that fails while
+[`tick`](#tick) resumes it.
+
+    walkTo : List Value -> World Game -> Result Problem ( Value, World Game )
+    walkTo args world =
+        case args of
+            [ actor, Number x, Number y ] ->
+                Ok ( Nil, Zak.updateGame (startWalk actor x y) world )
+
+            _ ->
+                Err (WrongArgCount { expected = 3, got = List.length args })
+
+-}
+updateGame : (game -> game) -> World game -> World game
+updateGame f (World state) =
+    World { state | game = f state.game }
 
 
 {-| Runs Zak source into `world`, and gives back the value of its final
 `return` (or `Nil`). Each run sees the globals earlier runs defined, so a
 host can load several files one after another.
 -}
-run : String -> World -> Result Error ( Value, World )
+run : String -> World game -> Result Error ( Value, World game )
 run source (World state) =
     Interpreter.runIncremental (Interpreter.worldEnv state) state source
         |> Result.map (\( value, state1 ) -> ( fromInternal value, World state1 ))
@@ -142,7 +192,7 @@ A function called this way can't wait: one that wants to has to start a
 thread (`Thread.start`) and wait there.
 
 -}
-call : Value -> List Value -> World -> Result Error ( Value, World )
+call : Value -> List Value -> World game -> Result Error ( Value, World game )
 call fn args (World state) =
     Interpreter.call state (toInternal fn) (List.map toInternal args)
         |> Result.map (\( value, state1 ) -> ( fromInternal value, World state1 ))
@@ -164,7 +214,7 @@ See [`ThreadOwner`](#ThreadOwner) for the other ways a host manages
 threads.
 
 -}
-tick : (Wait -> World -> Bool) -> Float -> World -> ( List Error, World )
+tick : (Wait -> World game -> Bool) -> Float -> World game -> ( List Error, World game )
 tick waiting seconds (World state) =
     let
         hostWaiting name args state0 =
@@ -180,7 +230,7 @@ tick waiting seconds (World state) =
 starts from the same seed, so reseed it (from the time, say) for
 different numbers on each run.
 -}
-reseed : Int -> World -> World
+reseed : Int -> World game -> World game
 reseed seed (World state) =
     World { state | randomSeed = Random.initialSeed seed }
 
@@ -284,7 +334,7 @@ toInternal value =
 {-| The global `name`, as a script at the top level would see it: one of
 its own top-level definitions, or a native.
 -}
-getGlobal : String -> World -> Maybe Value
+getGlobal : String -> World game -> Maybe Value
 getGlobal name (World state) =
     case globalFrame name state of
         Just frameId ->
@@ -306,7 +356,7 @@ declare it as a native (`nativeConstant Nil`) and set it with this:
 a native expression only sees natives, not the scripts' own globals.
 
 -}
-setGlobal : String -> Value -> World -> World
+setGlobal : String -> Value -> World game -> World game
 setGlobal name value (World state) =
     case globalFrame name state of
         Just frameId ->
@@ -320,7 +370,7 @@ setGlobal name value (World state) =
 [`setGlobal`](#setGlobal) added. Natives and the standard library aren't
 included.
 -}
-globals : World -> Dict String Value
+globals : World game -> Dict String Value
 globals (World state) =
     Dict.get state.globalFrameId state.heap
         |> Maybe.withDefault Dict.empty
@@ -330,7 +380,7 @@ globals (World state) =
 {-| The frame `name` resolves to at the top level: the world's own
 frame, then the natives' frame `0` under it.
 -}
-globalFrame : String -> Runtime.State -> Maybe Int
+globalFrame : String -> Runtime.State game -> Maybe Int
 globalFrame name state =
     let
         defines frameId =
@@ -354,7 +404,7 @@ globalFrame name state =
         Zak.newTable [ ( "x", Number 10 ), ( "y", Number 20 ) ] world
 
 -}
-newTable : List ( String, Value ) -> World -> ( Value, World )
+newTable : List ( String, Value ) -> World game -> ( Value, World game )
 newTable entries (World state) =
     let
         ( id, state1 ) =
@@ -371,7 +421,7 @@ newTable entries (World state) =
 {-| The field `key` of `table`. `Nothing` if the field isn't there, or
 `table` isn't a table.
 -}
-getField : String -> Value -> World -> Maybe Value
+getField : String -> Value -> World game -> Maybe Value
 getField key table (World state) =
     case table of
         Table (TableRef id) ->
@@ -391,7 +441,7 @@ nothing if `table` isn't a table.
         |> Zak.setField "y" (Number 20) point
 
 -}
-setField : String -> Value -> Value -> World -> World
+setField : String -> Value -> Value -> World game -> World game
 setField key value table (World state) =
     case table of
         Table (TableRef id) ->
@@ -410,7 +460,7 @@ out.
         |> Zak.removeField "x" point
 
 -}
-removeField : String -> Value -> World -> World
+removeField : String -> Value -> World game -> World game
 removeField key table (World state) =
     case table of
         Table (TableRef id) ->
@@ -422,7 +472,7 @@ removeField key table (World state) =
 
 {-| Every field of `table`. `Nothing` if `table` isn't a table.
 -}
-fields : Value -> World -> Maybe (Dict String Value)
+fields : Value -> World game -> Maybe (Dict String Value)
 fields table (World state) =
     case table of
         Table (TableRef id) ->
@@ -435,7 +485,7 @@ fields table (World state) =
 
 {-| The items of `array`, in order. `Nothing` if `array` isn't an array.
 -}
-items : Value -> World -> Maybe (List Value)
+items : Value -> World game -> Maybe (List Value)
 items array (World state) =
     case array of
         Array (ArrayRef id) ->
@@ -487,7 +537,7 @@ An error before the first wait comes back as an `Err`, and the world is
 left as it was.
 
 -}
-startThread : ThreadOwner -> Value -> List Value -> World -> Result Error ( Value, World )
+startThread : ThreadOwner -> Value -> List Value -> World game -> Result Error ( Value, World game )
 startThread owner fn args (World state) =
     Interpreter.startThread owner (toInternal fn) (List.map toInternal args) state
         |> Result.map (\( id, state1 ) -> ( fromInternal id, World state1 ))
@@ -503,7 +553,7 @@ thread whose native called this, carries on to its next wait and ends
 there, as with `Thread.stop`.
 
 -}
-stopThreads : ThreadOwner -> World -> World
+stopThreads : ThreadOwner -> World game -> World game
 stopThreads owner (World state) =
     World (Interpreter.stopThreads owner state)
 
@@ -511,7 +561,7 @@ stopThreads owner (World state) =
 {-| Whether `owner` owns any thread: waiting for [`tick`](#tick), or
 running now, from its first instruction.
 -}
-hasThreads : ThreadOwner -> World -> Bool
+hasThreads : ThreadOwner -> World game -> Bool
 hasThreads owner (World state) =
     Interpreter.hasThreads owner state
 
@@ -520,7 +570,7 @@ hasThreads owner (World state) =
 threads that code starts belong to `owner`. Inside a thread, the thread's
 own owner applies instead.
 -}
-setThreadOwner : ThreadOwner -> World -> World
+setThreadOwner : ThreadOwner -> World game -> World game
 setThreadOwner owner (World state) =
     World (Interpreter.setThreadOwner owner state)
 
@@ -528,7 +578,7 @@ setThreadOwner owner (World state) =
 {-| How many threads are waiting for [`tick`](#tick). `0` means there's
 nothing to advance, so a host can stop calling `tick` on every frame.
 -}
-threadCount : World -> Int
+threadCount : World game -> Int
 threadCount (World state) =
     Interpreter.threadCount state
 
@@ -587,7 +637,7 @@ host sees its contents as they are when it handles the effect, not as
 they were when it was emitted.
 
 -}
-emitEffect : String -> List Value -> World -> World
+emitEffect : String -> List Value -> World game -> World game
 emitEffect name args (World state) =
     World { state | pendingEffects = state.pendingEffects ++ [ Runtime.Effect name (List.map toInternal args) ] }
 
@@ -596,7 +646,7 @@ emitEffect name args (World state) =
 with its queue emptied. Call it after each [`run`](#run), [`call`](#call)
 or [`tick`](#tick).
 -}
-takeEffects : World -> ( List Effect, World )
+takeEffects : World game -> ( List Effect, World game )
 takeEffects (World state) =
     let
         ( effects, state1 ) =
@@ -869,15 +919,19 @@ their own globals. It's one of these:
 Give natives to [`init`](#init) by name. Unlike a script's globals, they
 exist before any script runs.
 
+A native is for one type of game, the same as its world's. One that never
+touches the game is written for any game (`Native game`), so it fits every
+world.
+
 -}
-type Native
-    = Native Runtime.NativeValue
+type Native game
+    = Native (Runtime.NativeValue game)
 
 
 {-| A function written in Elm. It gets the arguments the script passed,
 and the world; it gives back its result and the world, or an error.
 
-    say : Native
+    say : Native game
     say =
         Zak.nativeFunction
             (\args world ->
@@ -890,7 +944,7 @@ and the world; it gives back its result and the world, or an error.
             )
 
 -}
-nativeFunction : (List Value -> World -> Result Problem ( Value, World )) -> Native
+nativeFunction : (List Value -> World game -> Result Problem ( Value, World game )) -> Native game
 nativeFunction fn =
     Native
         (Runtime.NativeFunction
@@ -907,7 +961,7 @@ nativeFunction fn =
 once [`tick`](#tick) is told the wait is over, never earlier than the
 next `tick`, and the call gives back `nil`.
 
-    waitWhileWalking : Native
+    waitWhileWalking : Native game
     waitWhileWalking =
         Zak.nativeWaitingFunction
             (\args world ->
@@ -924,7 +978,7 @@ is a statement of its own: `wait_while_walking(hero)`, not `let x =
 wait_while_walking(hero)`. Anywhere else, the call is an error.
 
 -}
-nativeWaitingFunction : (List Value -> World -> Result Problem ( Wait, World )) -> Native
+nativeWaitingFunction : (List Value -> World game -> Result Problem ( Wait, World game )) -> Native game
 nativeWaitingFunction fn =
     Native
         (Runtime.NativeThreadFunction
@@ -946,7 +1000,7 @@ nativeWaitingFunction fn =
     Zak.nativeTable [ ( "play", play ), ( "stop", stop ) ]
 
 -}
-nativeTable : List ( String, Native ) -> Native
+nativeTable : List ( String, Native game ) -> Native game
 nativeTable natives =
     natives
         |> List.map (\( name, Native native ) -> ( name, native ))
@@ -966,7 +1020,7 @@ not the scripts' own globals. One that fails to parse or evaluate is
 left undefined, and logged (see [`init`](#init)).
 
 -}
-nativeExpression : String -> Native
+nativeExpression : String -> Native game
 nativeExpression source =
     Native (Runtime.NativeZakExpr source)
 
@@ -976,7 +1030,7 @@ nativeExpression source =
     Zak.nativeConstant (Number 3.14)
 
 -}
-nativeConstant : Value -> Native
+nativeConstant : Value -> Native game
 nativeConstant value =
     Native (Runtime.NativeConstant (toInternal value))
 
@@ -984,7 +1038,7 @@ nativeConstant value =
 {-| The native that includes a file: `include("Scenes/Diner.zak")`. Its
 argument is a path, and `find` gives back that file's source.
 
-    Zak.init
+    Zak.init initialGame
         [ ( "include", Zak.nativeInclude (\path -> Dict.get path files) ) ]
 
 The file runs as if it were part of the script that includes it: its
@@ -994,7 +1048,7 @@ included is skipped, which also stops include cycles. A path `find`
 doesn't know is an `IncludeNotFound`.
 
 -}
-nativeInclude : (String -> Maybe String) -> Native
+nativeInclude : (String -> Maybe String) -> Native game
 nativeInclude find =
     Native
         (Runtime.NativeFunction
