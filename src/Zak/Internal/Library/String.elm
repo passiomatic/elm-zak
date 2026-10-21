@@ -693,11 +693,5 @@ displayString value =
         VTable _ ->
             "<table>"
 
-        VFunction _ _ _ ->
-            "<function>"
-
-        VNative _ ->
-            "<function>"
-
-        VNativeThread _ ->
+        VFunction _ ->
             "<function>"

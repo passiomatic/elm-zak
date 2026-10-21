@@ -60,6 +60,24 @@ noNatives =
     Dict.empty
 
 
+{-| A `TypeError` for a table where an array was expected. Any table: its
+id depends on how many cells seeding the world allocated first.
+-}
+expectTableWhereArray : Result Error Value -> Expect.Expectation
+expectTableWhereArray result =
+    case result of
+        Err (RuntimeError (TypeError { expected, got })) ->
+            case got of
+                VTable _ ->
+                    Expect.equal "Array" expected
+
+                _ ->
+                    Expect.fail ("expected a table, got: " ++ Debug.toString got)
+
+        other ->
+            Expect.fail ("expected a TypeError, got: " ++ Debug.toString other)
+
+
 suite : Test
 suite =
     describe "Zak.Internal.Interpreter"
@@ -1238,6 +1256,22 @@ return function?(function?)"""
                     run noNatives "let a = [1, 2]\nlet b = a\nreturn a == b"
                         |> Expect.equal (Ok (VBool True))
             ]
+        , describe "function equality is reference identity too" <|
+            [ test "a function is == to itself" <|
+                \_ ->
+                    run noNatives "let f = function(): return 1 end\nlet g = f\nreturn f == g"
+                        |> Expect.equal (Ok (VBool True))
+            , test "two functions built from the same source are not ==" <|
+                \_ ->
+                    run noNatives "let make = function(): return function(): return 1 end end\nreturn make() == make()"
+                        |> Expect.equal (Ok (VBool False))
+            , test "a native is == to itself" <|
+                \_ -> run noNatives "return Math.abs == Math.abs" |> Expect.equal (Ok (VBool True))
+            , test "Array.contains finds a function, and Array.remove removes it" <|
+                \_ ->
+                    run noNatives "let f = function(): return 1 end\nlet fs = [f]\nlet found = Array.contains(fs, f)\nArray.remove(fs, f)\nreturn found and Array.is_empty(fs)"
+                        |> Expect.equal (Ok (VBool True))
+            ]
         , describe "exact RuntimeError returned (not just \"some\" failure)" <|
             -- `testValue`'s Just/Nothing convention above only proves an
             -- input fails, not that it fails for the *specific* reason
@@ -1290,16 +1324,8 @@ return function?(function?)"""
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
             , test "for over a non-array" <|
                 \_ ->
-                    -- id 9, not 1: run's seven seeded NativeNamespaces
-                    -- (Array, Debug, Math, Random, String, Table, Thread —
-                    -- `type` is a plain function, no cell) each get a heap
-                    -- cell during initialStateFull (ids 1-7, alphabetical
-                    -- Dict.foldl order), before this script's own `for`
-                    -- ever runs — id 0 is globals, id 8 is the top-level
-                    -- block's own frame, so `{ a = 1 }`'s table cell lands
-                    -- on 9
                     run noNatives "for x in { a = 1 }:\nend"
-                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VTable 9 })))
+                        |> expectTableWhereArray
             , test "reading a field that doesn't exist" <|
                 \_ ->
                     I.runExpr noNatives "{ x = 1 }.y"
@@ -1338,15 +1364,8 @@ return function?(function?)"""
                         |> Expect.equal (Err (RuntimeError (NotAnInteger { index = 2.5 })))
             , test "[index] assignment on a non-array" <|
                 \_ ->
-                    -- id 9, not 1: run's seven seeded NativeNamespaces
-                    -- (Array, Debug, Math, Random, String, Table, Thread —
-                    -- `type` is a plain function, no cell) each get a heap
-                    -- cell during initialStateFull (ids 1-7, alphabetical
-                    -- Dict.foldl order), before this script's own `let r`
-                    -- ever runs — id 0 is globals, id 8 is the top-level
-                    -- block's own frame, so r's table cell lands on 9
                     run noNatives "let r = { x = 1 }\nr[0] = 99"
-                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VTable 9 })))
+                        |> expectTableWhereArray
             , test "calling a non-function" <|
                 \_ ->
                     I.runExpr noNatives "(1)(2)"

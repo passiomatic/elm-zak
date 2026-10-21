@@ -60,6 +60,7 @@ import Zak.Internal.Runtime
     exposing
         ( Effect(..)
         , Env(..)
+        , Function(..)
         , LogLevel(..)
         , NativeValue(..)
         , Outcome(..)
@@ -74,6 +75,7 @@ import Zak.Internal.Runtime
         , WaitCondition(..)
         , allocArrayCell
         , allocCell
+        , allocFunction
         , arrayContents
         , mapOutcome
         , mapOutcomeResult
@@ -436,6 +438,7 @@ seedState natives =
             resolveNatives ""
                 { heap = Dict.empty
                 , arrayHeap = Dict.empty
+                , functionHeap = Dict.empty
                 , constNames = Dict.empty
                 , nextId = 1
                 , threads = Dict.empty
@@ -895,10 +898,10 @@ resolveNative : String -> State -> NativeValue -> ( Maybe Value, State )
 resolveNative path state native =
     case native of
         NativeFunction fn ->
-            ( Just (VNative fn), state )
+            allocFunction state (Native fn) |> Tuple.mapFirst (VFunction >> Just)
 
         NativeThreadFunction fn ->
-            ( Just (VNativeThread fn), state )
+            allocFunction state (NativeThread fn) |> Tuple.mapFirst (VFunction >> Just)
 
         NativeNamespace fields ->
             let
@@ -1477,7 +1480,7 @@ evalExpr env state expression =
                     )
 
         FunctionLiteral params body ->
-            Ok ( VFunction params body env, state )
+            Ok (allocFunction state (Closure params body env) |> Tuple.mapFirst VFunction)
 
         FieldAccess targetExpr field ->
             evalExpr env state targetExpr
@@ -1673,26 +1676,43 @@ isRequiredParam ( _, default ) =
             False
 
 
-{-| Calling a plain `VNative` or a `VFunction` whose body never suspends
-both just produce `Done value` immediately, same as before this module
-supported suspension at all — the only genuinely new case is `VNativeThread`
-(`wait_for`/`join`, see `Zak.Internal.Library.Thread`),
-which can hand back `Suspended` directly, and a `VFunction` whose _body_
-suspends (because it itself calls one of those, as its own top-level
-statement — see `execStatement`'s `ExprStatement (Call ...)` case), whose
-`Outcome Signal` from running the body is mapped to the `Outcome Value`
-this function itself promises via `signalValue`/`mapOutcome`.
+{-| Calls `callee`, which must be a `VFunction`: the function in
+`functionHeap` its id points at (`callFunctionCell`).
 -}
 callFunction : State -> Value -> List Value -> Result RuntimeError ( Outcome Value, State )
 callFunction state callee args =
     case callee of
-        VNative fn ->
+        VFunction id ->
+            case Dict.get id state.functionHeap of
+                Just function ->
+                    callFunctionCell state function args
+
+                Nothing ->
+                    Err (InternalError ("no function with id " ++ String.fromInt id))
+
+        _ ->
+            Err (NotAFunction callee)
+
+
+{-| Calling a `Native`, or a `Closure` whose body never suspends, just
+produces `Done value` immediately. A `NativeThread` (`wait_for`/`join`, see
+`Zak.Internal.Library.Thread`, or a host's waiting native) can hand back
+`Suspended` directly, and so can a `Closure` whose _body_ suspends
+(because it itself calls one of those, as its own top-level statement —
+see `execStatement`'s `ExprStatement (Call ...)` case), whose `Outcome
+Signal` from running the body is mapped to the `Outcome Value` this
+function itself promises via `signalValue`/`mapOutcome`.
+-}
+callFunctionCell : State -> Function -> List Value -> Result RuntimeError ( Outcome Value, State )
+callFunctionCell state function args =
+    case function of
+        Native fn ->
             fn state args |> Result.map (\( value, state1 ) -> ( Done value, state1 ))
 
-        VNativeThread fn ->
+        NativeThread fn ->
             fn state args
 
-        VFunction params body closureEnv ->
+        Closure params body closureEnv ->
             let
                 minArity =
                     List.length (List.filter isRequiredParam params)
@@ -1733,9 +1753,6 @@ callFunction state callee args =
                             execBlock callEnv state3 body
                                 |> Result.andThen (\( outcome, state4 ) -> mapOutcomeResult signalValue outcome |> Result.map (\mapped -> ( mapped, state4 )))
                         )
-
-        _ ->
-            Err (NotAFunction callee)
 
 
 evalUnary : UnaryOp -> Value -> Result RuntimeError Value
@@ -1975,41 +1992,18 @@ boolOp f left right =
             Err (TypeError { expected = "Bool", got = left })
 
 
-{-| A hand-written equality, rather than Elm's own `==`, because a `Value`
-can hold a raw Elm function (`VNative`) — comparing one of those with `==`
-crashes at runtime. `VTable` and `VArray` both compare by heap id
-(reference identity, matching how a mutable-in-place value is meant to
-behave: "are these the same object", not "do they currently hold equal
-contents") — two separately-built arrays with identical elements are _not_
-`==` to one another, only an array compared against itself (reached
-through two different names, say) is, the same rule tables already
-follow. Two function values (`VFunction`/`VNative`) are never considered
-equal to one another, even to themselves — Zak doesn't give functions an
-identity to compare.
+{-| Zak's `==`, which is Elm's own: a `Value` holds no Elm function, only
+ids, so Elm can compare any two. `VTable`, `VArray` and `VFunction` compare
+by heap id (reference identity, matching how a mutable-in-place value is
+meant to behave: "are these the same object", not "do they currently hold
+equal contents") — two separately-built arrays with identical elements are
+_not_ `==` to one another, only an array compared against itself (reached
+through two different names, say) is. A function is the same: itself, not
+another one built from the same source.
 -}
 valuesEqual : Value -> Value -> Bool
 valuesEqual a b =
-    case ( a, b ) of
-        ( VString x, VString y ) ->
-            x == y
-
-        ( VNumber x, VNumber y ) ->
-            x == y
-
-        ( VBool x, VBool y ) ->
-            x == y
-
-        ( VNil, VNil ) ->
-            True
-
-        ( VArray x, VArray y ) ->
-            x == y
-
-        ( VTable x, VTable y ) ->
-            x == y
-
-        _ ->
-            False
+    a == b
 
 
 

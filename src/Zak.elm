@@ -219,12 +219,12 @@ type ArrayRef
     = ArrayRef Int
 
 
-{-| A Zak function, written in Zak or a native. Call it with
-[`call`](#call). Don't compare two functions with `==`: Elm can't
-compare functions, and fails at runtime.
+{-| A Zak function, written in Zak or a native, in a world. Call it with
+[`call`](#call). Two references are `==` when they point at the same
+function.
 -}
 type FunctionRef
-    = FunctionRef Runtime.Value
+    = FunctionRef Int
 
 
 fromInternal : Runtime.Value -> Value
@@ -248,14 +248,8 @@ fromInternal value =
         Runtime.VTable id ->
             Table (TableRef id)
 
-        Runtime.VFunction _ _ _ ->
-            Function (FunctionRef value)
-
-        Runtime.VNative _ ->
-            Function (FunctionRef value)
-
-        Runtime.VNativeThread _ ->
-            Function (FunctionRef value)
+        Runtime.VFunction id ->
+            Function (FunctionRef id)
 
 
 toInternal : Value -> Runtime.Value
@@ -279,8 +273,8 @@ toInternal value =
         Table (TableRef id) ->
             Runtime.VTable id
 
-        Function (FunctionRef fn) ->
-            fn
+        Function (FunctionRef id) ->
+            Runtime.VFunction id
 
 
 

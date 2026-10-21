@@ -333,7 +333,13 @@ suite =
                             Expect.fail "expected a SyntaxError"
             ]
         , describe "data"
-            [ test "getGlobal reads a script's global, and a native" <|
+            [ test "two references to the same function are ==, and comparing functions doesn't crash" <|
+                \_ ->
+                    withWorld (runIn [] "let f = function(): return 1 end\nlet g = f\nlet h = function(): return 1 end") <|
+                        \( _, world ) ->
+                            ( Zak.getGlobal "f" world == Zak.getGlobal "g" world, Zak.getGlobal "f" world == Zak.getGlobal "h" world )
+                                |> Expect.equal ( True, False )
+            , test "getGlobal reads a script's global, and a native" <|
                 \_ ->
                     withWorld (runIn [ ( "seven", Zak.nativeConstant (Number 7) ) ] "let name = \"Zak\"") <|
                         \( _, world ) ->

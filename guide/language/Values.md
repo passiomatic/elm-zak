@@ -156,8 +156,7 @@ To get an independent copy, use `Array.clone` or `Table.clone`.
 
 - numbers, strings, and bools are equal when they hold the same value
 - `nil` is equal only to `nil`
-- arrays and tables are equal only when they are the same array or table — two separately built arrays with the same elements are not equal
-- functions are never equal to anything, not even to themselves
+- arrays, tables, and functions are equal only when they are the same array, table, or function — two separately built arrays with the same elements are not equal, and neither are two functions built from the same source
 - values of different types are never equal: `1 == "1"` is `false`
 
 ```

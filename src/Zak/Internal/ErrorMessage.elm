@@ -170,13 +170,7 @@ describeValue value =
         VTable _ ->
             "a table"
 
-        VFunction _ _ _ ->
-            "a function"
-
-        VNative _ ->
-            "a function"
-
-        VNativeThread _ ->
+        VFunction _ ->
             "a function"
 
 

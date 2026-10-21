@@ -2,6 +2,7 @@ module Zak.Internal.Runtime exposing
     ( ArrayHeap
     , Effect(..)
     , Env(..)
+    , Function(..)
     , Heap
     , LogLevel(..)
     , NativeValue(..)
@@ -17,6 +18,7 @@ module Zak.Internal.Runtime exposing
     , WaitCondition(..)
     , allocArrayCell
     , allocCell
+    , allocFunction
     , arrayContents
     , bindGlobal
     , dropPosition
@@ -37,7 +39,7 @@ natives automatically into `run`/`initialWorld`) don't form a circular
 import — `Zak.Internal.Interpreter`
 importing `Zak.Internal.Library.Math` while `Zak.Internal.Library.Math` imports `Zak.Internal.Interpreter` back would
 be one, and Elm rejects that outright. This module imports nothing
-Zak-specific except `Zak.Internal.AST` (for `Block`, in `VFunction` below), so it
+Zak-specific except `Zak.Internal.AST` (for `Block`, in `Closure` below), so it
 can never be part of a cycle itself.
 
 `Env`'s constructor is exposed here (`Env(..)`), unlike `Zak.Internal.Interpreter`
@@ -68,10 +70,9 @@ so every `Value` holding that same id observes the change — this is also
 why `VArray`/`VTable` compare by that id (reference identity), not by
 their current contents, in `Zak.Internal.Interpreter`'s `valuesEqual`.
 
-`VNative` takes `State` because a native function may need heap access
-(e.g. any of the `Array.*` natives, which have to read/write `arrayHeap` to
-do anything at all) — see `NativeValue`'s own doc for how this threads
-through.
+A function is a heap cell too, in `functionHeap`: `VFunction` holds its
+id, as `VTable` does, so two functions compare by identity, and a `Value`
+never holds an Elm function itself (see `Function`).
 
 -}
 type Value
@@ -81,9 +82,23 @@ type Value
     | VNil
     | VArray Int
     | VTable Int
-    | VFunction (List ( String, Maybe Expr )) Block Env
-    | VNative (State -> List Value -> Result RuntimeError ( Value, State ))
-    | VNativeThread (State -> List Value -> Result RuntimeError ( Outcome Value, State ))
+    | VFunction Int
+
+
+{-| What a `VFunction` id points at, in `functionHeap`: a function written
+in Zak (`Closure`, with the scope it was written in), or a native, which
+may suspend its caller (`NativeThread`) or not (`Native`). A native takes
+`State` because it may need heap access (e.g. any of the `Array.*`
+natives, which have to read/write `arrayHeap` to do anything at all) —
+see `NativeValue`'s own doc for how this threads through.
+
+Kept out of `Value` so a `Value` never holds an Elm function: Elm can't
+compare functions, and `==` on one crashes at run time.
+-}
+type Function
+    = Closure (List ( String, Maybe Expr )) Block Env
+    | Native (State -> List Value -> Result RuntimeError ( Value, State ))
+    | NativeThread (State -> List Value -> Result RuntimeError ( Outcome Value, State ))
 
 
 {-| `WithPosition` is different in kind from the other 15 constructors here —
@@ -343,7 +358,7 @@ requireDone outcome =
 
 {-| Describes a native, as supplied to `run`/`runExpr`, before it's been
 seeded into the global scope. A `NativeFunction` becomes an ordinary
-`VNative`; a `NativeNamespace` becomes a `VTable` — allocating a real heap
+`VFunction` (a `Native` in `functionHeap`); a `NativeNamespace` becomes a `VTable` — allocating a real heap
 cell for its fields — so a whole group of related natives (`Math`'s
 trig functions, say) can be exposed as one table (`Math.cos(1)`) instead
 of each living as its own separate global name. Namespaces can nest
@@ -364,7 +379,7 @@ number like `Math.pi`, say — seeded as-is, with no function-call machinery
 involved.
 
 A `NativeFunction` takes `State` (and returns an updated one), unlike a
-plain `VFunction` call, because a native written in Elm can't get at the
+plain `Closure` call, because a native written in Elm can't get at the
 heap any other way — `Math`'s natives ignore it and pass it straight
 through, but anything working with `Array`/`Table` internals (like the
 built-in `Array.*` natives in `Zak.Internal.Interpreter`) genuinely needs it.
@@ -392,7 +407,7 @@ outermost scope) the enclosing scope. This is an ordinary, immutable Elm
 value — only what's _inside_ each frame (in the heap) is mutable; the chain
 of _which_ frames are nested under which is fixed once a scope is entered.
 A closure captures this whole chain, which is what makes lexical scoping
-(as opposed to dynamic scoping) work: a `VFunction`'s body always resolves
+(as opposed to dynamic scoping) work: a `Closure`'s body always resolves
 names against the scope active where it was _written_, never the caller's.
 -}
 type Env
@@ -413,6 +428,15 @@ the two heaps never need to agree on what a given id means to each other.
 -}
 type alias ArrayHeap =
     Dict Int (Array Value)
+
+
+{-| The backing storage for every `VFunction`, keyed by ids drawn from the
+same `nextId` counter as `Heap` and `ArrayHeap`. A function is allocated
+when it's created: once per native when the world is seeded, and once per
+evaluation of a function literal, as a table literal allocates a table.
+-}
+type alias FunctionHeap =
+    Dict Int Function
 
 
 {-| `threads`/`nextThreadId` hold every currently-suspended thread spawned
@@ -455,6 +479,7 @@ never marks anything in it in the first place.
 type alias State =
     { heap : Heap
     , arrayHeap : ArrayHeap
+    , functionHeap : FunctionHeap
     , constNames : Dict Int (Set String)
     , nextId : Int
     , threads : Dict ThreadId Thread
@@ -503,6 +528,13 @@ library natives, and `Zak` itself all share one implementation.
 allocCell : State -> ( Int, State )
 allocCell state =
     ( state.nextId, { state | heap = Dict.insert state.nextId Dict.empty state.heap, nextId = state.nextId + 1 } )
+
+
+{-| Like `allocCell`, but for a new `VFunction` cell in `functionHeap`.
+-}
+allocFunction : State -> Function -> ( Int, State )
+allocFunction state function =
+    ( state.nextId, { state | functionHeap = Dict.insert state.nextId function state.functionHeap, nextId = state.nextId + 1 } )
 
 
 {-| Like `allocCell`, but for a new `VArray` cell in `arrayHeap` — takes

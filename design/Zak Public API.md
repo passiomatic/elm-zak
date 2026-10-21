@@ -37,7 +37,7 @@ nativeWaitingFunction : (List Value -> World effect wait -> Result Problem ( wai
 
 A native would queue the host's own value, `emitEffect (ActorSay id text) world`, and wait on one, `Ok ( WhileWalking id, world )`. The host decodes nothing: the engine's natives could queue its `WorldChange`s directly, so `toWorldChange` goes away, and `stillWaiting` becomes a plain `case`. A host with no effects or waits of its own uses `World Never Never`.
 
-**Why it's strings now.** A waiting thread keeps its wait inside the interpreter's `State` (`Runtime.Host`), and so do the queued effects (`pendingEffects`). A type parameter on either makes `State` take it, and the interpreter's own `Value` holds natives that take `State` (`VNative`), so `Value` takes it too, and from there every type and function that mentions a value or the state: the heap, environments, threads, `Outcome`, `NativeValue`, the interpreter, and every standard-library module. It's mechanical, but it touches most of the package. Elm can't hide the parameter: a stored closure would need the host's state, which brings it back. `Wait` was shaped like `Effect` on purpose, so the two stay consistent; this changes both or neither.
+**Why it's strings now.** A waiting thread keeps its wait inside the interpreter's `State` (`Runtime.Host`), and so do the queued effects (`pendingEffects`). A type parameter on either makes `State` take it, and the interpreter's own `Value` holds natives that take `State` (`VNative`), so `Value` takes it too (no longer true since the function store, 2026-10-21: see "Comparing functions crashes"), and from there every type and function that mentions a value or the state: the heap, environments, threads, `Outcome`, `NativeValue`, the interpreter, and every standard-library module. It's mechanical, but it touches most of the package. Elm can't hide the parameter: a stored closure would need the host's state, which brings it back. `Wait` was shaped like `Effect` on purpose, so the two stay consistent; this changes both or neither.
 
 **What changes for a host.** `World` and `Native` take the two parameters. The public `Value` does too, as long as `FunctionRef` holds a runtime function; with the function store (see "Comparing functions crashes") it holds an id instead, and `Value` stays as it is. The standard library's natives are polymorphic (`Native effect wait`), so they fit any host. A host keeps its own signatures short with an alias, `type alias World = Zak.World EngineEffect EngineWait`.
 
@@ -63,4 +63,11 @@ A `nativeExpression` closes over the natives' frame, so it can't read the script
 
 ### Comparing functions crashes
 
-`==` on two `Value`s holding functions crashes, because Elm can't compare functions. The package docs warn about it on `FunctionRef`. The fix would be a function store: `FunctionRef` would hold an id, as `TableRef` does, instead of the function itself.
+`==` on two `Value`s holding functions crashed, because Elm can't compare functions, and the package docs warned about it on `FunctionRef`.
+
+Fixed (2026-10-21) with a function store: a function lives in its own heap, `functionHeap`, and both the interpreter's `VFunction` and the public `FunctionRef` hold its id, as `VTable` and `TableRef` do. Two consequences:
+
+- **In Zak, a function is `==` to itself,** as a table is, where before no function was equal to anything, itself included. Two functions built from the same source are still different functions.
+- **No `Value` holds an Elm function any more,** so the game type parameter of the TWP-like model (elm-adventure's `design/TWP-like Model.md`) stops at the interpreter's state and its functions: `Value`, the heaps of tables and arrays, and environments don't take it.
+
+A function allocates when it's created, once per evaluation of a function literal, as a table literal allocates a table; with no garbage collection, closures built in a loop grow the heap, as tables already do.

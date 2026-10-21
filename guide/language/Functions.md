@@ -140,7 +140,7 @@ let round = Math.round
 Array.map([1.4, 2.6], round)   # [1, 3]
 ```
 
-Two functions are never `==`, not even a function compared with itself.
+A function is `==` only to itself, as a table or an array is: two functions built from the same source are different functions.
 
 ## Closures
 
