@@ -68,6 +68,22 @@ ping =
     Zak.nativeFunction (\args world -> Ok ( Nil, Zak.emitEffect "ping" args world ))
 
 
+{-| Logs a warning with the argument, the way a host's native reports a
+problem that isn't an error, and returns `nil`.
+-}
+warn : Zak.Native ()
+warn =
+    Zak.nativeFunction
+        (\args world ->
+            case args of
+                [ String message ] ->
+                    Ok ( Nil, Zak.log LogWarning message world )
+
+                _ ->
+                    Err (WrongArgCount { expected = 1, got = List.length args })
+        )
+
+
 {-| Fails with "expected success" instead of a `Result` mismatch, so a test
 can go on with the world.
 -}
@@ -658,6 +674,13 @@ suite =
                             in
                             ( effects, Tuple.first (Zak.takeEffects world1) )
                                 |> Expect.equal ( [ Log LogPrint "a", Effect "ping" [ Number 1 ], Log LogWarning "b" ], [] )
+            , test "a native's log comes back in order with the script's own" <|
+                \_ ->
+                    withWorld (runIn [ ( "warn", warn ) ] "Debug.log(\"a\")\nwarn(\"b\")\nDebug.log_error(\"c\")") <|
+                        \( _, world ) ->
+                            Zak.takeEffects world
+                                |> Tuple.first
+                                |> Expect.equal [ Log LogPrint "a", Log LogWarning "b", Log LogError "c" ]
             ]
         , describe "errors"
             [ test "the standard library's own checks are a Problem with their message" <|

@@ -3,7 +3,7 @@ module Zak exposing
     , Value(..), TableRef, ArrayRef, FunctionRef
     , getGlobal, setGlobal, globals, newTable, getField, setField, removeField, fields, items
     , ThreadOwner, startThread, stopThreads, hasThreads, setThreadOwner, threadCount
-    , Effect(..), LogLevel(..), emitEffect, takeEffects
+    , Effect(..), LogLevel(..), emitEffect, log, takeEffects
     , Error, Problem(..), Position, errorProblem, errorPosition, errorToString
     , Native, nativeFunction, nativeWaitingFunction, nativeTable, nativeExpression, nativeConstant, nativeInclude
     )
@@ -60,7 +60,7 @@ second, so updates chain with `|>`.
 
 # Effects
 
-@docs Effect, LogLevel, emitEffect, takeEffects
+@docs Effect, LogLevel, emitEffect, log, takeEffects
 
 
 # Errors
@@ -590,7 +590,8 @@ threadCount (World state) =
 each one into whatever it wants, usually a `Cmd`.
 
   - `Log` comes from the language: `Debug.log` and its siblings, and the
-    interpreter's own warnings.
+    interpreter's own warnings. The host's natives queue one with
+    [`log`](#log).
   - `Effect` comes from the host's own natives, through
     [`emitEffect`](#emitEffect): a name it chooses, and arguments elm-zak
     never looks inside.
@@ -626,6 +627,17 @@ emitEffect name args (World state) =
     World { state | pendingEffects = state.pendingEffects ++ [ Runtime.Effect name (List.map toInternal args) ] }
 
 
+{-| Queues a `Log` for the host, as `Debug.log` and its siblings do, so a
+native's message comes back in order with the script's own:
+
+    Zak.log LogWarning "Unknown sound: door_open" world
+
+-}
+log : LogLevel -> String -> World game -> World game
+log level message (World state) =
+    World { state | pendingEffects = state.pendingEffects ++ [ Runtime.Log (logLevelToInternal level) message ] }
+
+
 {-| Every effect queued since the last call, oldest first, and the world
 with its queue emptied. Call it after each [`run`](#run), [`call`](#call)
 or [`tick`](#tick).
@@ -647,6 +659,25 @@ effectFromInternal effect =
 
         Runtime.Effect name args ->
             Effect name (List.map fromInternal args)
+
+
+logLevelToInternal : LogLevel -> Runtime.LogLevel
+logLevelToInternal level =
+    case level of
+        LogPrint ->
+            Runtime.LogPrint
+
+        LogDebug ->
+            Runtime.LogDebug
+
+        LogInfo ->
+            Runtime.LogInfo
+
+        LogWarning ->
+            Runtime.LogWarning
+
+        LogError ->
+            Runtime.LogError
 
 
 logLevelFromInternal : Runtime.LogLevel -> LogLevel
