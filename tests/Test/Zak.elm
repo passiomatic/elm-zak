@@ -81,26 +81,20 @@ withWorld result expect =
             Expect.fail ("expected success, got: " ++ Zak.errorToString "" error)
 
 
-{-| A waiting native: `wait_door(name)` waits on `Wait "door" [ name ]`.
+{-| A waiting native: `wait_door(door)` waits while the table `door`'s
+`opening` field is `true`.
 -}
 waitDoor : Zak.Native ()
 waitDoor =
     Zak.nativeWaitingFunction
         (\args world ->
             case args of
-                [ name ] ->
-                    Ok ( Zak.Wait "door" [ name ], world )
+                [ door ] ->
+                    Ok ( \w -> Zak.getField "opening" door w == Just (Bool True), world )
 
                 _ ->
                     Err (WrongArgCount { expected = 1, got = List.length args })
         )
-
-
-{-| What a host that defines no waits tells `tick`.
--}
-noWaits : Zak.Wait -> World game -> Bool
-noWaits _ _ =
-    False
 
 
 {-| `count()`: the game, a counter, as a number.
@@ -376,7 +370,7 @@ suite =
                         Ok ( _, world ) ->
                             Expect.all
                                 [ \_ -> Zak.game world |> Expect.equal 1
-                                , \_ -> Zak.tick noWaits 1.5 world |> Tuple.second |> Zak.game |> Expect.equal 2
+                                , \_ -> Zak.tick 1.5 world |> Tuple.second |> Zak.game |> Expect.equal 2
                                 ]
                                 ()
 
@@ -386,7 +380,7 @@ suite =
                 \_ ->
                     case Zak.run "Thread.start(function():\n    Thread.wait_for(1)\n    bump()\n    let broken = 1 + nil\nend)" counterWorld of
                         Ok ( _, world ) ->
-                            case Zak.tick noWaits 1.5 world of
+                            case Zak.tick 1.5 world of
                                 ( [ _ ], world1 ) ->
                                     Zak.game world1 |> Expect.equal 0
 
@@ -503,14 +497,14 @@ suite =
                         \( _, world ) ->
                             let
                                 ( _, world1 ) =
-                                    Zak.tick noWaits 1.0 world
+                                    Zak.tick 1.0 world
                             in
                             ( Zak.threadCount world, Zak.threadCount world1 ) |> Expect.equal ( 1, 0 )
             , test "tick gives back the errors of failed threads, in the order they failed" <|
                 \_ ->
                     withWorld (runIn [] "Thread.start(function(): Thread.wait_for(1.0)\nreturn first end)\nThread.start(function(): Thread.wait_for(1.0)\nreturn second end)") <|
                         \( _, world ) ->
-                            Zak.tick noWaits 1.0 world
+                            Zak.tick 1.0 world
                                 |> Tuple.first
                                 |> List.map Zak.errorProblem
                                 |> Expect.equal [ UndefinedName "first", UndefinedName "second" ]
@@ -528,58 +522,87 @@ suite =
                         |> Result.map (Zak.stopThreads "level")
                         |> Result.map (\world -> ( Zak.threadCount world, Zak.hasThreads "level" world, Zak.hasThreads "music" world ))
                         |> Expect.equal (Ok ( 1, False, True ))
-            , describe "waits the host defines (nativeWaitingFunction, Wait)"
-                [ test "a script waits until the host says the wait is over, never earlier than the next tick; the host sees the name and arguments" <|
+            , describe "waits the host defines (nativeWaitingFunction)"
+                [ test "a script waits while the condition is true, and carries on once it's false, never earlier than the next tick" <|
                     \_ ->
                         let
-                            -- The host's own state: whether the door is still opening.
-                            opening done (Zak.Wait name args) _ =
-                                not (name == "door" && args == [ String "front" ] && done)
-
                             source =
-                                "let log = { value = \"\" }\nThread.start(function():\n    log.value = \"waiting\"\n    wait_door(\"front\")\n    log.value = \"through\"\nend)\nreturn log"
+                                "let door = { opening = true }\nlet log = { value = \"\" }\nThread.start(function():\n    log.value = \"waiting\"\n    wait_door(door)\n    log.value = \"through\"\nend)\nreturn [door, log]"
                         in
                         withWorld (runIn [ ( "wait_door", waitDoor ) ] source) <|
+                            \( pair, world ) ->
+                                case Zak.items pair world of
+                                    Just [ door, log ] ->
+                                        let
+                                            ( _, world1 ) =
+                                                Zak.tick 1.0 world
+
+                                            ( _, world2 ) =
+                                                Zak.tick 1.0 (Zak.setField "opening" (Bool False) door world1)
+                                        in
+                                        ( Zak.getField "value" log world1, Zak.getField "value" log world2, Zak.threadCount world2 )
+                                            |> Expect.equal ( Just (String "waiting"), Just (String "through"), 0 )
+
+                                    other ->
+                                        Expect.fail ("expected [door, log], got: " ++ Debug.toString other)
+                , test "a condition that's false at once still waits for the next tick" <|
+                    \_ ->
+                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "let door = { opening = false }\nlet log = { value = \"\" }\nThread.start(function():\n    wait_door(door)\n    log.value = \"through\"\nend)\nreturn log") <|
                             \( log, world ) ->
+                                ( Zak.getField "value" log world, Zak.getField "value" log (Zak.tick 0 world |> Tuple.second) )
+                                    |> Expect.equal ( Just (String ""), Just (String "through") )
+                , test "the condition sees what threads resumed earlier in the same tick did" <|
+                    \_ ->
+                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "let door = { opening = true }\nlet log = { value = \"\" }\nThread.start(function():\n    Thread.wait_for(1.0)\n    door.opening = false\nend)\nThread.start(function():\n    wait_door(door)\n    log.value = \"through\"\nend)\nreturn log") <|
+                            \( log, world ) ->
+                                Zak.tick 1.0 world
+                                    |> Tuple.second
+                                    |> Zak.getField "value" log
+                                    |> Expect.equal (Just (String "through"))
+                , test "the condition can read the game" <|
+                    \_ ->
+                        let
+                            waitCount =
+                                Zak.nativeWaitingFunction (\_ world -> Ok ( \w -> Zak.game w < 3, world ))
+                        in
+                        case Zak.run "let log = { value = \"\" }\nThread.start(function():\n    wait_count()\n    log.value = \"three\"\nend)\nreturn log" (Zak.init 0 [ ( "wait_count", waitCount ) ]) of
+                            Ok ( log, world ) ->
                                 let
                                     ( _, world1 ) =
-                                        Zak.tick (opening False) 1.0 world
+                                        Zak.tick 1.0 (Zak.updateGame (always 2) world)
 
                                     ( _, world2 ) =
-                                        Zak.tick (opening True) 1.0 world1
+                                        Zak.tick 1.0 (Zak.updateGame (always 3) world1)
                                 in
-                                ( Zak.getField "value" log world1, Zak.getField "value" log world2, Zak.threadCount world2 )
-                                    |> Expect.equal ( Just (String "waiting"), Just (String "through"), 0 )
-                , test "a wait that's over at once still waits for the next tick" <|
-                    \_ ->
-                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "let log = { value = \"\" }\nThread.start(function():\n    wait_door(\"front\")\n    log.value = \"through\"\nend)\nreturn log") <|
-                            \( log, world ) ->
-                                ( Zak.getField "value" log world, Zak.getField "value" log (Zak.tick noWaits 0 world |> Tuple.second) )
-                                    |> Expect.equal ( Just (String ""), Just (String "through") )
+                                ( Zak.getField "value" log world1, Zak.getField "value" log world2 )
+                                    |> Expect.equal ( Just (String ""), Just (String "three") )
+
+                            Err error ->
+                                Expect.fail (Zak.errorToString "" error)
                 , test "other threads carry on while one waits on the host" <|
                     \_ ->
-                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "let log = { value = \"\" }\nThread.start(function():\n    wait_door(\"front\")\n    log.value = log.value ++ \"door\"\nend)\nThread.start(function():\n    Thread.wait_for(1.0)\n    log.value = log.value ++ \"timer\"\nend)\nreturn log") <|
+                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "let door = { opening = true }\nlet log = { value = \"\" }\nThread.start(function():\n    wait_door(door)\n    log.value = log.value ++ \"door\"\nend)\nThread.start(function():\n    Thread.wait_for(1.0)\n    log.value = log.value ++ \"timer\"\nend)\nreturn log") <|
                             \( log, world ) ->
-                                Zak.tick (\_ _ -> True) 1.0 world
+                                Zak.tick 1.0 world
                                     |> Tuple.second
                                     |> Zak.getField "value" log
                                     |> Expect.equal (Just (String "timer"))
-                , test "a stopped thread's wait no longer matters: it never resumes" <|
+                , test "a stopped thread never resumes, whatever its condition" <|
                     \_ ->
-                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "let log = { value = \"\" }\nThread.start(function():\n    wait_door(\"front\")\n    log.value = \"through\"\nend)\nreturn log") <|
+                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "let door = { opening = false }\nlet log = { value = \"\" }\nThread.start(function():\n    wait_door(door)\n    log.value = \"through\"\nend)\nreturn log") <|
                             \( log, world ) ->
                                 Zak.stopThreads "" world
-                                    |> Zak.tick noWaits 1.0
+                                    |> Zak.tick 1.0
                                     |> Tuple.second
                                     |> Zak.getField "value" log
                                     |> Expect.equal (Just (String ""))
                 , test "only a thread can wait: outside one, the call is an error" <|
                     \_ ->
-                        runIn [ ( "wait_door", waitDoor ) ] "wait_door(\"front\")"
+                        runIn [ ( "wait_door", waitDoor ) ] "wait_door({ opening = true })"
                             |> Expect.err
                 , test "only in a call that's a statement of its own: inside an expression, it's an error" <|
                     \_ ->
-                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "return function():\n    let x = wait_door(\"front\")\nend") <|
+                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "return function():\n    let x = wait_door({ opening = true })\nend") <|
                             \( fn, world ) ->
                                 Zak.startThread "" fn [] world
                                     |> Expect.err
@@ -616,7 +639,7 @@ suite =
                             "let log = { value = \"waiting\" }\nThread.start(function():\n    Thread.join(start_as_cutscene(function(): Thread.wait_for(1.0) end))\n    log.value = \"joined\"\nend)\nreturn log"
 
                         logAfter seconds ( log, world ) =
-                            List.foldl (\dt w -> Zak.tick noWaits dt w |> Tuple.second) world seconds
+                            List.foldl (\dt w -> Zak.tick dt w |> Tuple.second) world seconds
                                 |> (\w -> Zak.getField "value" log w)
                     in
                     withWorld (runIn [ ( "start_as_cutscene", startAsCutscene ) ] source) <|

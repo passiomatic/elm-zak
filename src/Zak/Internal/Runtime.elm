@@ -221,19 +221,19 @@ wired to actually preserve and propagate a `Suspended` result.
 -}
 type Outcome game a
     = Done a
-    | Suspended WaitCondition (State game -> Result RuntimeError ( Outcome game a, State game ))
+    | Suspended (WaitCondition game) (State game -> Result RuntimeError ( Outcome game a, State game ))
 
 
 {-| What a suspended thread is waiting on, checked once per scheduler
 `tick` (`Zak.Internal.Interpreter.tick`): a fixed number of elapsed seconds
-(`wait_for`), another thread's own completion (`join`), or a wait the host
-names (`Host`, from a native built with `Zak.nativeWaitingFunction`), which
-`tick` asks the host about.
+(`wait_for`), another thread's own completion (`join`), or a condition the
+host gives (`Host`, from a native built with `Zak.nativeWaitingFunction`):
+the thread waits while it's `True`.
 -}
-type WaitCondition
+type WaitCondition game
     = Seconds Float
     | ThreadRunning ThreadId
-    | Host String (List Value)
+    | Host (State game -> Bool)
 
 
 type alias ThreadId =
@@ -294,7 +294,7 @@ wait (`Zak.Internal.Interpreter.settle`).
 type ThreadStatus game
     = Running
     | Waiting
-        { waitCondition : WaitCondition
+        { waitCondition : WaitCondition game
         , elapsed : Float
         , resume : State game -> Result RuntimeError ( Outcome game Value, State game )
         }

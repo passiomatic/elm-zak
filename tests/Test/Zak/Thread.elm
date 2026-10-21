@@ -93,11 +93,11 @@ readTableField state table field =
             Nothing
 
 
-{-| `tick`, for a host that defines no waits.
+{-| `I.tick`, for this suite's worlds, whose game is `()`.
 -}
 tick : Float -> Runtime.State () -> ( Runtime.State (), List RuntimeError )
 tick =
-    I.tick (\_ _ _ -> False)
+    I.tick
 
 
 suite : Test

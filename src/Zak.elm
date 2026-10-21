@@ -2,7 +2,7 @@ module Zak exposing
     ( World, init, game, updateGame, run, call, tick, reseed
     , Value(..), TableRef, ArrayRef, FunctionRef
     , getGlobal, setGlobal, globals, newTable, getField, setField, removeField, fields, items
-    , ThreadOwner, startThread, stopThreads, hasThreads, setThreadOwner, threadCount, Wait(..)
+    , ThreadOwner, startThread, stopThreads, hasThreads, setThreadOwner, threadCount
     , Effect(..), LogLevel(..), emitEffect, takeEffects
     , Error, Problem(..), Position, errorProblem, errorPosition, errorToString
     , Native, nativeFunction, nativeWaitingFunction, nativeTable, nativeExpression, nativeConstant, nativeInclude
@@ -55,7 +55,7 @@ second, so updates chain with `|>`.
 
 # Threads
 
-@docs ThreadOwner, startThread, stopThreads, hasThreads, setThreadOwner, threadCount, Wait
+@docs ThreadOwner, startThread, stopThreads, hasThreads, setThreadOwner, threadCount
 
 
 # Effects
@@ -203,25 +203,23 @@ call fn args (World state) =
 is over. A thread that fails is dropped, and its error is returned; the
 errors come in the order the threads failed.
 
-`waiting` answers for the host's own waits (see [`Wait`](#Wait)): for
-each thread waiting on one, `tick` asks whether it's still on, and
-resumes the thread once it says `False`. A host that defines no waits
-passes `(\_ _ -> False)`.
+A thread waiting in one of the host's natives (see
+[`nativeWaitingFunction`](#nativeWaitingFunction)) resumes once the
+condition that native gave back is `False`. `tick` checks it with the
+world as it is when that thread's turn comes, threads resumed before it
+in the same `tick` included.
 
-    Zak.tick (stillWaiting model) dt world
+    Zak.tick dt world
 
 See [`ThreadOwner`](#ThreadOwner) for the other ways a host manages
 threads.
 
 -}
-tick : (Wait -> World game -> Bool) -> Float -> World game -> ( List Error, World game )
-tick waiting seconds (World state) =
+tick : Float -> World game -> ( List Error, World game )
+tick seconds (World state) =
     let
-        hostWaiting name args state0 =
-            waiting (Wait name (List.map fromInternal args)) (World state0)
-
         ( state1, errors ) =
-            Interpreter.tick hostWaiting seconds state
+            Interpreter.tick seconds state
     in
     ( List.map (Interpreter.RuntimeError >> Error) (List.reverse errors), World state1 )
 
@@ -583,20 +581,6 @@ threadCount (World state) =
     Interpreter.threadCount state
 
 
-{-| A wait the host defines, for a script to wait on what only the host
-knows, such as a character walking: a name the host chooses, and
-arguments. A native built with
-[`nativeWaitingFunction`](#nativeWaitingFunction) gives one back, and the
-script that called it waits there; on every [`tick`](#tick), the host
-says whether it's still on, and the script carries on once it isn't.
-
-    Wait "walking" [ hero ]
-
--}
-type Wait
-    = Wait String (List Value)
-
-
 
 -- EFFECTS
 
@@ -956,37 +940,42 @@ nativeFunction fn =
         )
 
 
-{-| A function written in Elm that makes the script calling it wait, on a
-[`Wait`](#Wait) it gives back instead of a result. The script carries on
-once [`tick`](#tick) is told the wait is over, never earlier than the
-next `tick`, and the call gives back `nil`.
+{-| A function written in Elm that makes the script calling it wait, for
+what only the host knows, such as a character walking. Instead of a
+result, it gives back a condition on the world: the script waits while
+it's `True`, and carries on once [`tick`](#tick) finds it `False`. The
+first check is on the next `tick`, never at once, and the call then gives
+back `nil`.
 
-    waitWhileWalking : Native game
+    waitWhileWalking : Native Game
     waitWhileWalking =
         Zak.nativeWaitingFunction
             (\args world ->
                 case args of
                     [ hero ] ->
-                        Ok ( Wait "walking" [ hero ], world )
+                        Ok ( \w -> isWalking hero (Zak.game w), world )
 
                     _ ->
                         Err (WrongArgCount { expected = 1, got = List.length args })
             )
+
+The condition can read the whole world: the game, and the scripts'
+globals and tables. It can't change it.
 
 Like `Thread.wait_for`, only a thread can wait, and only in a call that
 is a statement of its own: `wait_while_walking(hero)`, not `let x =
 wait_while_walking(hero)`. Anywhere else, the call is an error.
 
 -}
-nativeWaitingFunction : (List Value -> World game -> Result Problem ( Wait, World game )) -> Native game
+nativeWaitingFunction : (List Value -> World game -> Result Problem ( World game -> Bool, World game )) -> Native game
 nativeWaitingFunction fn =
     Native
         (Runtime.NativeThreadFunction
             (\state args ->
                 fn (List.map fromInternal args) (World state)
                     |> Result.map
-                        (\( Wait name waitArgs, World state1 ) ->
-                            ( Runtime.Suspended (Runtime.Host name (List.map toInternal waitArgs)) (\resumed -> Ok ( Runtime.Done Runtime.VNil, resumed ))
+                        (\( stillWaiting, World state1 ) ->
+                            ( Runtime.Suspended (Runtime.Host (World >> stillWaiting)) (\resumed -> Ok ( Runtime.Done Runtime.VNil, resumed ))
                             , state1
                             )
                         )

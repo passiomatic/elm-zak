@@ -24,12 +24,14 @@ Decided and done (2026-10-21), on the `twp` branch: step 2 of elm-adventure's TW
 - `Zak.game` reads it and `Zak.updateGame` changes it, from a native or from the host's own code between calls. No `setGame` (`updateGame (always g)` does it), and no way to change the type of an existing world's game, since its natives are typed for it.
 - Zak only carries it. The standard library is written for any `game`, so it can't look inside; only the host's natives, written for its type, can.
 - It's part of the world like the heap: a call that fails gives back no world, and a thread that fails while `tick` resumes it is rolled back, so the game changes made there are lost too.
-- `Value`, `Effect`, `Wait`, `Error`, `Problem` and the refs don't take the parameter: since the function store, none of them holds an Elm function.
+- `Value`, `Effect`, `Error`, `Problem` and the refs don't take the parameter: since the function store, none of them holds an Elm function.
 - Named `game` rather than something host-neutral, since Zak is meant for games. Squirrel has the same idea, a host pointer attached to the VM (`sq_setforeignptr`).
 
-Still to come on `twp`: waits as predicates (step 3), and what's left of effects (step 4).
+Waits became conditions on the world the same day (step 3, see "The thread model"). Still to come on `twp`: what's left of effects (step 4).
 
 ### Effects and waits named by strings
+
+Superseded for waits (2026-10-21): a waiting native now gives back a condition on the world, so waits have no names left to match (see "The thread model"). Effects are decided in step 4 of the TWP-like model; with natives acting on the game directly, few should remain.
 
 Proposed (2026-10-20), not decided. A host tells its own effects and waits apart by matching strings: `Effect String (List Value)` and `Wait String (List Value)`. A native queues `emitEffect "say_line" [ id, text ]`, and the host matches `( "say_line", [ Number id, String text ] )` back into its own type. The engine does this for over thirty effects (`Engine.toWorldChange`) and for its waits (`Engine.Actor.stillWaiting`, which also turns the name back into a type by a reverse lookup). A misspelled name or a misshapen argument list is only caught at run time, where the compiler could catch both.
 
@@ -64,7 +66,7 @@ Decided (2026-10-08): every thread has an owner, a `ThreadOwner` the host names 
 
 Decided (2026-10-20), so a host can implement what its scripts wait on in Elm, instead of copying its state into the world for Zak code to poll (the engine had to, for a character walking or a cutscene ending):
 
-- **Waits the host defines.** `Zak.nativeWaitingFunction` builds a native that gives back a `Wait` (a name and arguments, shaped like `Effect`) instead of a result, and the script that called it waits there. `Zak.tick` now takes the host's answer for those waits, `Wait -> World -> Bool`, true while a wait is still on. A wait is first checked on the next tick, and the call gives back `nil`. No result value yet: a waiting call can only be a statement of its own, so a value couldn't be used; resuming with one, and waiting in a `let`, assignment or `return`, come together if something needs them.
+- **Waits the host defines.** `Zak.nativeWaitingFunction` builds a native that gives back a `Wait` (a name and arguments, shaped like `Effect`) instead of a result, and the script that called it waits there. `Zak.tick` now takes the host's answer for those waits, `Wait -> World -> Bool`, true while a wait is still on. A wait is first checked on the next tick, and the call gives back `nil`. **Changed (2026-10-21):** the native gives back the condition itself, `World game -> Bool`, true while the thread waits, as TWP's `breakwhilecond` keeps a predicate; `Wait` is gone, and `tick : Float -> World game -> ...` checks the condition itself, with the world as it is when that thread's turn comes. It sees the whole world, not only the game, so a host can also wait on what Zak knows (a public `Zak.isThreadRunning` would fit, when something needs it). No result value yet: a waiting call can only be a statement of its own, so a value couldn't be used; resuming with one, and waiting in a `let`, assignment or `return`, come together if something needs them.
 - **A thread exists from its first instruction.** It's registered before its body runs, so `hasThreads` and `join` count it during its first run, and it can be stopped then.
 - **Stopping a running thread counts.** `Thread.stop` and `Zak.stopThreads` drop a running thread too, which then ends at its next wait. It used to be put back there, so stopping the running thread did nothing. It can't end at once: a thread only stops running at a wait (a call that's a statement of its own), so there's nowhere else for it to end.
 

@@ -614,9 +614,9 @@ startThread owner callee args state =
 
 {-| The once-per-frame scheduler step: advances every currently-suspended
 thread's own wait condition by `dt` (seconds since the last `tick`),
-resuming any whose condition is now satisfied. `hostWaiting` answers for
-the host's own waits (`Host`): whether the wait named by its name and
-arguments is still on. Each thread gets at most
+resuming any whose condition is now satisfied: a host's own condition
+(`Host`) is asked with the state as it is when its thread's turn comes,
+threads resumed earlier in the same pass included. Each thread gets at most
 one `resume` call per `tick`, never more, so a thread that resumes and
 immediately suspends again on a condition that's _already_ satisfied
 still only advances one step this frame, picking up the rest on the next
@@ -663,13 +663,13 @@ first-class suspend primitive at all, versus exposing an
 it with a `wait_for` + poll loop.
 
 -}
-tick : (String -> List Value -> State game -> Bool) -> Float -> State game -> ( State game, List RuntimeError )
-tick hostWaiting dt state =
+tick : Float -> State game -> ( State game, List RuntimeError )
+tick dt state =
     Dict.foldl
         (\threadId (Thread thread) ( stateAcc, errorsAcc ) ->
             case ( thread.status, Dict.member threadId stateAcc.threads ) of
                 ( Waiting waiting, True ) ->
-                    case checkWaitCondition hostWaiting dt waiting.elapsed waiting.waitCondition stateAcc of
+                    case checkWaitCondition dt waiting.elapsed waiting.waitCondition stateAcc of
                         StillWaiting newElapsed ->
                             ( { stateAcc | threads = Dict.insert threadId (Thread { thread | status = Waiting { waiting | elapsed = newElapsed } }) stateAcc.threads }
                             , errorsAcc
@@ -779,11 +779,11 @@ type WaitCheck
     | ReadyToResume
 
 
-checkWaitCondition : (String -> List Value -> State game -> Bool) -> Float -> Float -> WaitCondition -> State game -> WaitCheck
-checkWaitCondition hostWaiting dt elapsed waitCondition state =
+checkWaitCondition : Float -> Float -> WaitCondition game -> State game -> WaitCheck
+checkWaitCondition dt elapsed waitCondition state =
     case waitCondition of
-        Host name args ->
-            if hostWaiting name args state then
+        Host stillWaiting ->
+            if stillWaiting state then
                 StillWaiting elapsed
 
             else
