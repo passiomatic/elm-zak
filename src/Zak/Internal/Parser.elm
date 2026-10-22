@@ -621,8 +621,8 @@ rejectThrowaway =
 
 
 {-| `next` is the (up to) two characters at the current offset: a bare `_`
-is one not followed by any further identifier character (`_base`, `_?`
-and `_1` are ordinary names).
+is one not followed by any further identifier character (`_base` and
+`_1` are ordinary names).
 -}
 isBareThrowaway : String -> Bool
 isBareThrowaway next =
@@ -631,7 +631,7 @@ isBareThrowaway next =
             True
 
         [ '_', c ] ->
-            not (Char.isAlphaNum c || c == '_' || c == '?')
+            not (Char.isAlphaNum c || c == '_')
 
         _ ->
             False

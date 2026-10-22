@@ -1106,19 +1106,6 @@ counter_b()
 return counter_a()"""
                   , Just (VNumber 3)
                   )
-
-                -- a "?"-suffixed name works as a definition *and* a call,
-                -- not just the former -- pins the Zak.Internal.Lexer.keyword fix
-                -- end to end (lex -> parse -> eval), not just at the
-                -- parser level: "function?" used to fail to parse as a
-                -- call, reading as the bare "function" keyword plus a
-                -- stray "?" instead of an ordinary Name
-                , ( """let function? = function(x):
-    return type(x) == "function"
-end
-return function?(function?)"""
-                  , Just (VBool True)
-                  )
                 ]
         , describe "run: natives" <|
             [ test "a flat native function can be called like any other" <|

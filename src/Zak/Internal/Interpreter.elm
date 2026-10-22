@@ -834,10 +834,7 @@ can't (a field name that's a runtime value rather than a literal
 identifier, `get`/`set`) plus a way to test/soften the hard error a
 missing field raises (`contains`/`get_default`) — kept in lockstep with
 `Array`'s own `contains`/`get_default`/`clone` rather than only fixing one
-side. Neither `is_empty` nor `contains` uses the stdlib's older `?`-suffix
-predicate convention — that convention is still valid Zak grammar for a
-script's own functions, just no longer used by the stdlib itself (see
-"Identifiers and reserved words" in the language reference).
+side.
 
 -}
 builtinNatives : Dict String (NativeValue game)

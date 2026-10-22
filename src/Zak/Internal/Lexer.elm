@@ -120,23 +120,19 @@ reservedWords =
 
 
 {-| A Zak identifier: starts with a letter or underscore, continues with
-letters, digits, or underscores, optionally ending in a single `?` (`?`
-marks a predicate by convention (e.g. `ready?`); a leading `_` marks a
-"semi-private" name by convention (e.g. `_soundid`); nothing here checks
-or enforces either meaning). `!` is never part of an identifier: it's
-reserved for the `!=` operator, so `done!=x` lexes as `done` then `!=`,
-never as a name `done!` followed by `=`. A bare `_` lexes as an ordinary
-identifier too; its "throwaway" meaning (bindable, never readable) is
-given to it by the parser (`Zak.Internal.Parser.rejectThrowaway`) and the interpreter,
-not here. Cannot be one of the `reservedWords`.
+letters, digits, or underscores (a leading `_` marks a "semi-private" name
+by convention (e.g. `_soundid`); nothing here checks or enforces that
+meaning). `?` and `!` are never part of an identifier: `!` is reserved for
+the `!=` operator, so `done!=x` lexes as `done` then `!=`, never as a name
+`done!` followed by `=`. A bare `_` lexes as an ordinary identifier too;
+its "throwaway" meaning (bindable, never readable) is given to it by the
+parser (`Zak.Internal.Parser.rejectThrowaway`) and the interpreter, not
+here. Cannot be one of the `reservedWords`.
 
 Built by hand rather than with `P.variable` (unlike most of this module):
-`P.variable`'s reserved-word check runs on the chomped string _before_ a
-caller could append anything after it, so it would reject `"let?"` on the
-grounds that its first three characters spell the reserved word `let` —
-wrong, since `let?` as a whole isn't reserved. Chomping the optional
-trailing character first and checking the _complete_ string against
-`reservedWords` afterward avoids that.
+`P.variable` rejects a reserved word with a bare `ExpectingVariable`, while
+`rejectReservedWord` names the word, so the syntax error can say why `let if
+= 2` doesn't parse.
 
 Wrapped in `P.backtrackable`: without it, rejecting a reserved word (which
 only happens _after_ chomping several characters) counts as "made progress"
@@ -153,10 +149,6 @@ identifier =
         (P.succeed ()
             |. P.chompIf (\c -> Char.isAlpha c || c == '_')
             |. P.chompWhile (\c -> Char.isAlphaNum c || c == '_')
-            |. P.oneOf
-                [ P.chompIf ((==) '?')
-                , P.succeed ()
-                ]
             |> P.getChompedString
             |> P.andThen rejectReservedWord
         )
@@ -174,31 +166,11 @@ rejectReservedWord name =
 
 {-| Matches one of the structural keywords exactly — e.g. `keyword "if"` —
 failing if it's immediately followed by another identifier character (so
-`"ifx"` does not match `keyword "if"`). That includes a trailing `?`,
-not just a letter/digit/`_`: `P.keyword` alone only knows about the
-latter (its own boundary check is fixed, not configurable), so it happily
-treats `"function"` as a complete match against `"function?(1)"`, leaving
-`"?(1)"` behind — the real bug this extra check exists to close (see
-`identifier` above, which already chomps an optional trailing `?` as
-part of _its_ own definition, for the same reason). Wrapped in
-`P.backtrackable` for the same reason `identifier` is: chomping that
-trailing `?` before rejecting it still counts as "made progress" to
-`elm/parser`, and without backtracking a surrounding `P.oneOf` (e.g.
-trying a function-literal keyword before falling through to `identifier`)
-would treat that as a committed failure instead of trying its next
-alternative.
+`"ifx"` does not match `keyword "if"`).
 -}
 keyword : String -> Parser ()
-keyword kwd =
-    P.backtrackable
-        (P.keyword kwd
-            |. P.oneOf
-                [ P.chompIf ((==) '?')
-                    |> P.andThen (\_ -> P.problem ("\"" ++ kwd ++ "\" followed by ? is not the keyword"))
-                , P.succeed ()
-                ]
-        )
-        |> lexeme
+keyword =
+    lexeme << P.keyword
 
 
 {-| Matches an exact piece of punctuation or an operator — e.g. `symbol "=="`

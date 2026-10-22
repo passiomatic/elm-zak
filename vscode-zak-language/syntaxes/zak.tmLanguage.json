@@ -61,10 +61,10 @@
     },
     "function-call": {
       "name": "entity.name.function.zak",
-      "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\??\\b(?=\\s*\\()"
+      "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b(?=\\s*\\()"
     },
     "property-access": {
-      "match": "(\\.)\\s*([A-Za-z_][A-Za-z0-9_]*\\??)",
+      "match": "(\\.)\\s*([A-Za-z_][A-Za-z0-9_]*)",
       "captures": {
         "1": { "name": "punctuation.accessor.zak" },
         "2": { "name": "variable.other.property.zak" }
@@ -98,7 +98,7 @@
     },
     "identifiers": {
       "name": "variable.other.readwrite.zak",
-      "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\??\\b"
+      "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
     }
   }
 }

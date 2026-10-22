@@ -95,7 +95,7 @@ All of them work on `Bool`s only, and produce a `Bool`.
 `and` and `or` stop as soon as the answer is known: if the left side of `and` is `false`, or the left side of `or` is `true`, the right side isn't evaluated at all. That makes it safe to guard an expression that would otherwise fail:
 
 ```
-if "door" in room and room.door.locked?:
+if "door" in room and room.door.locked:
     Debug.log("It's locked.")
 end
 ```

@@ -74,7 +74,7 @@ A waiting function can only be called inside a thread, and only as a statement o
 Thread.start(function():
     Thread.wait_for(1.0)                  # fine
 
-    if ready?:
+    if ready:
         Thread.wait_for(1.0)              # fine: inside if, while, and for too
     end
 

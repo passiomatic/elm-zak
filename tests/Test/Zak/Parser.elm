@@ -288,18 +288,13 @@ suite =
                 -- field names must be unique within one literal, adjacent or not
                 , ( "{ x = 1, x = 2 }", Nothing )
                 , ( "{ x = 1, y = 2, x = 3 }", Nothing )
-                , ( "{ x = 1, x? = 2 }", Just (TableLiteral [ ( "x", NumberLiteral 1 ), ( "x?", NumberLiteral 2 ) ]) )
                 , ( "nil", Just (Name "nil") )
                 , ( "true", Just (Name "true") )
-                , ( "foo?", Just (Name "foo?") )
-                , ( "empty?", Just (Name "empty?") )
                 ]
         , describe "expr: field access and calls" <|
             List.map (testValue identity P.parseExpr)
                 [ ( "Taylor.health", Just (FieldAccess (Name "Taylor") "health") )
                 , ( "Taylor.a.b.c", Just (FieldAccess (FieldAccess (FieldAccess (Name "Taylor") "a") "b") "c") )
-                , ( "Taylor.empty?", Just (FieldAccess (Name "Taylor") "empty?") )
-                , ( "is_valid?(Taylor)", Just (Call (Name "is_valid?") [ Name "Taylor" ]) )
                 , ( "walk_to()", Just (Call (Name "walk_to") []) )
                 , ( "walk_to(Taylor, 100, 200)"
                   , Just (Call (Name "walk_to") [ Name "Taylor", NumberLiteral 100, NumberLiteral 200 ])
@@ -429,11 +424,6 @@ suite =
                 , ( "function(a, b): return a end"
                   , Just (FunctionLiteral [ ( "a", Nothing ), ( "b", Nothing ) ] (dummyBlock [ Return (Just (Name "a")) ]))
                   )
-
-                -- `a` and `a?` are two different identifiers
-                , ( "function(a, a?): return a end"
-                  , Just (FunctionLiteral [ ( "a", Nothing ), ( "a?", Nothing ) ] (dummyBlock [ Return (Just (Name "a")) ]))
-                  )
                 ]
         , describe "expr: array/table literals, call arguments, and grouping tolerate blank lines and comments inside brackets — a newline is only the significant statement separator outside one" <|
             List.map (testValue normalizeExpr P.parseExpr)
@@ -482,10 +472,10 @@ suite =
                 , ( "let true = 5", Just [ Let "true" (NumberLiteral 5) ] )
                 , ( "let if = 5", Nothing )
 
-                -- a trailing "?" is a legal identifier character (see
-                -- Zak.Internal.Lexer's "identifier" tests) — must flow through the
-                -- parser end to end, not just the raw lexeme
-                , ( "let empty? = true", Just [ Let "empty?" (Name "true") ] )
+                -- "?" is not an identifier character (see
+                -- Zak.Internal.Lexer's "identifier" tests), end to end too
+                , ( "let empty? = true", Nothing )
+                , ( "let x = y?", Nothing )
 
                 -- a multi-line call as a let's value doesn't leak its new
                 -- blank-space tolerance past its own closing bracket — the
@@ -503,15 +493,6 @@ let b = 2"""
                         , Let "b" (NumberLiteral 2)
                         ]
                   )
-
-                -- the reserved-word check applies to the whole identifier
-                -- including the suffix, so "let?" is not the "let" keyword
-                , ( "let let? = 5", Just [ Let "let?" (NumberLiteral 5) ] )
-
-                -- the same "?" boundary rule applies to a *call*, not
-                -- just a definition: "function?" parses as an ordinary
-                -- Name, not the "function" keyword plus a stray "?"
-                , ( "let f = function?(1)", Just [ Let "f" (Call (Name "function?") [ NumberLiteral 1 ]) ] )
                 ]
         , describe "statement: const (a direct structural copy of let, own reserved keyword)" <|
             List.map testProgram
@@ -548,7 +529,6 @@ let b = 2"""
                 -- only a bare `_` is special: longer names and table
                 -- fields are untouched
                 , ( "let x = _base", Just [ Let "x" (Name "_base") ] )
-                , ( "let x = _?", Just [ Let "x" (Name "_?") ] )
                 , ( "let x = t._", Just [ Let "x" (FieldAccess (Name "t") "_") ] )
                 , ( "let t = { _ = 1 }", Just [ Let "t" (TableLiteral [ ( "_", NumberLiteral 1 ) ]) ] )
                 , ( "t._ = 1", Just [ Assign (AssignTarget (Name "t") [ FieldSegment "_" ]) (NumberLiteral 1) ] )

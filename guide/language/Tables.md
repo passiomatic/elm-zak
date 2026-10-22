@@ -119,9 +119,9 @@ A function stored in a table doesn't automatically know which table it came from
 
 ```
 let door = {
-    locked? = true,
+    locked = true,
     unlock = function(self):
-        self.locked? = false
+        self.locked = false
     end
 }
 

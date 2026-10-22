@@ -4,21 +4,15 @@ How Zak source text is split into the pieces the language is built from: names, 
 
 ## Identifiers
 
-An identifier names a variable, a function parameter, or a table field. It starts with a letter or `_`, continues with letters, digits, or `_`, and may end with a single `?`. Identifiers are case-sensitive, and letters are ASCII only.
+An identifier names a variable, a function parameter, or a table field. It starts with a letter or `_`, and continues with letters, digits, or `_`. Identifiers are case-sensitive, and letters are ASCII only.
 
 ```
 health
 player_2
 _sound_id
-ready?
 ```
 
-Two naming conventions are common, but nothing in the language checks or enforces them:
-
-- a trailing `?` marks a name that holds, or a function that returns, a `Bool` — `ready?`, `is_open?`
-- a leading `_` marks a "semi-private" name, meant for internal use only — `_sound_id`
-
-`?` is only allowed as the very last character, so `a?b` is not one identifier.
+A leading `_` conventionally marks a "semi-private" name, meant for internal use only, like `_sound_id`. Nothing in the language checks or enforces it.
 
 ### The throwaway name `_`
 
@@ -44,8 +38,6 @@ and       const     else      end       for
 function  if        in        let       not
 or        return    while     break     continue
 ```
-
-A keyword followed by `?` is an ordinary identifier, so `end?` is a valid name.
 
 `true`, `false`, and `nil` are not keywords: they're predefined constants, always available in every script. Like any other constant, they can't be reassigned.
 

@@ -16,7 +16,7 @@ end
 A block can be empty, and a short one can stay on a single line, as long as it holds a single statement:
 
 ```
-if done?: return end
+if done: return end
 ```
 
 Every block has its own scope — see [Scope](Execution.md#scope).
@@ -34,10 +34,10 @@ end
 An `else` block runs when the condition is `false`:
 
 ```
-if door.locked?:
+if door.locked:
     Debug.log("It's locked.")
 else:
-    door.open? = true
+    door.open = true
 end
 ```
 
@@ -167,7 +167,7 @@ Field and index steps can be chained, as deep as needed, and can start from any 
 
 ```
 game.players[0].name = "Taylor"
-current_room().visited? = true
+current_room().visited = true
 ```
 
 What each kind of target allows:
