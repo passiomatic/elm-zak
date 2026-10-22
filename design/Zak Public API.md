@@ -27,11 +27,15 @@ Decided and done (2026-10-21), on the `twp` branch: step 2 of elm-adventure's TW
 - `Value`, `Effect`, `Error`, `Problem` and the refs don't take the parameter: since the function store, none of them holds an Elm function.
 - Named `game` rather than something host-neutral, since Zak is meant for games. Squirrel has the same idea, a host pointer attached to the VM (`sq_setforeignptr`).
 
-Waits became conditions on the world the same day (step 3, see "The thread model"). Still to come on `twp`: what's left of effects (step 4).
+Waits became conditions on the world the same day (step 3, see "The thread model").
+
+Effects stay as they are (step 4, 2026-10-22): `Effect`, `emitEffect`, `log` and `takeEffects` are unchanged. A native acts on the game with `updateGame`; effects are for what the game can't hold: logs always, and whatever a host would rather queue, such as sounds to play. elm-adventure's natives queue only logs now.
 
 ### Effects and waits named by strings
 
-Superseded for waits (2026-10-21): a waiting native now gives back a condition on the world, so waits have no names left to match (see "The thread model"). Effects are decided in step 4 of the TWP-like model; with natives acting on the game directly, few should remain.
+Superseded (2026-10-22). Waits went first (2026-10-21): a waiting native now gives back a condition on the world, so waits have no names left to match (see "The thread model"). Then effects: with natives acting on the game directly (see "The world carries the game"), the only effects elm-adventure still queues are logs, which Zak types itself. A host's own effects are now an option, not the way natives act, so a second type parameter on `World` would cost every host for the few that queue. `Effect String (List Value)` stays.
+
+The proposal, as it stood:
 
 Proposed (2026-10-20), not decided. A host tells its own effects and waits apart by matching strings: `Effect String (List Value)` and `Wait String (List Value)`. A native queues `emitEffect "say_line" [ id, text ]`, and the host matches `( "say_line", [ Number id, String text ] )` back into its own type. The engine does this for over thirty effects (`Engine.toWorldChange`) and for its waits (`Engine.Actor.stillWaiting`, which also turns the name back into a type by a reverse lookup). A misspelled name or a misshapen argument list is only caught at run time, where the compiler could catch both.
 

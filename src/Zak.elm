@@ -20,16 +20,17 @@ A host creates a [`World`](#World) with its own natives and its own
 game, runs Zak source into it, calls the functions the scripts define,
 and advances their threads once per frame. The world carries the game:
 the host's natives read and change it as scripts call them (see
-[`game`](#game)). Natives and scripts never perform effects themselves:
-they queue them in the world, and the host takes them out with
-[`takeEffects`](#takeEffects) and turns them into commands.
+[`game`](#game)), and the host reads it back after each call. What
+happens outside the world, such as a log line, is queued in it instead,
+and the host takes it out with [`takeEffects`](#takeEffects) (see
+[`Effect`](#Effect)).
 
     world =
-        Zak.init initialGame [ ( "say", say ) ]
+        Zak.init { lines = [] } [ ( "say", say ) ]
 
     case Zak.run "say(\"Hello!\")" world of
         Ok ( _, world1 ) ->
-            Zak.takeEffects world1
+            ( (Zak.game world1).lines, Zak.takeEffects world1 )
 
         Err error ->
             ...
@@ -585,16 +586,21 @@ threadCount (World state) =
 -- EFFECTS
 
 
-{-| Something a script asked the host to do. The host takes these with
-[`takeEffects`](#takeEffects), in the order they were queued, and turns
-each one into whatever it wants, usually a `Cmd`.
+{-| Something for the host to do outside the world. The host takes these
+with [`takeEffects`](#takeEffects), in the order they were queued, and
+turns each one into whatever it wants, usually a `Cmd`.
+
+A native that changes the host's game doesn't need one: it changes the
+game at once, with [`updateGame`](#updateGame). Effects are for what the
+game can't hold.
 
   - `Log` comes from the language: `Debug.log` and its siblings, and the
     interpreter's own warnings. The host's natives queue one with
     [`log`](#log).
   - `Effect` comes from the host's own natives, through
-    [`emitEffect`](#emitEffect): a name it chooses, and arguments elm-zak
-    never looks inside.
+    [`emitEffect`](#emitEffect), for a host that would rather queue some
+    of its work, such as a sound to play: a name it chooses, and
+    arguments elm-zak never looks inside.
 
 -}
 type Effect
@@ -946,13 +952,16 @@ type Native game
 {-| A function written in Elm. It gets the arguments the script passed,
 and the world; it gives back its result and the world, or an error.
 
-    say : Native game
+    type alias Game =
+        { lines : List String }
+
+    say : Native Game
     say =
         Zak.nativeFunction
             (\args world ->
                 case args of
                     [ String line ] ->
-                        Ok ( Nil, Zak.emitEffect "say" [ String line ] world )
+                        Ok ( Nil, Zak.updateGame (\g -> { g | lines = g.lines ++ [ line ] }) world )
 
                     _ ->
                         Err (WrongArgCount { expected = 1, got = List.length args })
