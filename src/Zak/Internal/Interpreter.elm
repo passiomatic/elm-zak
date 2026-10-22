@@ -5,6 +5,7 @@ module Zak.Internal.Interpreter exposing
     , hasThreads
     , include
     , initialWorld
+    , isThreadRunning
     , run
     , runExpr
     , runIncremental
@@ -740,6 +741,14 @@ hasThreads owner state =
     state.threads
         |> Dict.values
         |> List.any (\(Thread thread) -> thread.owner == owner)
+
+
+{-| Whether the thread `id` still exists: waiting for `tick`, or running
+now, its first run included. `Thread.join` waits on the same check.
+-}
+isThreadRunning : Int -> State game -> Bool
+isThreadRunning id state =
+    Dict.member id state.threads
 
 
 {-| Sets the owner of the code that runs outside any thread (what the

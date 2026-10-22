@@ -2,7 +2,7 @@ module Zak exposing
     ( World, init, game, updateGame, run, call, tick, reseed
     , Value(..), TableRef, ArrayRef, FunctionRef
     , getGlobal, setGlobal, globals, newTable, getField, setField, removeField, fields, items
-    , ThreadOwner, startThread, stopThreads, hasThreads, setThreadOwner, threadCount
+    , ThreadOwner, startThread, stopThreads, hasThreads, isThreadRunning, setThreadOwner, threadCount
     , Effect(..), LogLevel(..), emitEffect, log, takeEffects
     , Error, Problem(..), Position, errorProblem, errorPosition, errorToString
     , Native, nativeFunction, nativeWaitingFunction, nativeTable, nativeExpression, nativeConstant, nativeInclude
@@ -56,7 +56,7 @@ second, so updates chain with `|>`.
 
 # Threads
 
-@docs ThreadOwner, startThread, stopThreads, hasThreads, setThreadOwner, threadCount
+@docs ThreadOwner, startThread, stopThreads, hasThreads, isThreadRunning, setThreadOwner, threadCount
 
 
 # Effects
@@ -563,6 +563,31 @@ running now, from its first instruction.
 hasThreads : ThreadOwner -> World game -> Bool
 hasThreads owner (World state) =
     Interpreter.hasThreads owner state
+
+
+{-| Whether the thread `id` is still running: waiting for
+[`tick`](#tick), or running now, from its first instruction. `id` is what
+[`startThread`](#startThread) and `Thread.start` give back, and the check
+is the one `Thread.join` waits on, so a waiting native can join a thread:
+
+    Zak.nativeWaitingFunction
+        (\args world ->
+            ...
+                Ok ( Zak.isThreadRunning id, started )
+        )
+
+Anything that isn't a thread id, such as a finished thread's or a string,
+isn't running.
+
+-}
+isThreadRunning : Value -> World game -> Bool
+isThreadRunning id (World state) =
+    case id of
+        Number number ->
+            toFloat (round number) == number && Interpreter.isThreadRunning (round number) state
+
+        _ ->
+            False
 
 
 {-| Sets the owner of the code the host runs or calls directly, so the

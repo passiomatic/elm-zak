@@ -538,6 +538,24 @@ suite =
                         |> Result.map (Zak.stopThreads "level")
                         |> Result.map (\world -> ( Zak.threadCount world, Zak.hasThreads "level" world, Zak.hasThreads "music" world ))
                         |> Expect.equal (Ok ( 1, False, True ))
+            , test "isThreadRunning tells whether a thread is still running, from the id startThread gave back" <|
+                \_ ->
+                    let
+                        world0 =
+                            Zak.run "let waits = function(): Thread.wait_for(1.0) end" (Zak.init () [])
+                                |> Result.map Tuple.second
+                                |> Result.withDefault (Zak.init () [])
+                    in
+                    case Zak.getGlobal "waits" world0 |> Maybe.map (\fn -> Zak.startThread "level" fn [] world0) of
+                        Just (Ok ( id, started )) ->
+                            [ Zak.isThreadRunning id started
+                            , Zak.isThreadRunning id (Zak.tick 1.0 started |> Tuple.second)
+                            , Zak.isThreadRunning (String "1") started
+                            ]
+                                |> Expect.equal [ True, False, False ]
+
+                        _ ->
+                            Expect.fail "waits should start"
             , describe "waits the host defines (nativeWaitingFunction)"
                 [ test "a script waits while the condition is true, and carries on once it's false, never earlier than the next tick" <|
                     \_ ->
