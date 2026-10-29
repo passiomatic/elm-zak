@@ -3,7 +3,7 @@
 Things to ponder to improve usability of the language. 
 
 # Before v1 (package release)
-* Add a conditional expression (ternary). Options are in `design/Future.md`, section 6; Python's `a if cond else b` is the current favorite. It has to be syntax, not a function, because a function would evaluate both branches. C's `cond ? a : b` is ruled out as is because `:` already opens blocks (`if cond:`); `?` itself is free, since names can no longer contain it.
+* Add a conditional expression (ternary). The proposal, the options and the Delores use cases are in `design/Future.md`, section 6; Elm's `if cond then a else b` is the current favorite.
 
 * Implement Array.remove(array, value) This will help with inventory code. What are the most common semantics for the remove operation? 
 * Add Array.sort(ary) - probably in-place. How values like nil, booleans or function are sorted?

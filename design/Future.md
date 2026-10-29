@@ -88,15 +88,72 @@ This is more flexbile than that: https://developer.electricimp.com/squirrel/squi
 I think we need to implement this only if there's a real usage need. 
 
 
-# 6. Ternary operator or if/else variant
+## 6. Conditional expression
 
-We currently don't have a way to return a value from a `if/else` construct. We have various options (quoting from memory):
+There's no way to choose a value with a condition, because `if` is a statement. Today it takes a variable plus an `if`, or a function with two `return`s. It has to be syntax, not a function, because a function would evaluate both branches.
 
-* Classic C-style op: pred `?` when-true `:` when-false
-* Python: when-true `if` pred `else` when-false
-* Elm: `if` pred `then` when-true `else` when-false
- 
-Python's version is stronger for Zak because we don't introduce new keywords and reads well. Elm version is clearer
+**Use cases in Delores** (as of 2026-10-29: `Delores/`, `Delores/Scenes/` and `Shared/` in elm-adventure, 32 files, about 8,700 lines, 328 `if` statements). 58 of them, about 18%, only choose between two values:
+
+| Pattern | Count | Example |
+|---|---|---|
+| Two `return`s choosing a value | 25 | object property functions: `name`, `photo_name`, `for_story`, `icon` |
+| The same call, one argument differs | 24 | 16 `Actor.say_line`, 4 `Actor.set_state`, 2 `Actor.face` |
+| The same target assigned in both branches | 5 | `self.default_verb = "verb_use"` / `"verb_open"` |
+| A default, then overridden | 4 | `let text = template`, then `if noun1 != nil: text = ...` |
+
+- About 38 fit on one line in 100 characters or less: nearly all the returns, the `set_state` and `face` toggles, and most assignments. The other 20 or so are mostly `say_line` with two full dialogue lines (120 to 260 characters). Those read better as an `if` statement, whatever syntax we pick.
+- The original Dinky scripts used `? :` about 65 times, and the port turned them into `if` statements. None is nested or chained. About 15 aren't needed in Zak: `x ? YES : NO` (a Zak condition is already a `Bool`) and `a ? a : default`.
+
+The typical case, as it is today (`Vista.zak`):
+
+```
+name = function(self):
+    if self.sploded:
+        return "radioactive crater"
+    end
+    return "Edmund Mansion mansion"
+end,
+```
+
+**Options considered:**
+
+1. **C: `cond ? a : b`.** The most compact and the most familiar. But `?` is an obscure symbol for a script writer, and `:` already means "a block follows" (`if cond:`, `else:`, `function():`).
+2. **Python: `a if cond else b`.** No new keyword, and only 4 characters longer than C. It reads out of order: the condition, which is evaluated first, sits in the middle.
+3. **Make `if` itself an expression.** Fully (a block's value is its last statement), or restricted to one expression per branch: `if cond: a else: b end`. The full version needs a value for every block and a meaning for `return` / `break` inside a value. It would also break waits inside an `if`: `execStatement` can suspend a thread, `evalExpr` can't. The restricted version needs no new keyword and can span lines, but it's the longest on one line, and the typical case ends in `end end`. Its strengths, chains and multi-line branches, aren't needed: no Delores case uses them.
+4. **Elm: `if cond then a else b`.**
+
+The typical case with each:
+
+```
+name = function(self): return self.sploded ? "radioactive crater" : "Edmund Mansion mansion" end,
+name = function(self): return "radioactive crater" if self.sploded else "Edmund Mansion mansion" end,
+name = function(self): return if self.sploded: "radioactive crater" else: "Edmund Mansion mansion" end end,
+name = function(self): return if self.sploded then "radioactive crater" else "Edmund Mansion mansion" end,
+```
+
+**Proposal: Elm's form.**
+
+- It reads in order, as plain English, with no symbol to learn.
+- `:` keeps a single meaning. The rule is: **`:` opens a block, `then` picks a value.** The statement has blocks closed by `end`; the expression has single expressions and no `end`.
+- `else` is required, so a missing branch is a syntax error, not a silent `nil`.
+- `else if` chains work with no extra rules.
+- `?` stays free for null-safe access (`a?.b`) or `??`, if we ever need them. Dinky used `?.` a lot.
+- It costs one reserved word, `then`. No `.zak` file in elm-adventure or elm-zak uses it as a name (as of 2026-10-29).
+- It's 9 characters longer than C. About 34 of the 38 short cases still fit in 100 characters, against 37 for C.
+
+**How it would work:**
+
+- The parser treats `if … then … else …` as a primary expression. The `else` branch is a full expression, so it extends as far as it can: `if c then 1 else 2 + bonus` adds `bonus` only in the `else` branch (C and Python behave the same). Parentheses fix it.
+- At the start of a statement, `if` always means the `if` statement. `if c then f() else g()` there is an error, not a second way to write a one-line `if` statement.
+- Mixing up the two forms gets a targeted error: `let x = if c: a else: b end` says an `if` that produces a value uses `then`, and `if c then` as a statement says an `if` statement uses `:`.
+- Like any expression, it can't span lines, so the long `say_line` cases stay `if` statements.
+- One new `Expr` variant. The interpreter evaluates the condition, which must be a `Bool`, then only the chosen branch. A waiting call in a branch gets the usual "a waiting call must be a statement on its own" error.
+
+**Side findings, with no language change:**
+
+- 4 guard returns can use `and` today. `if not is_table(value): return false end` / `return "_is_actor" in value` becomes `return is_table(value) and "_is_actor" in value` (`ActorHelpers.zak:51`). The same goes for `SheriffsOffice.zak:204`, `IdleHelpers.zak:90`, and `Items.zak:266` (if `get_value` always returns a `Bool` there).
+- Only 3 cases default a `nil` (`Items.zak:29`, `DoorHelpers.zak:117`, `InventoryHelpers.zak:194`): too few to justify `??` now.
+- Most of the verbosity comes from the function wrapper, not the `if`. Dinky's `name = @expr` shorthand made a property one line. Even with a conditional expression, Zak still needs `function(self): return … end`. That's a separate idea, if it comes up.
 
 
 ## 7. Private `_` names in included files
