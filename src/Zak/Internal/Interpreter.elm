@@ -1101,23 +1101,38 @@ execStatements env state statements =
             Ok ( Done Normal, state )
 
         positioned :: rest ->
-            execStatement env state positioned.statement
-                |> Result.mapError (tagPosition positioned.position)
-                |> andThenOutcome
-                    (\signal state1 ->
-                        case signal of
-                            Normal ->
-                                execStatements env state1 rest
+            case execStatement env state positioned.statement |> Result.mapError (tagPosition positioned.position) of
+                -- A direct self-call, which Elm turns into a loop, so a long
+                -- block doesn't grow the stack (see `execWhile`).
+                Ok ( Done Normal, state1 ) ->
+                    execStatements env state1 rest
 
-                            -- Returning/Breaking/Continuing all stop the
-                            -- rest of *this* block from running and
-                            -- propagate up unchanged — it's whatever calls
-                            -- execBlock (execWhile, callFunction, ...) that
-                            -- decides whether to absorb it or keep
-                            -- propagating it further.
-                            _ ->
-                                Ok ( Done signal, state1 )
-                    )
+                Ok ( Done signal, state1 ) ->
+                    Ok ( Done signal, state1 )
+
+                Ok ( Suspended waitCondition resume, state1 ) ->
+                    Ok ( Suspended waitCondition resume, state1 )
+                        |> andThenOutcome (\signal state2 -> afterStatement env rest signal state2)
+
+                Err error ->
+                    Err error
+
+
+{-| What runs after a statement that waited, once it resumes: the rest of
+the block, unless the statement stopped it. Returning/Breaking/Continuing
+all stop the rest of _this_ block and propagate up unchanged — it's
+whatever calls `execBlock` (`execWhile`, `callFunction`, ...) that decides
+whether to absorb it or keep propagating it further. `execStatements`
+does the same inline for a statement that didn't wait.
+-}
+afterStatement : Env -> Block -> Signal -> State game -> Result RuntimeError ( Outcome game Signal, State game )
+afterStatement env rest signal state =
+    case signal of
+        Normal ->
+            execStatements env state rest
+
+        _ ->
+            Ok ( Done signal, state )
 
 
 {-| Wraps `error` in `WithPosition position error` — but only if it isn't
@@ -1230,41 +1245,80 @@ execStatement env state statement =
                 |> Result.map (\( _, state1 ) -> ( Done Normal, state1 ))
 
 
+{-| The next pass is a direct self-call in a `case` branch, which Elm
+turns into a loop: the stack stays flat however many passes run. Calling
+it from a function passed to `andThenOutcome`, as a pass that waited
+must, isn't a self-call, so it would nest one level per pass; that's why
+only a pass that waited goes through `andThenOutcome`. Its stack unwinds
+to `tick` while it waits, so nothing builds up there either.
+-}
 execWhile : Env -> State game -> Expr -> Block -> Result RuntimeError ( Outcome game Signal, State game )
 execWhile env state condExpr body =
-    evalExpr env state condExpr
-        |> Result.andThen
-            (\( condValue, state1 ) ->
-                case condValue of
-                    VBool True ->
-                        execBlock env state1 body
-                            |> andThenOutcome
-                                (\signal state2 ->
-                                    case signal of
-                                        Returning _ ->
-                                            -- propagates past this loop, all the way to the
-                                            -- enclosing function call (or the top level)
-                                            Ok ( Done signal, state2 )
+    case evalExpr env state condExpr of
+        Ok ( VBool True, state1 ) ->
+            case execBlock env state1 body of
+                Ok ( Done signal, state2 ) ->
+                    case loopStep signal of
+                        StopLoop result ->
+                            Ok ( Done result, state2 )
 
-                                        Breaking ->
-                                            -- absorbed here: stop looping, resume normally
-                                            -- with whatever comes after this while statement
-                                            Ok ( Done Normal, state2 )
+                        NextPass ->
+                            execWhile env state2 condExpr body
 
-                                        -- Continuing and Normal do the same thing at this
-                                        -- point: the body already stopped early (Continuing)
-                                        -- or ran to completion (Normal), either way it's time
-                                        -- to re-check the condition and possibly loop again
-                                        _ ->
-                                            execWhile env state2 condExpr body
-                                )
+                Ok ( Suspended waitCondition resume, state2 ) ->
+                    Ok ( Suspended waitCondition resume, state2 )
+                        |> andThenOutcome (afterPass (\state3 -> execWhile env state3 condExpr body))
 
-                    VBool False ->
-                        Ok ( Done Normal, state1 )
+                Err error ->
+                    Err error
 
-                    _ ->
-                        Err (TypeError { expected = "Bool", got = condValue })
-            )
+        Ok ( VBool False, state1 ) ->
+            Ok ( Done Normal, state1 )
+
+        Ok ( condValue, _ ) ->
+            Err (TypeError { expected = "Bool", got = condValue })
+
+        Err error ->
+            Err error
+
+
+{-| What a loop does after a pass that ended with a given signal.
+-}
+type LoopStep
+    = StopLoop Signal
+    | NextPass
+
+
+loopStep : Signal -> LoopStep
+loopStep signal =
+    case signal of
+        -- propagates past this loop, all the way to the enclosing
+        -- function call (or the top level)
+        Returning _ ->
+            StopLoop signal
+
+        -- absorbed here: stop looping, resume normally with whatever
+        -- comes after the loop
+        Breaking ->
+            StopLoop Normal
+
+        -- the body stopped early (Continuing) or ran to completion
+        -- (Normal): either way, on to the next pass
+        _ ->
+            NextPass
+
+
+{-| `loopStep` for a pass that waited, once it resumes: `nextPass` runs
+the rest of the loop.
+-}
+afterPass : (State game -> Result RuntimeError ( Outcome game Signal, State game )) -> Signal -> State game -> Result RuntimeError ( Outcome game Signal, State game )
+afterPass nextPass signal state =
+    case loopStep signal of
+        StopLoop result ->
+            Ok ( Done result, state )
+
+        NextPass ->
+            nextPass state
 
 
 {-| `let _ = expr` / `const _ = expr`: evaluates `expr` for its effects
@@ -1334,19 +1388,22 @@ execForLoop env state loopVar id body index =
                 Ok ( Done Normal, state )
 
             Just element ->
-                withFrame env (withoutThrowaway [ ( loopVar, element ) ]) state (\loopVarEnv state1 -> execBlock loopVarEnv state1 body)
-                    |> andThenOutcome
-                        (\signal state3 ->
-                            case signal of
-                                Returning _ ->
-                                    Ok ( Done signal, state3 )
+                -- the next pass is a direct self-call, as in `execWhile`
+                case withFrame env (withoutThrowaway [ ( loopVar, element ) ]) state (\loopVarEnv state1 -> execBlock loopVarEnv state1 body) of
+                    Ok ( Done signal, state2 ) ->
+                        case loopStep signal of
+                            StopLoop result ->
+                                Ok ( Done result, state2 )
 
-                                Breaking ->
-                                    Ok ( Done Normal, state3 )
+                            NextPass ->
+                                execForLoop env state2 loopVar id body (index + 1)
 
-                                _ ->
-                                    execForLoop env state3 loopVar id body (index + 1)
-                        )
+                    Ok ( Suspended waitCondition resume, state2 ) ->
+                        Ok ( Suspended waitCondition resume, state2 )
+                            |> andThenOutcome (afterPass (\state3 -> execForLoop env state3 loopVar id body (index + 1)))
+
+                    Err error ->
+                        Err error
 
 
 {-| `Taylor.a.b.c = 99` (an `AssignTarget (Name "Taylor") [ FieldSegment
@@ -2611,8 +2668,12 @@ arrayEach state args =
 
 {-| `mapValues` (below) with the mapped results discarded rather than
 collected — same shape, kept separate since `mapValues` returns
-`List Value`, not `State`, and threading a throwaway accumulator through
-it would be less clear than this own three-line recursion.
+`List Value`, not `State`.
+
+Like every walk over a collection here, the next step is a direct
+self-call in a `case` branch, which Elm turns into a loop, so a long
+collection doesn't grow the stack (see `execWhile`).
+
 -}
 eachValue : State game -> Value -> List Value -> Result RuntimeError (State game)
 eachValue state fn values =
@@ -2621,9 +2682,23 @@ eachValue state fn values =
             Ok state
 
         first :: rest ->
-            callFunction state fn [ first ]
-                |> Result.andThen (\( outcome, state1 ) -> requireDone outcome |> Result.map (\_ -> state1))
-                |> Result.andThen (\state1 -> eachValue state1 fn rest)
+            case callForValue state fn [ first ] of
+                Ok ( _, state1 ) ->
+                    eachValue state1 fn rest
+
+                Err error ->
+                    Err error
+
+
+{-| Calls `fn` from a native that needs its value right away: `fn`
+waiting isn't supported there (see `Zak.Internal.Runtime.requireDone`'s
+own doc), so a script that tries gets a clear `SuspendedNotAllowed` error
+rather than, say, a partially-applied map silently going wrong.
+-}
+callForValue : State game -> Value -> List Value -> Result RuntimeError ( Value, State game )
+callForValue state fn args =
+    callFunction state fn args
+        |> Result.andThen (\( outcome, state1 ) -> requireDone outcome |> Result.map (\value -> ( value, state1 )))
 
 
 {-| `Array.map(array, fn)` — a whole-collection derivation: never mutates
@@ -2635,7 +2710,7 @@ arrayMap : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayMap state args =
     case args of
         [ VArray id, fn ] ->
-            mapValues state fn (Array.toList (arrayContents state id))
+            mapValues state fn [] (Array.toList (arrayContents state id))
                 |> Result.map
                     (\( mapped, state1 ) ->
                         let
@@ -2652,24 +2727,21 @@ arrayMap state args =
             Err (WrongArgCount { expected = 2, got = List.length args })
 
 
-mapValues : State game -> Value -> List Value -> Result RuntimeError ( List Value, State game )
-mapValues state fn values =
+{-| `revMapped` holds the results so far, last first.
+-}
+mapValues : State game -> Value -> List Value -> List Value -> Result RuntimeError ( List Value, State game )
+mapValues state fn revMapped values =
     case values of
         [] ->
-            Ok ( [], state )
+            Ok ( List.reverse revMapped, state )
 
         first :: rest ->
-            -- `fn` suspending mid-map isn't supported in this pass (see
-            -- `Zak.Internal.Runtime.requireDone`'s own doc) — a script that tries
-            -- gets a clear `SuspendedNotAllowed` error rather than a
-            -- partially-applied map silently going wrong.
-            callFunction state fn [ first ]
-                |> Result.andThen (\( outcome, state1 ) -> requireDone outcome |> Result.map (\value -> ( value, state1 )))
-                |> Result.andThen
-                    (\( mappedFirst, state1 ) ->
-                        mapValues state1 fn rest
-                            |> Result.map (\( mappedRest, state2 ) -> ( mappedFirst :: mappedRest, state2 ))
-                    )
+            case callForValue state fn [ first ] of
+                Ok ( mapped, state1 ) ->
+                    mapValues state1 fn (mapped :: revMapped) rest
+
+                Err error ->
+                    Err error
 
 
 {-| `Array.filter(array, predicate)` — a whole-collection derivation: never
@@ -2682,7 +2754,7 @@ arrayFilter : State game -> List Value -> Result RuntimeError ( Value, State gam
 arrayFilter state args =
     case args of
         [ VArray id, predicate ] ->
-            filterValues state predicate (Array.toList (arrayContents state id))
+            filterValues state predicate [] (Array.toList (arrayContents state id))
                 |> Result.map
                     (\( filtered, state1 ) ->
                         let
@@ -2699,28 +2771,27 @@ arrayFilter state args =
             Err (WrongArgCount { expected = 2, got = List.length args })
 
 
-filterValues : State game -> Value -> List Value -> Result RuntimeError ( List Value, State game )
-filterValues state predicate values =
+{-| `revKept` holds the elements kept so far, last first.
+-}
+filterValues : State game -> Value -> List Value -> List Value -> Result RuntimeError ( List Value, State game )
+filterValues state predicate revKept values =
     case values of
         [] ->
-            Ok ( [], state )
+            Ok ( List.reverse revKept, state )
 
         first :: rest ->
-            callFunction state predicate [ first ]
-                |> Result.andThen (\( outcome, state1 ) -> requireDone outcome |> Result.map (\v -> ( v, state1 )))
-                |> Result.andThen
-                    (\( kept, state1 ) ->
-                        case kept of
-                            VBool True ->
-                                filterValues state1 predicate rest
-                                    |> Result.map (\( restKept, state2 ) -> ( first :: restKept, state2 ))
+            case callForValue state predicate [ first ] of
+                Ok ( VBool True, state1 ) ->
+                    filterValues state1 predicate (first :: revKept) rest
 
-                            VBool False ->
-                                filterValues state1 predicate rest
+                Ok ( VBool False, state1 ) ->
+                    filterValues state1 predicate revKept rest
 
-                            other ->
-                                Err (TypeError { expected = "Bool", got = other })
-                    )
+                Ok ( other, _ ) ->
+                    Err (TypeError { expected = "Bool", got = other })
+
+                Err error ->
+                    Err error
 
 
 {-| `Array.foldl(array, fn, initial)` — left-to-right reduction to a single
@@ -2766,9 +2837,12 @@ foldValues state fn acc values =
             Ok ( acc, state )
 
         first :: rest ->
-            callFunction state fn [ first, acc ]
-                |> Result.andThen (\( outcome, state1 ) -> requireDone outcome |> Result.map (\newAcc -> ( newAcc, state1 )))
-                |> Result.andThen (\( newAcc, state1 ) -> foldValues state1 fn newAcc rest)
+            case callForValue state fn [ first, acc ] of
+                Ok ( newAcc, state1 ) ->
+                    foldValues state1 fn newAcc rest
+
+                Err error ->
+                    Err error
 
 
 {-| `Array.range(lo, hi)` — a constructor, not a targeted edit or a
@@ -2995,6 +3069,9 @@ eachField state fn fields =
             Ok state
 
         ( name, value ) :: rest ->
-            callFunction state fn [ VString name, value ]
-                |> Result.andThen (\( outcome, state1 ) -> requireDone outcome |> Result.map (\_ -> state1))
-                |> Result.andThen (\state1 -> eachField state1 fn rest)
+            case callForValue state fn [ VString name, value ] of
+                Ok ( _, state1 ) ->
+                    eachField state1 fn rest
+
+                Err error ->
+                    Err error

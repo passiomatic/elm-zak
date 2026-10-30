@@ -913,4 +913,35 @@ end"""
                         Err err ->
                             Expect.fail ("expected success, got: " ++ Debug.toString err)
             ]
+        , describe "a thread's loop" <|
+            [ test "runs passes that wait and passes that don't, however many, without growing the stack" <|
+                \_ ->
+                    case
+                        runWithState """let log = { value = 0 }
+Thread.start(function():
+    let i = 0
+    while i < 100000:
+        if i % 50000 == 0:
+            Thread.wait_for(1.0)
+        end
+        i = i + 1
+    end
+    log.value = i
+end)
+return log"""
+                    of
+                        Ok ( log, state0 ) ->
+                            let
+                                ( state1, _ ) =
+                                    tick 1.0 state0
+
+                                ( state2, _ ) =
+                                    tick 1.0 state1
+                            in
+                            ( readTableField state1 log "value", readTableField state2 log "value", Dict.size state2.threads )
+                                |> Expect.equal ( Just (VNumber 0), Just (VNumber 100000), 0 )
+
+                        Err err ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString err)
+            ]
         ]

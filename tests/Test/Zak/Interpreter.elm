@@ -1257,6 +1257,76 @@ end"""
                         other ->
                             Expect.fail ("expected an InternalError, got: " ++ Debug.toString other)
             ]
+        , describe "run: a loop, a long block or a native's walk doesn't grow the stack, however long it runs" <|
+            List.map (testValue (run noNatives))
+                [ ( """let i = 0
+while i < 100000:
+    i = i + 1
+end
+return i"""
+                  , Just (VNumber 100000)
+                  )
+                , ( """let i = 0
+let odd = 0
+while i < 100000:
+    i = i + 1
+    if i % 2 == 0:
+        continue
+    end
+    odd = odd + 1
+end
+return odd"""
+                  , Just (VNumber 50000)
+                  )
+                , ( """let sum = 0
+for x in Array.range(1, 100000):
+    sum = sum + x
+end
+return sum"""
+                  , Just (VNumber 5000050000)
+                  )
+                , ( """let last = nil
+for x in Array.range(1, 100000):
+    last = x
+    if x == 99999:
+        break
+    end
+end
+return last"""
+                  , Just (VNumber 99999)
+                  )
+                , ( "let x = 0\n" ++ String.repeat 20000 "x = x + 1\n" ++ "return x"
+                  , Just (VNumber 20000)
+                  )
+                , ( """let t = { n = 0 }
+Array.each(Array.range(1, 100000), function(x): t.n = t.n + 1 end)
+return t.n"""
+                  , Just (VNumber 100000)
+                  )
+                , ( """let doubled = Array.map(Array.range(1, 100000), function(x): return x * 2 end)
+return doubled[99999]"""
+                  , Just (VNumber 200000)
+                  )
+                , ( """let even = Array.filter(Array.range(1, 100000), function(x): return x % 2 == 0 end)
+return Array.length(even) * 10 + even[0]"""
+                  , Just (VNumber 500002)
+                  )
+                , ( "return Array.foldl(Array.range(1, 100000), function(x, acc): return acc + x end, 0)"
+                  , Just (VNumber 5000050000)
+                  )
+                , ( "return Array.foldr(Array.range(1, 100000), function(x, acc): return x end, 0)"
+                  , Just (VNumber 1)
+                  )
+                , ( """let t = {}
+for i in Array.range(1, 20000):
+    Table.set(t, String.from(i), i)
+end
+let count = { n = 0 }
+Table.each(t, function(name, value): count.n = count.n + 1 end)
+return count.n"""
+                  , Just (VNumber 20000)
+                  )
+                ]
         , describe "run: natives" <|
             [ test "a flat native function can be called like any other" <|
                 \_ ->
