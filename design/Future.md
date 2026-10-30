@@ -256,3 +256,20 @@ Revisit option 3 if bugs from wrong strings show up. Ruby-style symbols would pr
 
 [q]: https://quirrel.io/doc/coming-from/squirrel.html
 
+## 9. Simpler lambda functions
+
+Instead of today's:
+
+    Array.filter(prices, function(p): return p <= 25 end)
+
+We could have: 
+
+    Array.filter(prices, \(p) -> p <= 25)
+
+or, coupled with a Elm-like ternary op:
+
+    Array.map(prices, \(p) -> if p > 100 then "Expensive" else "Quite cheap")
+
+The `\(args) -> expr` only holds an expression, so no `return` required. 
+
+The backslash-arrow combo comes from Elm.
