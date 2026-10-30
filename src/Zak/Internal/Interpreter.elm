@@ -438,10 +438,15 @@ seedState game natives =
     let
         ( resolvedNatives, state1 ) =
             resolveNatives ""
-                { heap = Dict.empty
+                -- Frame 0 exists, empty, while the natives are resolved:
+                -- a `NativeZakExpr` is evaluated in it, and a frame
+                -- missing from the heap means one freed too early
+                -- (`frameFreed`).
+                { heap = Dict.singleton 0 Dict.empty
                 , arrayHeap = Dict.empty
                 , functionHeap = Dict.empty
                 , constNames = Dict.empty
+                , capturedFrames = Set.empty
                 , nextId = 1
                 , threads = Dict.empty
                 , nextThreadId = 0
@@ -999,17 +1004,81 @@ signalValue signal =
 -- STATEMENTS / BLOCKS
 
 
-{-| Runs a `Block` in its own fresh scope frame, chained under `parentEnv` —
-this is the one place a new scope gets created, used uniformly for an `if`
-branch, a `while` body, a function call, and the top-level program alike.
+{-| Runs a `Block` in its own fresh scope frame, chained under `parentEnv`,
+used uniformly for an `if` branch, a `while` or `for` body and a function body.
 -}
 execBlock : Env -> State game -> Block -> Result RuntimeError ( Outcome game Signal, State game )
 execBlock parentEnv state statements =
+    withFrame parentEnv [] state (\env state1 -> execStatements env state1 statements)
+
+
+{-| Runs `body` in a new scope frame under `parentEnv`, holding `bindings`
+(a call's parameters, a `for` loop's variable, or nothing for a plain
+block), then frees the frame. Every scope frame is made here.
+
+A frame is freed as soon as its scope ends: once `body` is `Done`, or, if
+it suspends, once the resumed body is (`andThenOutcome` moves the freeing
+into the continuation). Only an `Env` can point at a frame, and an `Env`
+outlives its scope only inside a closure, so a frame some closure captured
+(`captureEnv`) is kept instead.
+
+A failed `body` frees nothing: its `State` is dropped with the error.
+
+-}
+withFrame :
+    Env
+    -> List ( String, Value )
+    -> State game
+    -> (Env -> State game -> Result RuntimeError ( Outcome game a, State game ))
+    -> Result RuntimeError ( Outcome game a, State game )
+withFrame parentEnv bindings state body =
     let
         ( frameId, state1 ) =
             allocCell state
+
+        state2 =
+            if List.isEmpty bindings then
+                state1
+
+            else
+                { state1 | heap = Dict.insert frameId (Dict.fromList bindings) state1.heap }
     in
-    execStatements (Env frameId (Just parentEnv)) state1 statements
+    body (Env frameId (Just parentEnv)) state2
+        |> andThenOutcome (\value state3 -> Ok ( Done value, releaseFrame frameId state3 ))
+
+
+releaseFrame : Int -> State game -> State game
+releaseFrame frameId state =
+    if Set.member frameId state.capturedFrames then
+        state
+
+    else
+        { state
+            | heap = Dict.remove frameId state.heap
+            , constNames = Dict.remove frameId state.constNames
+        }
+
+
+{-| Marks every frame of `env`'s chain as captured, so `releaseFrame` keeps
+it: a closure made in `env` can read any of them later. Stops at the first
+frame already marked, since its own ancestors were marked along with it.
+-}
+captureEnv : Env -> State game -> State game
+captureEnv (Env frameId parent) state =
+    if Set.member frameId state.capturedFrames then
+        state
+
+    else
+        let
+            marked =
+                { state | capturedFrames = Set.insert frameId state.capturedFrames }
+        in
+        case parent of
+            Just parentEnv ->
+                captureEnv parentEnv marked
+
+            Nothing ->
+                marked
 
 
 {-| Runs each statement in turn, tagging any `RuntimeError` that comes out
@@ -1265,17 +1334,7 @@ execForLoop env state loopVar id body index =
                 Ok ( Done Normal, state )
 
             Just element ->
-                let
-                    ( frameId, state1 ) =
-                        allocCell state
-
-                    loopVarEnv =
-                        Env frameId (Just env)
-
-                    state2 =
-                        { state1 | heap = Dict.insert frameId (Dict.fromList (withoutThrowaway [ ( loopVar, element ) ])) state1.heap }
-                in
-                execBlock loopVarEnv state2 body
+                withFrame env (withoutThrowaway [ ( loopVar, element ) ]) state (\loopVarEnv state1 -> execBlock loopVarEnv state1 body)
                     |> andThenOutcome
                         (\signal state3 ->
                             case signal of
@@ -1311,8 +1370,7 @@ assignment's own base can be _any_ expression, not just a name —
 other call before writing through it (see `AssignTarget`'s own doc in
 `Zak.Internal.AST`). For the plain `Name` case this is
 no behavior change at all: `evalExpr`'s own `Name` branch is exactly
-`lookupVar` plus the same `UndefinedName` wrapping this used to do by
-hand.
+`lookupVar`, which fails with `UndefinedName` the same way.
 
 -}
 execAssign : Env -> State game -> AssignTarget -> Value -> Result RuntimeError (State game)
@@ -1462,7 +1520,6 @@ evalExpr env state expression =
 
         Name name ->
             lookupVar env state name
-                |> Result.fromMaybe (UndefinedName name)
                 |> Result.map (\value -> ( value, state ))
 
         ArrayLiteral items ->
@@ -1488,7 +1545,7 @@ evalExpr env state expression =
                     )
 
         FunctionLiteral params body ->
-            Ok (allocFunction state (Closure params body env) |> Tuple.mapFirst VFunction)
+            Ok (allocFunction (captureEnv env state) (Closure params body env) |> Tuple.mapFirst VFunction)
 
         FieldAccess targetExpr field ->
             evalExpr env state targetExpr
@@ -1748,18 +1805,8 @@ callFunctionCell state function args =
                 evalDefaultArgs closureEnv state remainingParams
                     |> Result.andThen
                         (\( defaultedArgs, state1 ) ->
-                            let
-                                ( frameId, state2 ) =
-                                    allocCell state1
-
-                                callEnv =
-                                    Env frameId (Just closureEnv)
-
-                                state3 =
-                                    { state2 | heap = Dict.insert frameId (Dict.fromList (withoutThrowaway (suppliedArgs ++ defaultedArgs))) state2.heap }
-                            in
-                            execBlock callEnv state3 body
-                                |> Result.andThen (\( outcome, state4 ) -> mapOutcomeResult signalValue outcome |> Result.map (\mapped -> ( mapped, state4 )))
+                            withFrame closureEnv (withoutThrowaway (suppliedArgs ++ defaultedArgs)) state1 (\callEnv state2 -> execBlock callEnv state2 body)
+                                |> Result.andThen (\( outcome, state3 ) -> mapOutcomeResult signalValue outcome |> Result.map (\mapped -> ( mapped, state3 )))
                         )
 
 
@@ -2018,14 +2065,35 @@ valuesEqual a b =
 -- ENVIRONMENT / HEAP
 
 
-lookupVar : Env -> State game -> String -> Maybe Value
+{-| Walks outward through the scope chain to the nearest frame that has
+`name`. Like `defineVar` and `assignVar`, fails with `frameFreed` on a frame
+that isn't in the heap anymore, instead of skipping it: skipping would
+silently find an outer variable of the same name.
+-}
+lookupVar : Env -> State game -> String -> Result RuntimeError Value
 lookupVar (Env frameId parent) state name =
-    case Dict.get frameId state.heap |> Maybe.andThen (Dict.get name) of
-        Just value ->
-            Just value
-
+    case Dict.get frameId state.heap of
         Nothing ->
-            parent |> Maybe.andThen (\p -> lookupVar p state name)
+            Err (frameFreed frameId)
+
+        Just frame ->
+            case ( Dict.get name frame, parent ) of
+                ( Just value, _ ) ->
+                    Ok value
+
+                ( Nothing, Just parentEnv ) ->
+                    lookupVar parentEnv state name
+
+                ( Nothing, Nothing ) ->
+                    Err (UndefinedName name)
+
+
+{-| A scope frame used after `withFrame` freed it: a bug in the
+interpreter, never in the script.
+-}
+frameFreed : Int -> RuntimeError
+frameFreed frameId =
+    InternalError ("scope frame " ++ String.fromInt frameId ++ " was freed while still in use")
 
 
 {-| `let`: adds a new binding to the _current_ frame only — an error if
@@ -2035,15 +2103,16 @@ current frame starts out empty for a freshly-entered block).
 -}
 defineVar : Env -> State game -> String -> Value -> Result RuntimeError (State game)
 defineVar (Env frameId _) state name value =
-    let
-        frame =
-            Dict.get frameId state.heap |> Maybe.withDefault Dict.empty
-    in
-    if Dict.member name frame then
-        Err (AlreadyDefined name)
+    case Dict.get frameId state.heap of
+        Nothing ->
+            Err (frameFreed frameId)
 
-    else
-        Ok { state | heap = Dict.insert frameId (Dict.insert name value frame) state.heap }
+        Just frame ->
+            if Dict.member name frame then
+                Err (AlreadyDefined name)
+
+            else
+                Ok { state | heap = Dict.insert frameId (Dict.insert name value frame) state.heap }
 
 
 {-| `const`: marks `name`, in the _same_ frame `defineVar` just bound it
@@ -2079,24 +2148,25 @@ name itself isn't.
 -}
 assignVar : Env -> State game -> String -> Value -> Result RuntimeError (State game)
 assignVar (Env frameId parent) state name value =
-    let
-        frame =
-            Dict.get frameId state.heap |> Maybe.withDefault Dict.empty
-    in
-    if Dict.member name frame then
-        if isConst frameId name state then
-            Err (ConstReassigned name)
+    case Dict.get frameId state.heap of
+        Nothing ->
+            Err (frameFreed frameId)
 
-        else
-            Ok { state | heap = Dict.insert frameId (Dict.insert name value frame) state.heap }
+        Just frame ->
+            if Dict.member name frame then
+                if isConst frameId name state then
+                    Err (ConstReassigned name)
 
-    else
-        case parent of
-            Just p ->
-                assignVar p state name value
+                else
+                    Ok { state | heap = Dict.insert frameId (Dict.insert name value frame) state.heap }
 
-            Nothing ->
-                Err (UndefinedName name)
+            else
+                case parent of
+                    Just p ->
+                        assignVar p state name value
+
+                    Nothing ->
+                        Err (UndefinedName name)
 
 
 isConst : Int -> String -> State game -> Bool

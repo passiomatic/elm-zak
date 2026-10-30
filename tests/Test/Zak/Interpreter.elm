@@ -78,6 +78,33 @@ expectTableWhereArray result =
             Expect.fail ("expected a TypeError, got: " ++ Debug.toString other)
 
 
+{-| `measure` of the world after running `setup`, then after also running
+`source` in it: the same when `source` freed every scope frame it made.
+-}
+measureAround : (Runtime.State () -> Int) -> String -> String -> Result Error ( Int, Int )
+measureAround measure setup source =
+    let
+        ( env, state0 ) =
+            I.initialWorld () noNatives
+    in
+    I.runIncremental env state0 setup
+        |> Result.andThen
+            (\( _, state1 ) ->
+                I.runIncremental env state1 source
+                    |> Result.map (\( _, state2 ) -> ( measure state1, measure state2 ))
+            )
+
+
+expectUnchanged : Result Error ( Int, Int ) -> Expect.Expectation
+expectUnchanged result =
+    case result of
+        Ok ( before, after ) ->
+            Expect.equal before after
+
+        Err err ->
+            Expect.fail ("expected success, got: " ++ Debug.toString err)
+
+
 suite : Test
 suite =
     describe "Zak.Internal.Interpreter"
@@ -1107,6 +1134,129 @@ return counter_a()"""
                   , Just (VNumber 3)
                   )
                 ]
+        , describe "run: a closure keeps the scope it was made in, after that scope ends" <|
+            List.map (testValue (run noNatives))
+                [ -- each pass of a for loop has its own frame for the
+                  -- loop variable, and each closure keeps its own
+                  ( """let fns = []
+for x in [1, 2, 3]:
+    Array.push(fns, function(): return x end)
+end
+return fns[0]() * 100 + fns[1]() * 10 + fns[2]()"""
+                  , Just (VNumber 123)
+                  )
+                , ( """let f = nil
+if true:
+    let secret = 42
+    f = function(): return secret end
+end
+return f()"""
+                  , Just (VNumber 42)
+                  )
+                , ( """let outer = function(a):
+    let middle = function(b):
+        return function(c): return a + b + c end
+    end
+    return middle(20)
+end
+return outer(100)(3)"""
+                  , Just (VNumber 123)
+                  )
+
+                -- a default value that's a function literal is made in
+                -- the scope the function was written in
+                , ( """let make = function(base):
+    return function(f = function(): return base end):
+        return f()
+    end
+end
+let get = make(7)
+return get()"""
+                  , Just (VNumber 7)
+                  )
+                ]
+        , describe "run: a scope frame is freed when its scope ends, unless a closure kept it" <|
+            [ test "calls, loops and if branches leave the heap as they found it" <|
+                \_ ->
+                    measureAround (.heap >> Dict.size)
+                        """let add = function(a, b):
+    let sum = a + b
+    if sum > 10:
+        return sum
+    end
+    return sum
+end"""
+                        """let total = 0
+let i = 0
+while i < 100:
+    total = add(total, 1)
+    for x in [1, 2]:
+        if x == 2:
+            total = total + 0
+        else:
+            continue
+        end
+    end
+    i = i + 1
+end"""
+                        |> expectUnchanged
+            , test "a return or a break out of nested blocks still frees them" <|
+                \_ ->
+                    measureAround (.heap >> Dict.size)
+                        """let find = function(items, wanted):
+    for item in items:
+        while true:
+            if item == wanted:
+                return item
+            end
+            break
+        end
+    end
+    return nil
+end"""
+                        "let found = find([1, 2, 3], 2)"
+                        |> expectUnchanged
+            , test "a const in a freed frame is forgotten with it" <|
+                \_ ->
+                    measureAround (.constNames >> Dict.size)
+                        "let i = 0"
+                        """while i < 10:
+    const c = i
+    i = i + 1
+end"""
+                        |> expectUnchanged
+            , test "a frame a closure captured is kept" <|
+                \_ ->
+                    case
+                        measureAround (.heap >> Dict.size)
+                            """let make_counter = function():
+    let count = 0
+    return function():
+        count = count + 1
+        return count
+    end
+end"""
+                            "let next = make_counter()"
+                    of
+                        Ok ( before, after ) ->
+                            -- the call's parameter frame and its body's frame
+                            Expect.equal (before + 2) after
+
+                        Err err ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString err)
+            , test "reading through a frame that isn't in the heap is an internal error, not a fall-through to the outer scopes" <|
+                \_ ->
+                    let
+                        ( env, state ) =
+                            I.initialWorld () noNatives
+                    in
+                    case I.runIncremental (Runtime.Env 999999 (Just env)) state "return true" of
+                        Err (RuntimeError error) ->
+                            Expect.equal (InternalError "scope frame 999999 was freed while still in use") (Runtime.dropPosition error)
+
+                        other ->
+                            Expect.fail ("expected an InternalError, got: " ++ Debug.toString other)
+            ]
         , describe "run: natives" <|
             [ test "a flat native function can be called like any other" <|
                 \_ ->

@@ -874,4 +874,43 @@ return log"""
                         Err err ->
                             Expect.fail ("expected success, got: " ++ Debug.toString err)
             ]
+        , describe "scope frames of a waiting thread" <|
+            [ test "they outlive the wait, and are freed once the thread finishes" <|
+                \_ ->
+                    let
+                        ( env, state0 ) =
+                            I.initialWorld () Dict.empty
+
+                        tickTimes n state =
+                            List.foldl (\_ s -> Tuple.first (tick 1.0 s)) state (List.range 1 n)
+                    in
+                    case
+                        I.runIncremental env state0 """let log = { value = 0 }
+let add_slowly = function(items):
+    let sum = 0
+    for item in items:
+        if item > 0:
+            Thread.wait_for(1.0)
+            sum = sum + item
+        end
+    end
+    log.value = sum
+end"""
+                    of
+                        Ok ( _, state1 ) ->
+                            case I.runIncremental env state1 "Thread.start(function(): add_slowly([1, 2, 3]) end)\nreturn log" of
+                                Ok ( log, state2 ) ->
+                                    let
+                                        finished =
+                                            tickTimes 4 state2
+                                    in
+                                    ( readTableField finished log "value", Dict.size state2.heap > Dict.size state1.heap, Dict.size finished.heap )
+                                        |> Expect.equal ( Just (VNumber 6), True, Dict.size state1.heap )
+
+                                Err err ->
+                                    Expect.fail ("expected success, got: " ++ Debug.toString err)
+
+                        Err err ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString err)
+            ]
         ]

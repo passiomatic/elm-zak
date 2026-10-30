@@ -489,6 +489,15 @@ type alias State game =
     , arrayHeap : ArrayHeap
     , functionHeap : FunctionHeap game
     , constNames : Dict Int (Set String)
+
+    {- Every scope frame some closure's `Env` chain reaches -- marked when
+       a `function` literal is evaluated
+       (`Zak.Internal.Interpreter.captureEnv`). A frame is freed when its
+       block ends (`Zak.Internal.Interpreter.withFrame`), unless it's in
+       here: the closure may still read it later. A marked frame is never
+       freed, even once its closure is gone.
+    -}
+    , capturedFrames : Set Int
     , nextId : Int
     , threads : Dict ThreadId (Thread game)
     , nextThreadId : ThreadId
