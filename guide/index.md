@@ -20,9 +20,9 @@ To run the examples as you read, paste them into [Try Zak](https://passiomatic.g
 
 ## Standard library functions
 
+- [Global functions](stdlib/Global.md) — `type` and other type helpers
 - [Array](stdlib/Array.md) — ordered, mutable collections that can grow and shrink
 - [Debug](stdlib/Debug.md) — logging and assertions
-- [Global functions](stdlib/Global.md) — `type` and other type helpers
 - [Math](stdlib/Math.md) — trigonometry, rounding, `pi`
 - [Random](stdlib/Random.md) — random numbers, picks, and weighted coin flips
 - [String](stdlib/String.md) — string inspection and formatting
