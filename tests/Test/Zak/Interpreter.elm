@@ -1327,6 +1327,13 @@ return count.n"""
                   , Just (VNumber 20000)
                   )
                 ]
+        , describe "run: \\n and \\t in a string are a line break and a tab" <|
+            List.map (testValue (run noNatives))
+                [ ( "return String.length(\"a\\nb\")", Just (VNumber 3) )
+                , ( "return String.length(\"a\\tb\")", Just (VNumber 3) )
+                , ( "return \"a\\nb\" == \"a\nb\"", Just (VBool True) )
+                , ( "return String.split(\"one\\ntwo\\nthree\", \"\\n\")[2]", Just (VString "three") )
+                ]
         , describe "run: natives" <|
             [ test "a flat native function can be called like any other" <|
                 \_ ->

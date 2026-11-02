@@ -70,9 +70,11 @@ suite =
                 , ( "let t = { a = 1, 2 = 3 }", ( 1, 18 ), "expected a name" )
                 , ( "let s = \"abc", ( 1, 13 ), "this string is missing its closing “\"”" )
                 , ( "let x = 1.", ( 1, 11 ), "expected a digit after the decimal point" )
+                , ( "let s = \"a\\q\"", ( 1, 12 ), "“\\q” isn't an escape: in a string, “\\” can only start “\\\"”, “\\\\”, “\\n” or “\\t”" )
+                , ( "let s = \"a\\", ( 1, 12 ), "this string is missing its closing “\"”" )
 
-                -- the generic list stays when it's the whole story
-                , ( "let s = \"a\\q\"", ( 1, 12 ), "expected “\"”, or “\\”" )
+                -- the generic message stays when it's the whole story
+                , ( "print(1 2)", ( 1, 9 ), "expected “)”" )
                 ]
         , describe "errorToString: a line no statement can start with still gets the generic message, at that line" <|
             List.map testSyntaxError

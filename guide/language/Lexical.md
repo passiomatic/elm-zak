@@ -94,17 +94,23 @@ A string literal is enclosed in double quotes:
 ""
 ```
 
-Inside a string, `\` starts an escape, and only two escapes exist:
+Inside a string, `\` starts an escape, and only four escapes exist:
 
-| Escape | Produces |
-| ------ | -------- |
-| `\"`   | `"`      |
-| `\\`   | `\`      |
+| Escape | Produces     |
+| ------ | ------------ |
+| `\"`   | `"`          |
+| `\\`   | `\`          |
+| `\n`   | a line break |
+| `\t`   | a tab        |
 
-Any other character after `\` is a syntax error — there is no `\n` or `\t`. A string may span several lines instead, and the line breaks become part of its value:
+Any other character after `\` is a syntax error. What a line break or a tab looks like is up to whatever shows the string.
+
+A string may also span several lines, and the line breaks become part of its value. These two strings are equal:
 
 ```
-let message = "first line
+let message = "first line\nsecond line"
+
+let same = "first line
 second line"
 ```
 

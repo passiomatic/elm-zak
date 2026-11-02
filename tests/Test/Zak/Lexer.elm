@@ -63,7 +63,16 @@ suite =
                 , ( "\"This is a \\\"quote\\\" inside a string\"", Just "This is a \"quote\" inside a string" )
                 , ( "\"This is a \\\\ inside a string\"", Just "This is a \\ inside a string" )
                 , ( "\"unterminated", Nothing )
-                , ( "\"bad escape: \\n\"", Nothing )
+                , ( "\"first\\nsecond\"", Just "first\nsecond" )
+                , ( "\"name\\tvalue\"", Just "name\tvalue" )
+
+                -- an escaped backslash, then a plain "n"
+                , ( "\"C:\\\\new\"", Just "C:\\new" )
+
+                -- a real line break works too, and is the same string
+                , ( "\"first\nsecond\"", Just "first\nsecond" )
+                , ( "\"bad escape: \\q\"", Nothing )
+                , ( "\"ends in a backslash\\", Nothing )
 
                 -- "'" is no longer a delimiter at all -- an unescaped
                 -- apostrophe inside a double-quoted string is just an

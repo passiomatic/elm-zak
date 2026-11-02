@@ -30,7 +30,8 @@
           "begin": "\"",
           "end": "\"",
           "patterns": [
-            { "name": "constant.character.escape.zak", "match": "\\\\." }
+            { "name": "constant.character.escape.zak", "match": "\\\\[\"\\\\nt]" },
+            { "name": "invalid.illegal.escape.zak", "match": "\\\\." }
           ]
         }
       ]

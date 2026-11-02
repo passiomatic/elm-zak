@@ -11,7 +11,7 @@ Things to ponder to improve usability of the language.
 * Drop `for .. in` and ~~add Array.each(ary, function(entry): ... end ) like Gleam~~ (`Array.each` done; `for .. in` is still there)
 * Add stack trace when reporting an error
 * ~~Should strings be considered a collection, hence be "iterable" via a for-loop?~~ Nope
-* Should we suppport \n and \t in strings? What does they mean since we don't have a tradional stdout? 
+* ~~Should we suppport \n and \t in strings? What does they mean since we don't have a tradional stdout?~~ Done: elm-adventure's close-up text (`Scene.draw_text`) needs line breaks, and the host decides what a line break or a tab looks like
 * Add += and other assign in place operators
 
 # Nice to have math stuff

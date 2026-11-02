@@ -52,12 +52,14 @@ toFloatOrFail chomped =
             P.problem ("expected a number, got \"" ++ chomped ++ "\"")
 
 
-{-| A Zak string literal: double-quoted, with `\` escaping either `"` or
-another backslash. Any other use of `\` is a parse error rather than a
-recognized escape (e.g. there is no `\n`). There is only one string form:
-a second, single-quoted one would have been 100% equivalent to this one,
-adding syntax without adding meaning. `'` is just an ordinary character,
-no different from any other symbol this grammar doesn't recognize.
+{-| A Zak string literal: double-quoted, with `\` starting one of four
+escapes: `\"`, `\\`, `\n` (a line break) or `\t` (a tab). Any other use
+of `\` is a parse error naming the escape (see `escapedChar`). A real line
+break inside the quotes is part of the string too. There is only one
+string form: a second, single-quoted one would have been 100% equivalent
+to this one, adding syntax without adding meaning. `'` is just an ordinary
+character, no different from any other symbol this grammar doesn't
+recognize.
 -}
 string : Parser String
 string =
@@ -85,12 +87,43 @@ stringBody revChunks =
         ]
 
 
+{-| What follows a `\` in a string. Anything but the four escapes fails
+with a message naming the character, rather than `elm/parser`'s list of
+what it expected instead.
+-}
 escapedChar : Parser String
 escapedChar =
     P.oneOf
         [ P.symbol "\"" |> P.map (\_ -> "\"")
         , P.symbol "\\" |> P.map (\_ -> "\\")
+        , P.symbol "n" |> P.map (\_ -> "\n")
+        , P.symbol "t" |> P.map (\_ -> "\t")
+        , P.succeed nextChar
+            |= P.getOffset
+            |= P.getSource
+            |> P.andThen unknownEscape
         ]
+
+
+{-| The character at `offset` in `source`, if any: `String.toList`, not a
+one-unit slice, so a character outside the Basic Multilingual Plane
+(an emoji) comes out whole.
+-}
+nextChar : Int -> String -> Maybe Char
+nextChar offset source =
+    String.slice offset (offset + 2) source
+        |> String.toList
+        |> List.head
+
+
+unknownEscape : Maybe Char -> Parser String
+unknownEscape char =
+    case char of
+        Just c ->
+            P.problem ("“\\" ++ String.fromChar c ++ "” isn't an escape: in a string, “\\” can only start “\\\"”, “\\\\”, “\\n” or “\\t”")
+
+        Nothing ->
+            P.problem "this string is missing its closing “\"”"
 
 
 {-| The structural keywords that are part of the grammar itself (the
