@@ -2,7 +2,7 @@
 
 A table is a collection of named fields. Each field has a name, which is a string, and a value, which can be of any type — including another table, an array, or a function.
 
-Tables are the way to group related values together: an actor's state, a room's description, a set of settings.
+Tables are the way to group related values together: an game entity's state, a level's description, a set of settings.
 
 ```
 let player = {
