@@ -180,15 +180,30 @@ _my_internal_function(...)    # Error: _my_internal_function is private to Helpe
 - A top-level `let` / `const` whose name starts with `_` binds in the file frame. Any other name binds directly in the world frame, so there's only one copy.
 - Functions defined in the file capture the file frame, so lookups go file frame → world frame: they see both their private names and all globals. Other files only see the world frame.
 - The error should say why: "private to Helpers.zak", not just "undefined".
+- Only top-level names: a `let` inside a function or block, a table field (`_id`, `_state`), and the throwaway `_` stay as they are.
+- The state keeps each included file's frame by path. The error message uses it, and so does the save walk (below).
+- Code the host runs directly (the root script, or a `Zak.run` snippet such as a compiled yack) stays in the world frame: only included files get one.
+- A side benefit: two files can each have their own `_ladder`, with no `AlreadyDefined`.
 
 That's one new frame per include, a check in `let` / `const`, and the error message. The interpreter change is small and contained.
 
-**The real cost: `_` already means "engine-facing".** This is inherited from Dinky, where `_enterRoom`, `_clickedAt` and similar are system callbacks. In elm-adventure (as of 2026-10-15), 42 top-level names start with `_`, and many are deliberately shared:
+**The game is ready (as of 2026-11-03).** `_` used to mean "engine-facing" too, inherited from Dinky, where `_enterRoom`, `_clickedAt` and similar are system callbacks. On 2026-10-15 elm-adventure had 42 top-level `_` names, many deliberately shared: Elm looked up the `_on_*` callbacks, `_verbs_for`, `_current_scene` and others by name. Since then:
 
-- The engine looks them up by name from Elm: `_inventory_view`, `_verbs_for`, `_create_hover_name`, `_drag_sentence`, the `_on_*` callbacks (`_on_object_clicked`, `_on_verb_chosen`, `_on_enter_scene`, `_on_trigger`, `_on_actor_arrived`, `_on_item_dropped`, `_on_animation_trigger`), and the reserved `_current_scene` / `_current_actor`. The host reads the world frame, so all of these would disappear.
-- Other files use them: `_base_door` (in 4 files), `_check_verbs`, `_call_verb`, `_default_verb`, `_face_toward`, `_base_actor`.
+- The engine hooks have plain names (`Input.on_click`, `Input.verb_menu`, `Game.on_yack_started`, ...). Elm reads no `_` global any more, only the `_id`, `_key` and `_scene_id` table fields, which privacy doesn't touch.
+- The 9 helpers other files used lost their `_` (2026-11-03): `check_verbs`, `can`, `can_function`, `default_verb` and `replace_object_item` (VerbHelpers), `face_toward` (ActorHelpers), `base_door`, `base_drawer` and `set_door_state` (DoorHelpers). The VerbHelpers ones are internals shared between the Shared files, which file-level privacy can't express, so they're public now.
 
-So the game would need to rename every engine hook and shared-internal name (e.g. `_on_object_clicked` → `on_object_clicked`) before privacy is turned on, along with the Elm code that refers to them. Table fields like `_id`, `_key` and `_state` aren't affected: this only applies to top-level names.
+The other 37 `_` names are only used in their own file.
+
+**Save games.** elm-adventure's `design/Save Games.md` plans the Zak side of a save as a walk of the world frame (`Zak.globals`). It isn't built yet. Private names would drop out of that walk, and some hold game state:
+
+- reassigned at runtime, so only the name reaches the value: `_active_stories` and `_completed_stories` (Note), `_music_sid`, `_ambient_sid`, `_ambient_sound`, `_room_music_sid` and `_playing_pool` (SoundHelpers);
+- changed in place: `_once_checks`, `_inventory`, `_photos_taken` and `_active_photos_taken`, lost too unless a public global also reaches them.
+
+So the public API needs a way to list and set each file's private names, saved at a path like `Note.zak/_active_stories`. The alternative, "private names aren't saved", would push that state into public tables, a surprising rule.
+
+**Docs to change.** `guide/language/Lexical.md` says nothing enforces `_`. It would say that a `_` name at the top level of a file is private to that file (the guide doesn't cover `include`). `nativeInclude`'s doc in `Zak.elm` says every top-level definition becomes a global.
+
+**The name stays `include`.** Public names still land in the shared world, with no table to reach them through.
 
 **Prior art:**
 
@@ -197,7 +212,7 @@ So the game would need to rename every engine hook and shared-internal name (e.g
 - **Go:** an initial capital letter means exported, lowercase means unexported. A naming rule, like this idea.
 - **Lua:** a top-level `local` is private to its file, and globals are shared. A keyword, not a naming rule.
 
-**Open question:** should `_` mean "private" (Dart-style)? If so, the game's naming has to be cleaned up first, and engine hooks need a different marker (e.g. `on_*` with no underscore). If `_` stays for engine hooks, a Lua-style keyword avoids the clash, but adds new syntax.
+**Open question:** should `_` mean "private" (Dart-style)? The clash with engine hooks, which made a Lua-style keyword worth considering, is gone (above). What's left to settle is the save API.
 
 
 ## 8. Enums
