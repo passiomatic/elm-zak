@@ -4,7 +4,7 @@ clean:
 	rm -rf build/
 
 reactor:
-	elm reactor
+	npx elm reactor
 
 guide:
 	.venv/bin/mkdocs build -f guide/mkdocs.yml
