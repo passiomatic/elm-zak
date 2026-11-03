@@ -156,7 +156,9 @@ name = function(self): return if self.sploded then "radioactive crater" else "Ed
 - Most of the verbosity comes from the function wrapper, not the `if`. Dinky's `name = @expr` shorthand made a property one line. Even with a conditional expression, Zak still needs `function(self): return … end`. That's a separate idea, if it comes up.
 
 
-## 7. Private `_` names in included files
+## ✅ 7. Private `_` names in included files - DONE
+
+**Done (2026-11-03),** as described under "How privacy works" below. `include` gives each file a frame of its own (`State.fileFrames`), `bindingEnv` decides where a top-level `let` / `const` binds, and reading or assigning another file's `_` name is a `PrivateName`. The host sees it as an `UndefinedName`, with a message naming the file. The guide covers it in `guide/language/Execution.md`, "Private names". Still open: host access to private names, which the save walk needs (below).
 
 Keep a file's top-level `_underscored` names private to it, so `include` doesn't make them visible to the including script:
 
@@ -172,16 +174,16 @@ public_function(...)          # OK
 _my_internal_function(...)    # Error: _my_internal_function is private to Helpers.zak
 ```
 
-**How `include` works today.** It runs the file's statements directly in the shared world frame (`state.globalFrameId`), so every top-level `let` of every included file lands in the same frame and is visible everywhere.
+**How `include` worked before.** It ran the file's statements directly in the shared world frame (`state.globalFrameId`), so every top-level `let` of every included file landed in the same frame and was visible everywhere.
 
-**How privacy would work.** Running each file in its own frame and then copying the public names into the world frame doesn't work: it leaves two copies of every public variable, and the file's own functions would update their copy while other files read the other one. Instead, decide where each binding goes when the `let` runs:
+**How privacy works.** Running each file in its own frame and then copying the public names into the world frame doesn't work: it leaves two copies of every public variable, and the file's own functions would update their copy while other files read the other one. Instead, decide where each binding goes when the `let` runs:
 
 - Each included file runs in its own frame, whose parent is the world frame.
 - A top-level `let` / `const` whose name starts with `_` binds in the file frame. Any other name binds directly in the world frame, so there's only one copy.
 - Functions defined in the file capture the file frame, so lookups go file frame → world frame: they see both their private names and all globals. Other files only see the world frame.
 - The error should say why: "private to Helpers.zak", not just "undefined".
 - Only top-level names: a `let` inside a function or block, a table field (`_id`, `_state`), and the throwaway `_` stay as they are.
-- The state keeps each included file's frame by path. The error message uses it, and so does the save walk (below).
+- The state keeps each included file's frame, with its path (`fileFrames`). The error message uses it, and so will the save walk (below).
 - Code the host runs directly (the root script, or a `Zak.run` snippet such as a compiled yack) stays in the world frame: only included files get one.
 - A side benefit: two files can each have their own `_ladder`, with no `AlreadyDefined`.
 
@@ -201,7 +203,7 @@ The other 37 `_` names are only used in their own file.
 
 So the public API needs a way to list and set each file's private names, saved at a path like `Note.zak/_active_stories`. The alternative, "private names aren't saved", would push that state into public tables, a surprising rule.
 
-**Docs to change.** `guide/language/Lexical.md` says nothing enforces `_`. It would say that a `_` name at the top level of a file is private to that file (the guide doesn't cover `include`). `nativeInclude`'s doc in `Zak.elm` says every top-level definition becomes a global.
+**Docs.** `guide/language/Lexical.md` points to the new "Private names" section in `guide/language/Execution.md`, which doesn't name `include` (the guide doesn't cover it). `nativeInclude`, `globals` and `setGlobal` in `Zak.elm` say what a host can and can't reach.
 
 **The name stays `include`.** Public names still land in the shared world, with no table to reach them through.
 
@@ -212,7 +214,7 @@ So the public API needs a way to list and set each file's private names, saved a
 - **Go:** an initial capital letter means exported, lowercase means unexported. A naming rule, like this idea.
 - **Lua:** a top-level `local` is private to its file, and globals are shared. A keyword, not a naming rule.
 
-**Open question:** should `_` mean "private" (Dart-style)? The clash with engine hooks, which made a Lua-style keyword worth considering, is gone (above). What's left to settle is the save API.
+**Settled:** `_` means "private" (Dart-style). The clash with engine hooks, which made a Lua-style keyword worth considering, is gone (above). What's left is the save API.
 
 
 ## 8. Enums

@@ -10,7 +10,7 @@ To run the examples as you read, paste them into [Try Zak](https://passiomatic.g
 
 - [Lexical structure](language/Lexical.md) — identifiers, keywords, operators, literals, comments, and how lines and blocks are laid out
 - [Values and data types](language/Values.md) — the seven types, equality, and values vs. references
-- [Execution context](language/Execution.md) — variables, constants, scope, and runtime errors
+- [Execution context](language/Execution.md) — variables, constants, scope, private names, and runtime errors
 - [Statements](language/Statements.md) — blocks, `if`, `while`, `for`, `break`, `continue`, `return`, and assignment
 - [Expressions](language/Expressions.md) — operators, precedence, and array and table constructors
 - [Tables](language/Tables.md) — named fields: reading, writing, going through them, and copying

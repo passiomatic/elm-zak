@@ -120,6 +120,7 @@ constant "start of the script" one, at a fraction of the structural cost.
 -}
 type RuntimeError
     = UndefinedName String
+    | PrivateName { name : String, path : String }
     | AlreadyDefined String
     | ConstReassigned String
     | UndefinedField String
@@ -513,7 +514,8 @@ type alias State game =
     , randomSeed : Random.Seed
 
     {- The world frame's own heap id -- every top-level `let` across every
-       loaded `.zak` file lands here (`Zak.Internal.Interpreter.initialWorld`/
+       loaded `.zak` file lands here, except an included file's private `_`
+       names (`fileFrames`) (`Zak.Internal.Interpreter.initialWorld`/
        `execStatements`' own "run into the same frame, not a fresh child"
        design), so a later file can see an earlier one's globals. Set once,
        in `initialWorld`, to the same id its own returned `Env` already
@@ -525,14 +527,17 @@ type alias State game =
     -}
     , globalFrameId : Int
 
-    {- Every path `include` has already spliced in, world-wide -- makes a
-       second `include` of the same file a no-op instead of re-running (and
-       re-`AlreadyDefined`-erroring on) its own top-level `let`s, and this
-       is also the entire cycle-guard: if `A` includes `B` includes `A`, `A`
-       is already in here by the time `B`'s own `include("A")` runs, so it
-       resolves to nothing rather than looping.
+    {- Every file `include` has run, world-wide: the id of the file's own
+       frame, which holds its private `_` names, to its path. A `let` in
+       one of these frames is a file's top level
+       (`Zak.Internal.Interpreter.bindingEnv`). A path already in here
+       makes a second `include` of the same file a no-op instead of
+       re-running (and re-`AlreadyDefined`-erroring on) its own top-level
+       `let`s, and this is also the entire cycle-guard: if `A` includes `B`
+       includes `A`, `A` is already in here by the time `B`'s own
+       `include("A")` runs, so it resolves to nothing rather than looping.
     -}
-    , includedFiles : Set String
+    , fileFrames : Dict Int String
     , game : game
     }
 

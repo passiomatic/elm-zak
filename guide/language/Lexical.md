@@ -12,7 +12,7 @@ player_2
 _sound_id
 ```
 
-A leading `_` conventionally marks a "semi-private" name, meant for internal use only, like `_sound_id`. Nothing in the language checks or enforces it.
+A leading `_` marks a private name, meant for internal use only, like `_sound_id`. A global with such a name is visible only to the script that declares it (see [Private names](Execution.md#private-names)). Anywhere else, such as a variable inside a function or a table field, it's an ordinary name.
 
 ### The throwaway name `_`
 

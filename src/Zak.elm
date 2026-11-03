@@ -348,7 +348,8 @@ getGlobal name (World state) =
 {-| Sets the global `name`, the way a top-level `name = value` would: the
 existing global changes, wherever it's defined (a native included). A
 name that isn't defined yet becomes a new top-level global, as with
-`let`.
+`let`. A `_` name an included file keeps private can't be reached this
+way: setting it adds a new global, which the file's own code doesn't see.
 
 To give a [`nativeExpression`](#nativeExpression) a global it can read,
 declare it as a native (`nativeConstant Nil`) and set it with this:
@@ -367,7 +368,8 @@ setGlobal name value (World state) =
 
 {-| Every global the scripts defined at the top level, and every one
 [`setGlobal`](#setGlobal) added. Natives and the standard library aren't
-included.
+included, and neither are the `_` names an included file keeps private
+(see [`nativeInclude`](#nativeInclude)).
 -}
 globals : World game -> Dict String Value
 globals (World state) =
@@ -835,6 +837,9 @@ problemFromInternal error =
         Runtime.UndefinedName name ->
             UndefinedName name
 
+        Runtime.PrivateName { name } ->
+            UndefinedName name
+
         Runtime.AlreadyDefined name ->
             AlreadyDefined name
 
@@ -1095,9 +1100,11 @@ argument is a path, and `find` gives back that file's source.
     Zak.init initialGame
         [ ( "include", Zak.nativeInclude (\path -> Dict.get path files) ) ]
 
-The file runs as if it were part of the script that includes it: its
-top-level definitions become globals, shared with every other script,
-with no table of their own to reach them through. A path already
+The file's top-level definitions become globals, shared with every other
+script, with no table of their own to reach them through. A name that
+starts with `_` is the exception: it stays private to the file, so only
+the file's own code sees it. Anywhere else, it's an `UndefinedName`, and
+the message names the file it's private to. A path already
 included is skipped, which also stops include cycles. A path `find`
 doesn't know is an `IncludeNotFound`.
 

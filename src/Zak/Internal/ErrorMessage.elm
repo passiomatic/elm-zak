@@ -61,6 +61,9 @@ describeRuntimeError runtimeError =
         UndefinedName name ->
             "“" ++ name ++ "” is not defined"
 
+        PrivateName { name, path } ->
+            "“" ++ name ++ "” is private to " ++ path
+
         AlreadyDefined name ->
             "“" ++ name ++ "” is already defined in this scope"
 

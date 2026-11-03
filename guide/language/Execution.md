@@ -100,7 +100,7 @@ The `for` loop variable (`n` above) belongs to the loop, and doesn't exist after
 
 ## The global scope
 
-Variables declared outside any block are global: they're visible from every function in the script, for as long as the script's world exists. Depending on the host, that world can span several scripts, all seeing each other's global variables.
+Variables declared outside any block are global: they're visible from every function in the script, for as long as the script's world exists. Depending on the host, that world can span several scripts, all seeing each other's global variables, except private ones (see [Private names](#private-names)).
 
 A function looks up the variables it uses when it runs, not when it's defined. So a function can use a global declared further down the script, as long as it's only called after that declaration has run:
 
@@ -125,6 +125,27 @@ end
 ```
 
 The standard library's `Array`, `Math`, `String`, and the rest live in the global scope too, as ordinary variables. A script can declare its own `Math`, or assign to it, which hides the standard library one from then on — so avoid reusing those names.
+
+## Private names
+
+When the world spans several scripts, a global whose name starts with `_` is private to the script that declares it. That script's own functions can read and change it, but no other script can see it:
+
+```
+# In Doors.zak
+let _open_doors = []
+
+let open_door = function(door):
+    Array.push(_open_doors, door)
+end
+
+# In another script
+open_door(front_door)   # fine
+_open_doors             # error: “_open_doors” is private to Doors.zak
+```
+
+Each script has its own private names, so two scripts can use the same one without clashing. Only globals are affected: variables inside blocks and functions, and table fields like `player._id`, work as usual.
+
+A script the host runs directly, rather than one another script loads, keeps its `_` globals ordinary: every script sees them.
 
 ## Runtime errors
 

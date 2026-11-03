@@ -1081,6 +1081,24 @@ return Array.length(seen)"""
 
                         other ->
                             Expect.fail ("expected an IncludeParseError, got: " ++ Debug.toString other)
+            , test "a file's top-level _ name stays in the file's own frame: reading it from outside is a PrivateName naming the file" <|
+                \_ ->
+                    let
+                        ( env, state1 ) =
+                            I.initialWorld () noNatives
+                    in
+                    case I.include "Helpers.zak" "let _x = 1\nlet x = 2" state1 of
+                        Err _ ->
+                            Expect.fail "include failed"
+
+                        Ok ( _, state2 ) ->
+                            ( I.runIncremental env state2 "return x" |> Result.map Tuple.first
+                            , I.runIncremental env state2 "return _x" |> Result.map Tuple.first |> Result.mapError dropRuntimePosition
+                            )
+                                |> Expect.equal
+                                    ( Ok (VNumber 2)
+                                    , Err (RuntimeError (PrivateName { name = "_x", path = "Helpers.zak" }))
+                                    )
             ]
         , describe "run: functions, recursion, and closures" <|
             List.map (testValue (run noNatives))

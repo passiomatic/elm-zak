@@ -269,17 +269,20 @@ runProgramInto env state program =
 
 {-| `include(path)`'s own core (the embedder's own `include` native is the
 thin, host-specific wrapper around this: it resolves `path` to `source`,
-a lookup this module deliberately knows nothing about). Splices `source`'s own
-top-level statements into the shared _world_ frame, not `env`'s (whatever
-that happens to be at the call site) — `state.globalFrameId`, stamped
-once by `initialWorld`, is what every top-level `let` across every
-included file needs to land in, matching `runIncremental`'s own
-existing "every file sees every other file's globals" behavior, just
-triggered from inside a running script instead of the embedder's own
-external loop.
+a lookup this module deliberately knows nothing about). Runs `source` in a
+frame of its own, under the shared _world_ frame rather than the call
+site's scope (whatever that happens to be). A top-level `let` of a `_`
+name stays in the file's frame, private to it; any other goes straight
+into the world frame (`bindingEnv`), so every file sees every other
+file's public globals, matching `runIncremental`'s own existing
+behavior, just triggered from inside a running script instead of the
+embedder's own external loop. The file's functions capture its frame, so
+they keep seeing its private names, and nothing else does. The frame is
+never freed: `state.fileFrames` keeps it, which is also how an error
+names the file a private name belongs to (`undefinedName`).
 
 Idempotent: including the same `path` twice is a silent no-op (`state.
-includedFiles`) rather than a second, redundant run — the same
+fileFrames`) rather than a second, redundant run — the same
 `AlreadyDefined` a second literal run would hit anyway for every `let` it
 already declared, and (not incidentally) the entire guard against an
 include cycle: if `A` includes `B` includes `A`, `A` is already marked
@@ -289,7 +292,7 @@ included by the time `B`'s own `include("A")` runs, so it resolves to
 -}
 include : String -> String -> State game -> Result RuntimeError ( Value, State game )
 include path source state =
-    if Set.member path state.includedFiles then
+    if List.member path (Dict.values state.fileFrames) then
         Ok ( VNil, state )
 
     else
@@ -298,8 +301,12 @@ include path source state =
                 Err (IncludeParseError path parserError)
 
             Ok program ->
-                runProgramInto (Env state.globalFrameId (Just globalEnv))
-                    { state | includedFiles = Set.insert path state.includedFiles }
+                let
+                    ( frameId, state1 ) =
+                        allocCell state
+                in
+                runProgramInto (Env frameId (Just (worldEnv state1)))
+                    { state1 | fileFrames = Dict.insert frameId path state1.fileFrames }
                     program
 
 
@@ -459,7 +466,7 @@ seedState game natives =
                 -- this and stamps its own id into `globalFrameId`; nothing
                 -- reads either field before that happens.
                 , globalFrameId = 0
-                , includedFiles = Set.empty
+                , fileFrames = Dict.empty
                 , game = game
                 }
                 natives
@@ -1173,14 +1180,22 @@ execStatement env state statement =
             discard env state valueExpr
 
         Let name valueExpr ->
+            let
+                target =
+                    bindingEnv env name state
+            in
             evalExpr env state valueExpr
-                |> Result.andThen (\( value, state1 ) -> defineVar env state1 name value)
-                |> Result.map (\state1 -> ( Done Normal, warnIfShadowsConst env name state1 ))
+                |> Result.andThen (\( value, state1 ) -> defineVar target state1 name value)
+                |> Result.map (\state1 -> ( Done Normal, warnIfShadowsConst target name state1 ))
 
         Const name valueExpr ->
+            let
+                target =
+                    bindingEnv env name state
+            in
             evalExpr env state valueExpr
-                |> Result.andThen (\( value, state1 ) -> defineVar env state1 name value)
-                |> Result.map (\state1 -> ( Done Normal, markConst env (warnIfShadowsConst env name state1) name ))
+                |> Result.andThen (\( value, state1 ) -> defineVar target state1 name value)
+                |> Result.map (\state1 -> ( Done Normal, markConst target (warnIfShadowsConst target name state1) name ))
 
         Assign target rhsExpr ->
             evalExpr env state rhsExpr
@@ -2142,7 +2157,31 @@ lookupVar (Env frameId parent) state name =
                     lookupVar parentEnv state name
 
                 ( Nothing, Nothing ) ->
-                    Err (UndefinedName name)
+                    Err (undefinedName state name)
+
+
+{-| The error for a `name` no frame in the chain has: `PrivateName` when
+it's a `_` name an included file keeps in its own frame, so the message
+can say why it can't be seen from here, else `UndefinedName`.
+-}
+undefinedName : State game -> String -> RuntimeError
+undefinedName state name =
+    let
+        holdsName ( frameId, _ ) =
+            Dict.get frameId state.heap
+                |> Maybe.map (Dict.member name)
+                |> Maybe.withDefault False
+    in
+    if String.startsWith "_" name then
+        case List.filter holdsName (Dict.toList state.fileFrames) of
+            ( _, path ) :: _ ->
+                PrivateName { name = name, path = path }
+
+            [] ->
+                UndefinedName name
+
+    else
+        UndefinedName name
 
 
 {-| A scope frame used after `withFrame` freed it: a bug in the
@@ -2170,6 +2209,25 @@ defineVar (Env frameId _) state name value =
 
             else
                 Ok { state | heap = Dict.insert frameId (Dict.insert name value frame) state.heap }
+
+
+{-| The scope a `let`/`const` of `name` binds in: `env` itself, except at
+the top level of an included file (`include`), where only a `_` name
+stays in the file's own frame, private to it, and any other name goes to
+the world frame above it.
+-}
+bindingEnv : Env -> String -> State game -> Env
+bindingEnv ((Env frameId parent) as env) name state =
+    case parent of
+        Just outer ->
+            if Dict.member frameId state.fileFrames && not (String.startsWith "_" name) then
+                outer
+
+            else
+                env
+
+        Nothing ->
+            env
 
 
 {-| `const`: marks `name`, in the _same_ frame `defineVar` just bound it
@@ -2223,7 +2281,7 @@ assignVar (Env frameId parent) state name value =
                         assignVar p state name value
 
                     Nothing ->
-                        Err (UndefinedName name)
+                        Err (undefinedName state name)
 
 
 isConst : Int -> String -> State game -> Bool

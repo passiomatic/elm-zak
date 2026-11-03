@@ -38,6 +38,18 @@ problem result =
             Nothing
 
 
+{-| What went wrong, if anything, with the message the host would show.
+-}
+problemAndMessage : Result Error a -> Maybe ( Problem, String )
+problemAndMessage result =
+    case result of
+        Err error ->
+            Just ( Zak.errorProblem error, Zak.errorToString "" error )
+
+        Ok _ ->
+            Nothing
+
+
 {-| A world with `files` to include, then `source` run into it.
 -}
 withFiles : List ( String, String ) -> String -> Result Error ( Value, World () )
@@ -360,6 +372,75 @@ suite =
 
                         Ok _ ->
                             Expect.fail "expected a SyntaxError"
+            ]
+        , describe "private _ names in included files"
+            [ test "the including script can't see a file's _ name, and the message names the file" <|
+                \_ ->
+                    withFiles [ ( "lib.zak", "let _secret = 1" ) ] "include(\"lib.zak\")\nreturn _secret"
+                        |> problemAndMessage
+                        |> Expect.equal (Just ( UndefinedName "_secret", "Runtime error at line 2, column 1: “_secret” is private to lib.zak" ))
+            , test "another included file can't read it or assign it either" <|
+                \_ ->
+                    let
+                        files =
+                            [ ( "a.zak", "let _secret = 1" )
+                            , ( "b.zak", "let peek = function():\n    return _secret\nend\nlet poke = function():\n    _secret = 2\nend" )
+                            ]
+
+                        run call =
+                            withFiles files ("include(\"a.zak\")\ninclude(\"b.zak\")\n" ++ call) |> problemAndMessage
+                    in
+                    ( run "peek()", run "poke()" )
+                        |> Expect.equal
+                            ( Just ( UndefinedName "_secret", "Runtime error at line 2, column 5: “_secret” is private to a.zak" )
+                            , Just ( UndefinedName "_secret", "Runtime error at line 5, column 5: “_secret” is private to a.zak" )
+                            )
+            , test "the file's own functions read and change its _ names" <|
+                \_ ->
+                    withFiles [ ( "lib.zak", "let _count = 0\nlet bump = function():\n    _count = _count + 1\n    return _count\nend" ) ]
+                        "include(\"lib.zak\")\nbump()\nreturn bump()"
+                        |> Result.map Tuple.first
+                        |> Expect.equal (Ok (Number 2))
+            , test "two files can each have a _ name of their own with the same name" <|
+                \_ ->
+                    withFiles
+                        [ ( "a.zak", "let _name = \"a\"\nlet name_a = function(): return _name end" )
+                        , ( "b.zak", "let _name = \"b\"\nlet name_b = function(): return _name end" )
+                        ]
+                        "include(\"a.zak\")\ninclude(\"b.zak\")\nreturn name_a() ++ name_b()"
+                        |> Result.map Tuple.first
+                        |> Expect.equal (Ok (String "ab"))
+            , test "a public const from a file is still const" <|
+                \_ ->
+                    withFiles [ ( "lib.zak", "const LIMIT = 3" ) ] "include(\"lib.zak\")\nLIMIT = 4"
+                        |> problem
+                        |> Expect.equal (Just (ConstReassigned "LIMIT"))
+            , test "a let inside a file's function stays local to the call" <|
+                \_ ->
+                    withFiles [ ( "lib.zak", "let f = function():\n    let inner = 1\n    return inner\nend" ) ]
+                        "include(\"lib.zak\")\nf()\nreturn inner"
+                        |> problem
+                        |> Expect.equal (Just (UndefinedName "inner"))
+            , test "let _ at a file's top level still throws its value away" <|
+                \_ ->
+                    withFiles [ ( "lib.zak", "let _ = 1\nlet _ = 2\nlet ok = true" ) ] "include(\"lib.zak\")\nreturn ok"
+                        |> Result.map Tuple.first
+                        |> Expect.equal (Ok (Bool True))
+            , test "a file included from inside a function still puts its public names in the world" <|
+                \_ ->
+                    withFiles [ ( "lib.zak", "let answer = 42" ) ] "let load = function():\n    include(\"lib.zak\")\nend\nload()\nreturn answer"
+                        |> Result.map Tuple.first
+                        |> Expect.equal (Ok (Number 42))
+            , test "the host's own script keeps its _ names global" <|
+                \_ ->
+                    withFiles [ ( "lib.zak", "let peek = function(): return _shared end" ) ] "let _shared = 5\ninclude(\"lib.zak\")\nreturn peek()"
+                        |> Result.map Tuple.first
+                        |> Expect.equal (Ok (Number 5))
+            , test "a _ name no file has is just not defined" <|
+                \_ ->
+                    withFiles [ ( "lib.zak", "let _secret = 1" ) ] "include(\"lib.zak\")\nreturn _nowhere"
+                        |> problemAndMessage
+                        |> Expect.equal (Just ( UndefinedName "_nowhere", "Runtime error at line 2, column 1: “_nowhere” is not defined" ))
             ]
         , describe "the game"
             [ test "a native reads the game the world was created with" <|
