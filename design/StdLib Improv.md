@@ -39,14 +39,14 @@ There are 35 `for` loops.
 
 **Done on 2026-11-03.** `default` is now optional, `nil` when omitted, on both `Table.get_default` and `Array.get_default`. The names stay.
 
-29 of the 50 `Table.get_default` calls pass `nil` as the default. They read a field that may not be there, because reading a missing field with `.` is an error:
+30 of the 50 `Table.get_default` calls pass `nil` as the default. They read a field that may not be there, because reading a missing field with `.` is an error:
 
 ```
 let exec = Table.get_default(actor, "_exec", nil)
 let pool = Table.get_default(scene, "music_pool", nil)
 ```
 
-Making `default` optional, with `nil` as its own default, shortens all 29. The same change applies to `Array.get_default`, as the ToDo already suggests, along with its question about renaming it (`safe_get`, `get_or_default`).
+Making `default` optional, with `nil` as its own default, shortens all 30. The same change applies to `Array.get_default`, as the ToDo already suggests, along with its question about renaming it (`safe_get`, `get_or_default`).
 
 ### 2. `Table.merge(table, other)`
 
