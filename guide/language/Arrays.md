@@ -38,7 +38,7 @@ inventory[0.5]   # error: index 0.5 is not a whole number
 Negative indexes are always out of bounds: there's no counting from the end. To read an index that might be out of bounds without an error, use `Array.get_default`:
 
 ```
-let first = Array.get_default(inventory, 0, nil)
+let first = Array.get_default(inventory, 0)   # nil if inventory is empty
 ```
 
 `[ ]` only works on arrays — not on tables or strings.

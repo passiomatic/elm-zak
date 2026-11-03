@@ -100,10 +100,22 @@ suite =
                 \_ ->
                     runExpr "Table.get_default({ x = 1 }, 1, 0)"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
-            , test "wrong argument count" <|
+            , test "an omitted default is nil" <|
+                \_ -> runExpr "Table.get_default({ x = 1 }, \"y\")" |> Expect.equal (Ok VNil)
+            , test "an omitted default still reads an existing field" <|
+                \_ -> runExpr "Table.get_default({ x = 1 }, \"x\")" |> Expect.equal (Ok (VNumber 1))
+            , test "an omitted default keeps the argument checks" <|
                 \_ ->
-                    runExpr "Table.get_default({ x = 1 }, \"x\")"
-                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 3, got = 2 })))
+                    runExpr "Table.get_default(1, \"x\")"
+                        |> Expect.equal (Err (RuntimeError (NotATable (VNumber 1) "x")))
+            , test "too few arguments" <|
+                \_ ->
+                    runExpr "Table.get_default({ x = 1 })"
+                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
+            , test "too many arguments" <|
+                \_ ->
+                    runExpr "Table.get_default({ x = 1 }, \"x\", 0, 0)"
+                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 3, got = 4 })))
             ]
         , describe "remove (mutating, in place — true if the field was there, false if not, same as Array.remove)" <|
             [ test "returns true when the field was there" <|

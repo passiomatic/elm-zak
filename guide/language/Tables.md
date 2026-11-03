@@ -43,6 +43,7 @@ if "mana" in player:
 end
 
 let mana = Table.get_default(player, "mana", 0)
+let title = Table.get_default(player, "title")   # nil if there's no title
 ```
 
 ## Writing fields

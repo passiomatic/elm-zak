@@ -150,5 +150,5 @@ if "health" in player:
     player.health = player.health - 10
 end
 
-let first = Array.get_default(items, 0, nil)
+let first = Array.get_default(items, 0)   # nil if items is empty
 ```

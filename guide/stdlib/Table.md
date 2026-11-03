@@ -13,14 +13,15 @@ let r = { x = 1 }
 Table.get(r, "x")   # 1
 ```
 
-## Table.get_default(table, name, default)
+## Table.get_default(table, name, default=nil)
 
-Like `Table.get`, but returns `default` instead of erroring if `name` isn't present.
+Like `Table.get`, but returns `default` instead of erroring if `name` isn't present. `default` is optional: leave it out and it's `nil`.
 
 ```
 let r = { x = 1 }
 Table.get_default(r, "x", 0)   # 1
 Table.get_default(r, "z", 0)   # 0 (no "z" field, so the default)
+Table.get_default(r, "z")      # nil (no default given)
 ```
 
 ## Table.set(table, name, value)

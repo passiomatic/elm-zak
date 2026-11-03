@@ -35,13 +35,14 @@ Element at `index` (0-based). Errors if `index` is out of range or not a whole n
 Array.get([1, 2, 3], 1)   # 2
 ```
 
-## Array.get_default(array, index, default)
+## Array.get_default(array, index, default=nil)
 
-Like `Array.get`, but returns `default` instead of erroring if `index` is out of range. An `index` that isn't a whole number is still a hard error — only an out-of-range index is softened.
+Like `Array.get`, but returns `default` instead of erroring if `index` is out of range. `default` is optional: leave it out and it's `nil`. An `index` that isn't a whole number is still a hard error — only an out-of-range index is softened.
 
 ```
 Array.get_default([1, 2, 3], 1, 0)   # 2
 Array.get_default([1, 2, 3], 9, 0)   # 0 (index 9 is out of range, so the default)
+Array.get_default([1, 2, 3], 9)      # nil (no default given)
 ```
 
 ## Array.set(array, index, value)

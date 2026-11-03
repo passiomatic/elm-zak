@@ -2325,15 +2325,19 @@ arrayGet state args =
 
 {-| `Array.get_default(array, index, default)` — like `Array.get`, but
 returns `default` instead of raising `IndexOutOfBounds` when `index` is
-out of range. Only the bounds check is softened: a non-integer `index`
-(`wholeNumberIndex`) or a non-`Array` `array` is still a hard error, the
-same split `Table.get_default` draws between a missing _field_ (softened)
-and a wrong-typed target (still an error). The `Array` counterpart to
+out of range. `default` is optional, `nil` when omitted. Only the bounds
+check is softened: a non-integer `index` (`wholeNumberIndex`) or a
+non-`Array` `array` is still a hard error, the same split
+`Table.get_default` draws between a missing _field_ (softened) and a
+wrong-typed target (still an error). The `Array` counterpart to
 `Table.get_default`, kept symmetric with it.
 -}
 arrayGetDefault : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayGetDefault state args =
     case args of
+        [ arrayValue, indexValue ] ->
+            arrayGetDefault state [ arrayValue, indexValue, VNil ]
+
         [ VArray id, VNumber indexFloat, default ] ->
             wholeNumberIndex indexFloat
                 |> Result.map
@@ -2348,6 +2352,12 @@ arrayGetDefault state args =
 
         [ _, other, _ ] ->
             Err (TypeError { expected = "Number", got = other })
+
+        [ _ ] ->
+            Err (WrongArgCount { expected = 2, got = 1 })
+
+        [] ->
+            Err (WrongArgCount { expected = 2, got = 0 })
 
         _ ->
             Err (WrongArgCount { expected = 3, got = List.length args })
@@ -2922,15 +2932,19 @@ tableSet state args =
 
 {-| `Table.get_default(table, name, default)` — like `Table.get`, but
 returns `default` instead of raising `UndefinedField` when `name` isn't
-present on `table`. A callable alternative to null-safe field access
-and null-coalescing operators (Zak has neither), reached via a built-in
-function rather than new operator syntax, per Zak's own design goal of preferring the former.
+present on `table`. `default` is optional, `nil` when omitted. A callable
+alternative to null-safe field access and null-coalescing operators (Zak
+has neither), reached via a built-in function rather than new operator
+syntax, per Zak's own design goal of preferring the former.
 Still raises `NotATable` if `table` isn't a `VTable` at all — only a
 missing _field_ gets the default, not a wrong-typed target.
 -}
 tableGetDefault : State game -> List Value -> Result RuntimeError ( Value, State game )
 tableGetDefault state args =
     case args of
+        [ tableValue, nameValue ] ->
+            tableGetDefault state [ tableValue, nameValue, VNil ]
+
         [ VTable id, VString name, default ] ->
             let
                 value =
@@ -2945,6 +2959,12 @@ tableGetDefault state args =
 
         [ _, other, _ ] ->
             Err (TypeError { expected = "String", got = other })
+
+        [ _ ] ->
+            Err (WrongArgCount { expected = 2, got = 1 })
+
+        [] ->
+            Err (WrongArgCount { expected = 2, got = 0 })
 
         _ ->
             Err (WrongArgCount { expected = 3, got = List.length args })

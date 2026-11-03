@@ -101,10 +101,22 @@ suite =
                 \_ ->
                     runExpr "Array.get_default([1], \"x\", 0)"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "Number", got = VString "x" })))
-            , test "wrong argument count" <|
+            , test "an omitted default is nil" <|
+                \_ -> runExpr "Array.get_default([10, 20, 30], 9)" |> Expect.equal (Ok VNil)
+            , test "an omitted default still reads an in-range index" <|
+                \_ -> runExpr "Array.get_default([10, 20, 30], 1)" |> Expect.equal (Ok (VNumber 20))
+            , test "an omitted default keeps the argument checks" <|
                 \_ ->
-                    runExpr "Array.get_default([1], 0)"
-                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 3, got = 2 })))
+                    runExpr "Array.get_default(1, 0)"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VNumber 1 })))
+            , test "too few arguments" <|
+                \_ ->
+                    runExpr "Array.get_default([1])"
+                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
+            , test "too many arguments" <|
+                \_ ->
+                    runExpr "Array.get_default([1], 0, 0, 0)"
+                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 3, got = 4 })))
             , test "a fractional index is still a hard error — only an out-of-range index is softened" <|
                 \_ ->
                     runExpr "Array.get_default([10, 20, 30], 2.5, 0)"
