@@ -1,6 +1,6 @@
 # Stdlib improvements
 
-Which `Array` and `Table` functions would make game scripts shorter and say what they do. Surveyed on 2026-11-03 against elm-adventure's `Delores/` and `Shared/` folders (`rework` branch): 35 `.zak` files, about 9,100 lines. The yack files use no arrays or tables. Line numbers are as of that date.
+Which `Array`, `Table` and `String` functions would make game scripts shorter and say what they do. Surveyed on 2026-11-03 against elm-adventure's `Delores/` and `Shared/` folders (`rework` branch): 35 `.zak` files, about 9,100 lines. The yack files use no arrays or tables. Line numbers are as of that date.
 
 **Short answer:** four additions cover the patterns that keep coming back:
 
@@ -9,12 +9,14 @@ Which `Array` and `Table` functions would make game scripts shorter and say what
 - `Array.any` and `Array.find`;
 - a way to add to an array used as a set.
 
-`Table.keys` and `Table.values` are optional. `Array.sort` waits for a use case.
+`Table.keys` and `Table.values` are optional. On the string side, the game has everything it needs. `Array.sort`, `String.contains`, and width and precision in `String.format` wait for a use case.
 
-This replaces `Array API Gaps.md`, the 2026-10-06 survey of the DeloresDev Dinky scripts. Everything that survey proposed is done, except two:
+This replaces two earlier surveys of the DeloresDev Dinky scripts:
 
-- **Sorting**, carried over [below](#sorting).
-- **`Array.remove_at`**, which nothing needs: the port uses `Array.slice` where Dinky used `arrayremovefirst`.
+- **`Array API Gaps.md`** (2026-10-06). Everything it proposed is done, except two:
+  - **Sorting**, carried over [below](#sorting).
+  - **`Array.remove_at`**, which nothing needs: the port uses `Array.slice` where Dinky used `arrayremovefirst`.
+- **`String API Gaps.md`** (2026-10-13). What's left of it is in [Strings](#strings) and [Truncating numbers](#truncating-numbers).
 
 ## How the stdlib is used today
 
@@ -33,7 +35,9 @@ There are 35 `for` loops.
 
 ## Worth adding
 
-### 1. An optional default for `get_default`
+### 1. An optional default for `get_default` (done)
+
+**Done on 2026-11-03.** `default` is now optional, `nil` when omitted, on both `Table.get_default` and `Array.get_default`. The names stay.
 
 29 of the 50 `Table.get_default` calls pass `nil` as the default. They read a field that may not be there, because reading a missing field with `.` is an error:
 
@@ -196,11 +200,93 @@ The evidence is thin:
 
 Wait for game code that needs sorting before designing it further.
 
+## Strings
+
+Carried over from `String API Gaps.md`. That survey left out `TranslationHelpers.dinky`: Zak has no translation system.
+
+### Done
+
+**`String.starts_with(string, prefix)` and `String.ends_with(string, suffix)`.** Their rules:
+
+- The string being checked comes first, like every other `String` function.
+- An empty prefix or suffix is always `true`, and one longer than the string is `false`, not an error.
+- The check is case-sensitive: call `String.lower` first to ignore case.
+- There's no position argument: `String.slice` covers that.
+
+They cover Dinky's `strstartswith` and `strendswith`, and its `line[0] == '+'` checks, since `[ ]` only works on arrays in Zak. elm-adventure's `_check_verbs` uses them (`Shared/VerbHelpers.zak:37`, `44`).
+
+Everything else Dinky does with strings already has a counterpart:
+
+| Dinky | Zak |
+|---|---|
+| `sizeof` (on a string) | `String.length` |
+| `format` | `String.format` |
+| `is_string` | `is_string`, `type` |
+| `strslice` | `String.slice` |
+| `strsplit` | `String.split` |
+| `strreplace` | `String.replace` |
+| `strupper` | `String.upper` |
+
+`strslice(filter, 0, -2)`, in debug code only, drops the last character with a negative end. In Zak that's `String.slice(s, 0, String.length(s) - 1)`.
+
+### Left
+
+- **`String.contains(string, part)`, a weak case.** Dinky uses `strfind` once, in `Newspaper.dinky:17`, and `strfindi` once, in the debug filter (case-insensitive). Both only check whether the part is there and never use the index. The port's Newspaper close-up does without it, and there's no debug menu.
+  - If it's added, it would mirror `Array.contains` rather than be a `find`.
+  - A case-insensitive check would be `String.contains(String.lower(a), String.lower(b))`.
+- **Skip `chr`.** It turns a key code into a character, for the debug menu only, and key handling belongs to the host.
+
+### Width and precision in `String.format`
+
+`String.format` supports `%s`, `%d`, `%f`, `%x`/`%X` and `%%`, with no width or precision. There's a common syntax for both, C's `printf`: `%[flags][width][.precision]type`.
+
+| Part | Meaning | Example | Result |
+|---|---|---|---|
+| width | minimum field width, padded with spaces on the left | `%5d` with 42 | `"   42"` |
+| `-` flag | pad on the right instead (left-align) | `%-5d` with 42 | `"42   "` |
+| `0` flag | pad with zeros instead of spaces | `%08x` with 255 | `"000000ff"` |
+| `.precision` on `%f` | digits after the decimal point | `%.2f` with 3.14159 | `"3.14"` |
+| `.precision` on `%s` | maximum number of characters | `%.3s` with "abcdef" | `"abc"` |
+| combined | width and precision | `%6.2f` with 3.14159 | `"  3.14"` |
+
+A few more flags exist (`+`, a space, `#`, `*`), but they're rarely used.
+
+Who uses it:
+
+- **The same syntax:** C, Squirrel (and so Dinky), Lua's `string.format`, Python's `%` operator, Ruby's `format`, Go's `fmt`, Java's `String.format`, PHP's `sprintf`, and the shell's `printf`.
+- **The same ideas, a different syntax:** Python's `"{:08x}"` and C#'s `"{0,8:F2}"`.
+- **None built in:** JavaScript (`toFixed`, `padStart`) and Elm core.
+
+Zak already uses `%` directives, so extending them the printf way adds no new syntax. It's also what Squirrel and Lua, the languages closest to Zak, do.
+
+There's almost no evidence for it:
+
+| Source | Directives used |
+|---|---|
+| Dinky | `%d` ×10, `%s` ×6, `%08x` ×1 (only in the `dprintx` debug macro) |
+| elm-adventure | `%s` ×41, `%d` ×17; no `%f`, `%x`, `%%` or width |
+
+Two cases are likely to come up in game code eventually:
+
+- **Precision on `%f`.** `%f` prints the full value today, so `0.1 + 0.2` shows as `"0.30000000000000004"`. `%.2f` is the usual fix, but Elm has no `toFixed`. Rounding to *n* digits correctly with floats is harder than it looks: `1.005` is stored as `1.00499…`. It would need a package like `myrho/elm-round`, or a careful hand-written version.
+- **Zero-padded width on `%d`.** `%02d` is the usual way to show a timer or a clock (`"01:05"`). It's easy to implement.
+
+If it's implemented, keep to a small printf subset: width, the `0` and `-` flags, and precision on `%f` only. Wait for game code that needs it.
+
+## Truncating numbers
+
+Carried over from `String API Gaps.md`. Dinky uses `as_int` 13 times:
+
+- **5 turn a bool into a number.** Zak doesn't need that: it has real bools.
+- **8 truncate a number** (volume steps, pixel snapping).
+
+Zak has `Math.round`, and `//` rounds down (`x // 1`), so the only thing missing is truncation toward zero. That differs from rounding down only for negative numbers. elm-adventure uses `Math.round` twice and never `//`. Nothing to add for now.
+
 ## Suggested order
 
-1. An optional default for `get_default`: the most call sites, and already in the ToDo.
+1. ✅ An optional default for `get_default`: the most call sites. Done.
 2. `Table.merge`: small, with no open questions.
 3. `Array.any` and `Array.find`, maybe with `Array.all`.
 4. Adding to a set, once the name is settled.
 5. `Table.keys` and `Table.values`, if the table side should be complete.
-6. `Array.sort`, when game code needs it.
+6. `Array.sort`, `String.contains`, and width and precision in `String.format`, when game code needs them.
