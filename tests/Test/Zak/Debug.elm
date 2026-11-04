@@ -81,10 +81,10 @@ suite =
                 \_ -> run "return Debug.log(\"Hi there!\")" |> Expect.equal (Ok VNil)
             , test "logging a non-string returns nil too" <|
                 \_ -> run "return Debug.log(1)" |> Expect.equal (Ok VNil)
-            , test "wrong argument count" <|
+            , test "no argument at all is a wrong argument count" <|
                 \_ ->
-                    run "return Debug.log(\"a\", \"b\")"
-                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 2 })))
+                    run "return Debug.log()"
+                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 0 })))
             ]
         , describe "log_debug/log_info/log_warning/log_error (same shape as log, one shared logNative parameterized by level — see 'logging queues a Log' below for the part that's actually new)" <|
             [ test "log_debug returns nil" <| \_ -> run "return Debug.log_debug(\"x\")" |> Expect.equal (Ok VNil)
@@ -93,10 +93,67 @@ suite =
             , test "log_error returns nil" <| \_ -> run "return Debug.log_error(\"x\")" |> Expect.equal (Ok VNil)
             , test "any value is accepted, using log_debug as the representative case" <|
                 \_ -> run "return Debug.log_debug(1)" |> Expect.equal (Ok VNil)
-            , test "wrong argument count, using log_warning as the representative case" <|
+            , test "no argument at all is a wrong argument count, using log_warning as the representative case" <|
+                \_ ->
+                    run "return Debug.log_warning()"
+                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 0 })))
+            ]
+        , describe "more than one argument: the first is a format, filled from the rest by String.format's rules" <|
+            [ test "each level formats its message" <|
+                \_ ->
+                    case runWithState "Debug.log(\"%s\", 1)\nDebug.log_debug(\"%s\", 2)\nDebug.log_info(\"%s\", 3)\nDebug.log_warning(\"%s\", 4)\nDebug.log_error(\"Got %s instead of %s\", \"foo\", \"bar\")\nreturn nil" of
+                        Ok ( _, state ) ->
+                            state.pendingEffects
+                                |> Expect.equal
+                                    [ Log LogPrint "1"
+                                    , Log LogDebug "2"
+                                    , Log LogInfo "3"
+                                    , Log LogWarning "4"
+                                    , Log LogError "Got foo instead of bar"
+                                    ]
+
+                        Err error ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString error)
+            , test "every String.format directive works, %% included" <|
+                \_ ->
+                    case runWithState "Debug.log(\"%s %d %f %x %X 100%%\", [1], 3.9, 1.5, 255, 255)\nreturn nil" of
+                        Ok ( _, state ) ->
+                            logMessages state.pendingEffects |> Expect.equal [ "<array> 3 1.5 ff FF 100%" ]
+
+                        Err error ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString error)
+            , test "a lone argument is never a format: its % signs are logged as written" <|
+                \_ ->
+                    case runWithState "Debug.log(\"100% done\")\nDebug.log(\"100%%\")\nDebug.log(\"%s\")\nreturn nil" of
+                        Ok ( _, state ) ->
+                            logMessages state.pendingEffects |> Expect.equal [ "100% done", "100%%", "%s" ]
+
+                        Err error ->
+                            Expect.fail ("expected success, got: " ++ Debug.toString error)
+            , test "too few values for the placeholders is the same error String.format gives" <|
+                \_ ->
+                    run "return Debug.log_warning(\"%s and %s\", \"a\")"
+                        |> Expect.equal (Err (RuntimeError (FormatArgMismatch { expected = 2, got = 1 })))
+            , test "too many values for the placeholders, too" <|
                 \_ ->
                     run "return Debug.log_warning(\"a\", \"b\")"
-                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 2 })))
+                        |> Expect.equal (Err (RuntimeError (FormatArgMismatch { expected = 0, got = 1 })))
+            , test "an unknown directive is an error" <|
+                \_ ->
+                    run "return Debug.log(\"%q %s\", 1)"
+                        |> Expect.equal (Err (RuntimeError (UnknownFormatDirective "%q")))
+            , test "a non-Number value for %d is a TypeError" <|
+                \_ ->
+                    run "return Debug.log(\"%d\", \"x\")"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Number", got = VString "x" })))
+            , test "a format that isn't a String is a TypeError" <|
+                \_ ->
+                    run "return Debug.log(1, 2)"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
+            , test "an array value isn't spread: it fills one %s" <|
+                \_ ->
+                    run "return Debug.log(\"%s %s\", [\"a\", \"b\"])"
+                        |> Expect.equal (Err (RuntimeError (FormatArgMismatch { expected = 2, got = 1 })))
             ]
         , describe "logging queues a Log in state.pendingEffects, drained via Zak.Internal.Interpreter.drainEffects — no Debug.log anywhere in this module's own Elm code" <|
             [ test "log tags its entry LogPrint" <|

@@ -1,4 +1,4 @@
-module Zak.Internal.Library.String exposing (displayString, natives)
+module Zak.Internal.Library.String exposing (applyFormat, displayString, natives)
 
 {-| String-related functions under one `String` namespace table
 (`String.from(value)`, `String.length(string)`, ...), following the exact
@@ -526,22 +526,8 @@ stringFormat : State game -> List Value -> Result RuntimeError ( Value, State ga
 stringFormat state args =
     case args of
         [ VString format, VArray arrayId ] ->
-            let
-                argValues =
-                    Array.toList (arrayContents state arrayId)
-
-                expectedCount =
-                    countPlaceholders (String.toList format)
-
-                actualCount =
-                    List.length argValues
-            in
-            if expectedCount /= actualCount then
-                Err (FormatArgMismatch { expected = expectedCount, got = actualCount })
-
-            else
-                substituteFormat (String.toList format) argValues
-                    |> Result.map (\formatted -> ( VString formatted, state ))
+            applyFormat format (Array.toList (arrayContents state arrayId))
+                |> Result.map (\formatted -> ( VString formatted, state ))
 
         [ VString _, other ] ->
             Err (TypeError { expected = "Array", got = other })
@@ -551,6 +537,29 @@ stringFormat state args =
 
         _ ->
             Err (WrongArgCount { expected = 2, got = List.length args })
+
+
+{-| `format` with its placeholders filled from `values`, in order — the
+whole of `String.format` past unpacking its arguments, shared with
+`Debug.log(format, value, ...)` (`Zak.Internal.Library.Debug.logNative`)
+so both follow one set of rules. `values`' length is checked against
+`countPlaceholders` up front, before any substitution (see
+`stringFormat`'s own doc for why).
+-}
+applyFormat : String -> List Value -> Result RuntimeError String
+applyFormat format values =
+    let
+        expectedCount =
+            countPlaceholders (String.toList format)
+
+        actualCount =
+            List.length values
+    in
+    if expectedCount /= actualCount then
+        Err (FormatArgMismatch { expected = expectedCount, got = actualCount })
+
+    else
+        substituteFormat (String.toList format) values
 
 
 {-| How many of `%s`/`%d`/`%f`/`%x`/`%X` appear in `format` — `%%` and an

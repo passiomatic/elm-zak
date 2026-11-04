@@ -76,6 +76,21 @@ suite =
                 -- the generic message stays when it's the whole story
                 , ( "print(1 2)", ( 1, 9 ), "expected “)”" )
                 ]
+        , describe "errorToString: a format error names no function, since String.format and Debug.log share one formatter" <|
+            List.map
+                (\( source, message ) ->
+                    test source <|
+                        \_ ->
+                            let
+                                actual =
+                                    errorMessage source
+                            in
+                            actual |> String.endsWith message |> Expect.equal True |> Expect.onFail actual
+                )
+                [ ( "String.format(\"%s and %s\", [\"a\"])", "the format expected 2 values, got 1" )
+                , ( "Debug.log_warning(\"%s\", \"a\", \"b\")", "the format expected 1 value, got 2" )
+                , ( "Debug.log(\"%q %s\", 1)", "unknown format directive “%q”" )
+                ]
         , describe "errorToString: a line no statement can start with still gets the generic message, at that line" <|
             List.map testSyntaxError
                 [ ( "let x = 1\n)", ( 2, 1 ), "expected the end of the program" )

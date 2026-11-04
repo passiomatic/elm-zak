@@ -52,11 +52,12 @@ natives =
         )
 
 
-{-| `Debug.log(value)`/`Debug.log_debug(value)`/`Debug.log_info(value)`/
-`Debug.log_warning(value)`/`Debug.log_error(value)` — one native,
-parameterized over which `LogLevel` it tags its message with, since the
-five differ in nothing else: any value is accepted and turned into its
-message through `Zak.Internal.Library.String.displayString` — the exact rendering
+{-| `Debug.log(value, ...)`/`Debug.log_debug(value, ...)`/
+`Debug.log_info(value, ...)`/`Debug.log_warning(value, ...)`/
+`Debug.log_error(value, ...)` — one native, parameterized over which
+`LogLevel` it tags its message with, since the five differ in nothing
+else: any value is accepted and turned into its message through
+`Zak.Internal.Library.String.displayString` — the exact rendering
 `String.from` and `%s` already use, so a logged value always reads the
 same as it would once converted by hand (`Array`/`Table`/function values
 included, as the same fixed `<array>`/`<table>`/`<function>`
@@ -64,6 +65,15 @@ placeholders) — and `VNil` back (there's nothing meaningful to hand back,
 the same convention a bare `return` already uses). Deliberately looser
 than `++`: logging is a debugging aid, not program logic, so there's no
 typo for strictness to catch here.
+
+**Variadic.** With more than one argument, the first must be a `String`
+and is a format, filled from the rest by
+`Zak.Internal.Library.String.applyFormat` — `String.format`'s own rules,
+mismatched counts and unknown directives included, so
+`Debug.log_warning("%s", x)` fails exactly where
+`Debug.log_warning(String.format("%s", [x]))` would. A lone argument is
+never a format: `Debug.log("100% done")` logs as written, rather than
+failing on a `%` nobody meant as a directive.
 
 **No `Debug.log` anymore** — this used to be `Debug.log`'s (then still
 bare `print`'s) whole implementation, and it was a real, temporary
@@ -88,12 +98,23 @@ same-shaped copy of it).
 -}
 logNative : LogLevel -> State game -> List Value -> Result RuntimeError ( Value, State game )
 logNative level state args =
+    let
+        queueLog message =
+            ( VNil, { state | pendingEffects = state.pendingEffects ++ [ Log level message ] } )
+    in
     case args of
         [ value ] ->
-            Ok ( VNil, { state | pendingEffects = state.pendingEffects ++ [ Log level (Zak.Internal.Library.String.displayString value) ] } )
+            Ok (queueLog (Zak.Internal.Library.String.displayString value))
 
-        _ ->
-            Err (WrongArgCount { expected = 1, got = List.length args })
+        (VString format) :: values ->
+            Zak.Internal.Library.String.applyFormat format values
+                |> Result.map queueLog
+
+        [] ->
+            Err (WrongArgCount { expected = 1, got = 0 })
+
+        other :: _ ->
+            Err (TypeError { expected = "String", got = other })
 
 
 {-| `Debug.assert(expr, message)` — a `true` `expr` does nothing at all
@@ -103,9 +124,10 @@ fails with `"assertion failed"`, so a bare failed assertion still gets a
 real, specific message, just a default one, not silence or a generic
 "wrong argument count."
 
-**The first Zak native with a variable argument count.** Every other
-native in the language enforces exactly one arity via `WrongArgCount` —
-this is the first genuine 1-or-2 case, so the `[]`/`_` branches below
+**The first Zak native with a variable argument count** (`logNative`,
+above, has since become fully variadic). Until then every native
+enforced exactly one arity via `WrongArgCount` — this was the first
+genuine 1-or-2 case, so the `[]`/`_` branches below
 report whichever bound was actually violated (`expected = 1` for too few,
 `expected = 2` for too many), the same convention `Zak.Internal.Interpreter`'s
 `callFunction` already established for a Zak-_defined_ function with

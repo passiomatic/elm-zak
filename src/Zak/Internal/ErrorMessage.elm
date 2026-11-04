@@ -116,10 +116,10 @@ describeRuntimeError runtimeError =
             "a waiting call must be a statement on its own, inside a thread"
 
         FormatArgMismatch { expected, got } ->
-            "String.format expected " ++ pluralize expected "argument" ++ ", got " ++ String.fromInt got
+            "the format expected " ++ pluralize expected "value" ++ ", got " ++ String.fromInt got
 
         UnknownFormatDirective directive ->
-            "unknown String.format directive “" ++ directive ++ "”"
+            "unknown format directive “" ++ directive ++ "”"
 
         IncludeNotFound path ->
             "“" ++ path ++ "” was not found among the loaded Zak sources"

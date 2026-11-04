@@ -154,3 +154,5 @@ String.format("%x / %X", [255, 255])                  # "ff / FF"
 String.format("%x", [-255])                           # "-ff" (sign-prefixed, not two's-complement)
 String.format("100%%", [])                            # "100%"
 ```
+
+To log a formatted message, [`Debug.log`](Debug.md) and its siblings take a format and its values directly.

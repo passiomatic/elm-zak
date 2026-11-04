@@ -74,8 +74,7 @@ number state args =
 
 
 {-| `Random.pick(array)` — a uniformly random element, array-only (a
-caller can always pass a list, which sidesteps building Zak's first true
-variadic native).
+caller can always pass a list, so it needs no variadic form).
 Built on `elm/random`'s own `Random.uniform : a -> List a -> Generator a`
 ("pick uniformly from a list"), which needs exactly this
 already-split-into-head/tail shape. Errors on an empty array
