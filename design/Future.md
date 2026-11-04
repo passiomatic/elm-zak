@@ -307,7 +307,7 @@ Array.map(prices, \(p) -> if p > 100 then "Expensive" else "Quite cheap")    # w
 1. **Elm: `\(p) -> p <= 25`.** The shortest. But `\` is a symbol to learn, the objection section 6 made against `?`, and in code full of strings it reads like an escape. It only appears inside strings today, so the lexer has no clash.
 2. **The keyword, then an arrow: `function(p) -> p <= 25`.** No new word, and it's visibly a function. 7 characters longer than option 1, but most of the saving comes from dropping `return`, `end` and the line breaks, which both do.
 3. **A bare arrow: `(p) -> p <= 25`.** It looks like a parenthesized expression until the arrow, so the parser has to backtrack, and an error inside it is harder to report.
-4. **A short keyword: `fn(p) -> p <= 25`.** One more reserved word, and `SheriffsOffice.zak:191` already uses `fn` as a parameter name.
+4. **`fn`, replacing `function` everywhere (section 10): `fn(p) -> p <= 25`.** Option 2 with the shorter keyword. Only one character longer than option 1, and still a word, not a symbol.
 
 The typical case with each:
 
@@ -318,25 +318,24 @@ can_open = (self, noun2 = nil) -> not self.open,
 can_open = fn(self, noun2 = nil) -> not self.open,
 ```
 
-**Proposal: option 2, `function(params) -> expr`.**
+**Proposal: option 4, `fn(params) -> expr`,** once section 10 renames `function` to `fn`. The arrow doesn't depend on the keyword: before the rename it's option 2, `function(params) -> expr`.
 
 - It extends section 6's rule: **`:` opens a block, closed by `end`. The value forms, `then` and `->`, never use `:` and never need `end`.**
 - No new concept to teach: a function's body is either a block or a single expression.
 - The parser decides right after the parameter list's `)`: `:` starts a block, `->` an expression. No backtracking, no ambiguity.
-- It costs one new token, `->`, and no reserved word. Today `->` can only appear in a syntax error (`a -> b`), so no valid program changes meaning.
-
-Option 1 works too. Between the two it's a matter of taste: brevity, or one word per concept.
+- The arrow costs one new token, `->`, and no reserved word (`fn` is section 10's). Today `->` can only appear in a syntax error (`a -> b`), so no valid program changes meaning.
+- With `fn`, option 1's one advantage, brevity, is down to a single character.
 
 **How it would work:**
 
-- The parser turns `function(params) -> e` into `function(params): return e end`. A parser-only change: closures, default parameters (all 54 verb guards use `noun2 = nil`), arity checks and error positions work as they do today.
+- The parser turns `fn(params) -> e` into `fn(params): return e end`. A parser-only change: closures, default parameters (all 54 verb guards use `noun2 = nil`), arity checks and error positions work as they do today.
 - Parentheses are always required, even for one parameter, as in the block form. Parameter lists keep one grammar.
-- The body is a full expression, so it extends as far as it can, like section 6's `else` branch. It ends at a `,`, `)` or `}` that isn't its own: `Array.filter(prices, function(p) -> p <= 25)`. A function that returns a function needs no parentheses: `function(a) -> function(b) -> a + b`.
+- The body is a full expression, so it extends as far as it can, like section 6's `else` branch. It ends at a `,`, `)` or `}` that isn't its own: `Array.filter(prices, fn(p) -> p <= 25)`. A function that returns a function needs no parentheses: `fn(a) -> fn(b) -> a + b`.
 - Outside brackets, a newline ends it, as it ends any expression, so a long body keeps the block form.
 - It can't wait. Its body is a `return`, and `return Thread.wait_for(1.0)` is already an error. So the rule is: this form computes a value, and anything that takes time keeps the block form. A waiting call here should get a message that says so, not the generic "a waiting call must be a statement on its own".
-- Only an expression: an assignment isn't one, so `function() -> count = count + 1` is a syntax error. So is `function(p) -> return p`. Both get a targeted message.
+- Only an expression: an assignment isn't one, so `fn() -> count = count + 1` is a syntax error. So is `fn(p) -> return p`. Both get a targeted message.
 
-**Docs.** `guide/language/Functions.md` gets the expression form. The `Thread.wait_while(function(): return not door.open end)` examples in `guide/language/Threads.md` become `Thread.wait_while(function() -> not door.open)`.
+**Docs.** `guide/language/Functions.md` gets the expression form. The `Thread.wait_while(function(): return not door.open end)` examples in `guide/language/Threads.md` become `Thread.wait_while(fn() -> not door.open)`.
 
 **Side findings, with no language change:**
 
@@ -348,3 +347,58 @@ Option 1 works too. Between the two it's a matter of taste: brevity, or one word
 - **Python:** `lambda p: p <= 25`. A keyword, and a single expression only, like this proposal.
 - **Java:** `(p) -> p <= 25`, option 3's form. JavaScript, Dart and C# write it with `=>`.
 - **Lua:** `function(p) return p <= 25 end` is the only form, as in Zak today.
+
+
+## 10. `fn` instead of `function`
+
+Replace the `function` keyword with `fn`, in both forms: the block, `fn(params): … end`, and section 9's expression, `fn(params) -> expr`.
+
+```
+let point = fn(x, y):
+    return { x = x, y = y }
+end
+
+can_open = fn(self, noun2 = nil) -> not self.open,
+Array.filter(prices, fn(p) -> p <= 25)
+```
+
+**Why:**
+
+- 6 characters fewer on each of the 626 function literals in the game (as of 2026-11-04), most visibly on the verb guards in objects' tables.
+- It's still a word you can say, not a symbol, as section 6 prefers. Zak's keywords are already short: `let`, `const`.
+- It reads like the math notation `f(x)`.
+- It makes section 9's expression form as short as Elm's `\`, with no symbol to learn.
+
+**What stays.** The value is still a function: `type(f)` is `"function"`, `is_function` keeps its name, `String.from` shows `<function>`, and the guide calls it a function. Only the keyword changes.
+
+**Costs:**
+
+- `fn` becomes reserved. It's the natural name for a function parameter, and both repos use it as one: twice in the game (`start_routine = function(self, fn)`, `SheriffsOffice.zak:191`; `let fn = Table.get_default(noun1, verb)`, `SystemHelpers.zak:402`) and 17 times in the guide's stdlib signatures (`Array.map(array, fn)`, `Table.each(table, fn)`). They need another name, such as `f` or `callback`. Elm code that uses `fn` isn't affected.
+- `function` explains itself to a newcomer. `fn` has to be learned, once.
+- Zak code to convert, counted as `function(` (as of 2026-11-04):
+
+  | Where | Count |
+  |---|---|
+  | elm-adventure scripts (`Delores/`, `Shared/`) | 626 |
+  | elm-adventure tests (Zak in Elm strings) | 301 |
+  | elm-adventure guide and design docs | 68 |
+  | elm-adventure `src` | 3, 2 of them code the yack compiler generates (`Engine/Yack/Compiler.elm`) |
+  | elm-zak tests | 227 |
+  | elm-zak guide | 58 |
+  | elm-zak design docs | 28 |
+  | elm-zak `src` | 13, in doc comments and examples |
+
+**How:**
+
+- One spelling, no alias. Switch everything at once and convert the code with a script, as planned for `String.format` (section 3a).
+- The script rewrites Zak code only: `.zak` and `.yack` files, the Zak snippets in the tests, and the code the yack compiler generates. Markdown and doc comments get a manual pass, since `function(...)` also appears in prose.
+- In the interpreter, the keyword is in `Zak.Internal.Parser` (`L.keyword "function"`) and the reserved words in `Zak.Internal.Lexer`.
+- `function` stays reserved for a while, with a targeted syntax error, "`function` is now `fn`", so an older script or a Dinky port gets a clear message, not a confusing parse error.
+- The rename comes first, on its own, in both repos. Then section 9's arrow form, then section 6's conditional. Each step stays small, and the rename changes no behavior.
+
+**Prior art:**
+
+- **Rust, Zig, Gleam:** `fn` for every function.
+- **Clojure:** `fn` for an anonymous function.
+- **Elixir:** `fn p -> p <= 25 end`, an anonymous function with `fn` and `->`, closed by `end`.
+- **Lua, JavaScript:** the full `function`, as Zak today.
