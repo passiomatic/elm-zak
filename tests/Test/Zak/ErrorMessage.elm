@@ -35,6 +35,19 @@ testSyntaxError ( source, ( row, col ), message ) =
                 actual
 
 
+{-| `source`'s error message must end in `message`.
+-}
+testErrorMessage : ( String, String ) -> Test
+testErrorMessage ( source, message ) =
+    test (String.replace "\n" "\\n" source) <|
+        \_ ->
+            let
+                actual =
+                    errorMessage source
+            in
+            actual |> String.endsWith message |> Expect.equal True |> Expect.onFail actual
+
+
 throwawayMessage : String
 throwawayMessage =
     "“_” is a throwaway name and can't be used as a value"
@@ -77,19 +90,15 @@ suite =
                 , ( "print(1 2)", ( 1, 9 ), "expected “)”" )
                 ]
         , describe "errorToString: a format error names no function, since String.format and Debug.log share one formatter" <|
-            List.map
-                (\( source, message ) ->
-                    test source <|
-                        \_ ->
-                            let
-                                actual =
-                                    errorMessage source
-                            in
-                            actual |> String.endsWith message |> Expect.equal True |> Expect.onFail actual
-                )
+            List.map testErrorMessage
                 [ ( "String.format(\"%s and %s\", [\"a\"])", "the format expected 2 values, got 1" )
                 , ( "Debug.log_warning(\"%s\", \"a\", \"b\")", "the format expected 1 value, got 2" )
                 , ( "Debug.log(\"%q %s\", 1)", "unknown format directive “%q”" )
+                ]
+        , describe "errorToString: NotAnInteger names the number, since it's not always an index" <|
+            List.map testErrorMessage
+                [ ( "let a = [1]\nreturn a[0.5]", "\n\n0.5 is not a whole number" )
+                , ( "return Array.range(1, 2.5)", "\n\n2.5 is not a whole number" )
                 ]
         , describe "errorToString: a line no statement can start with still gets the generic message, at that line" <|
             List.map testSyntaxError

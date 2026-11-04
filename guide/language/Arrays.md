@@ -32,7 +32,7 @@ The index can be any expression that produces a number, as long as it's a whole 
 ```
 inventory[3]     # error: index 3 is out of bounds — the array has 3 elements
 inventory[-1]    # error: index -1 is out of bounds — the array has 3 elements
-inventory[0.5]   # error: index 0.5 is not a whole number
+inventory[0.5]   # error: 0.5 is not a whole number
 ```
 
 Negative indexes are always out of bounds: there's no counting from the end. To read an index that might be out of bounds without an error, use `Array.get_default`:

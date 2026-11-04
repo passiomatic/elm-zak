@@ -4,7 +4,7 @@ import Dict
 import Expect
 import Test exposing (Test, describe, test)
 import Zak.Internal.Interpreter as I exposing (Error(..))
-import Zak.Internal.Runtime exposing (RuntimeError(..), Value(..))
+import Zak.Internal.Runtime exposing (RuntimeError(..), Value(..), dropPosition)
 
 
 {-| `Array` is seeded by `Zak.Internal.Interpreter` itself now (see that module's
@@ -82,7 +82,7 @@ suite =
             , test "a fractional index is a hard error, not silently rounded" <|
                 \_ ->
                     runExpr "Array.get([10, 20, 30], 2.5)"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { index = 2.5 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 2.5 })))
             ]
         , describe "get_default (like get, but an out-of-range index returns the default instead of erroring)" <|
             [ test "in-range index, ignoring the default" <|
@@ -120,7 +120,7 @@ suite =
             , test "a fractional index is still a hard error — only an out-of-range index is softened" <|
                 \_ ->
                     runExpr "Array.get_default([10, 20, 30], 2.5, 0)"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { index = 2.5 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 2.5 })))
             ]
         , describe "set (mutating, in place — no pure sibling)" <|
             [ test "mutates in place, visible through an alias — the whole point of Array having heap identity" <|
@@ -153,7 +153,7 @@ suite =
             , test "a fractional index is a hard error, not silently rounded" <|
                 \_ ->
                     runExpr "Array.set([1, 2, 3], 2.5, 99)"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { index = 2.5 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 2.5 })))
             ]
         , describe "push (mutating, in place — grows the array by one)" <|
             [ test "mutates in place, visible through an alias" <|
@@ -428,11 +428,11 @@ suite =
             , test "a non-whole-number start is a NotAnInteger error" <|
                 \_ ->
                     runExpr "Array.slice([1, 2, 3], 0.5, 2)"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { index = 0.5 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 0.5 })))
             , test "a non-whole-number end is a NotAnInteger error" <|
                 \_ ->
                     runExpr "Array.slice([1, 2, 3], 0, 2.5)"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { index = 2.5 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 2.5 })))
             , test "wrong first argument type" <|
                 \_ ->
                     runExpr "Array.slice(\"abc\", 0, 1)"
@@ -652,6 +652,44 @@ suite =
                         |> Expect.equal (Ok (VBool True))
             , test "range(6, 3) == [] — empty, not an error, when lo > hi" <|
                 \_ -> runExpr "Array.length(Array.range(6, 3))" |> Expect.equal (Ok (VNumber 0))
+            , test "negative whole bounds are fine" <|
+                \_ ->
+                    run
+                        """
+                        let r = Array.range(-2, 1)
+                        return Array.length(r) == 4 and Array.get(r, 0) == -2 and Array.get(r, 3) == 1
+                        """
+                        |> Expect.equal (Ok (VBool True))
+            , test "a whole number written with a fraction, 3.0, is fine" <|
+                \_ -> runExpr "Array.length(Array.range(1, 3.0))" |> Expect.equal (Ok (VNumber 3))
+            , test "a fractional low bound is a NotAnInteger error, not rounded" <|
+                \_ ->
+                    runExpr "Array.range(1.5, 4)"
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 1.5 })))
+            , test "a fractional high bound is a NotAnInteger error, not rounded" <|
+                \_ ->
+                    runExpr "Array.range(1, 4.4)"
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 4.4 })))
+            , test "an infinite bound is a NotAnInteger error, not a range that never ends" <|
+                \_ ->
+                    run
+                        """
+                        let x = 2
+                        while x < x * 2:
+                            x = x * x
+                        end
+                        return Array.range(0, x)
+                        """
+                        |> Result.mapError
+                            (\error ->
+                                case error of
+                                    RuntimeError e ->
+                                        RuntimeError (dropPosition e)
+
+                                    SyntaxError _ ->
+                                        error
+                            )
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 1 / 0 })))
             , test "wrong first argument type" <|
                 \_ ->
                     runExpr "Array.range(\"a\", 3)"

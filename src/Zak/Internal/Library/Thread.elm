@@ -148,7 +148,7 @@ join state args =
                 Ok ( Suspended (ThreadRunning rounded) (\s -> Ok ( Done VNil, s )), state )
 
             else
-                Err (NotAnInteger { index = idFloat })
+                Err (NotAnInteger { value = idFloat })
 
         [ other ] ->
             Err (TypeError { expected = "Number", got = other })
@@ -188,7 +188,7 @@ stop state args =
                 Ok ( VNil, { state | threads = Dict.remove rounded state.threads } )
 
             else
-                Err (NotAnInteger { index = idFloat })
+                Err (NotAnInteger { value = idFloat })
 
         [ other ] ->
             Err (TypeError { expected = "Number", got = other })

@@ -275,11 +275,11 @@ suite =
             , test "a non-whole-number start is a NotAnInteger error" <|
                 \_ ->
                     runExpr "String.slice(\"abc\", 0.5, 2)"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { index = 0.5 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 0.5 })))
             , test "a non-whole-number end is a NotAnInteger error" <|
                 \_ ->
                     runExpr "String.slice(\"abc\", 0, 2.5)"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { index = 2.5 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 2.5 })))
             , test "wrong first argument type" <|
                 \_ ->
                     runExpr "String.slice(1, 0, 1)"

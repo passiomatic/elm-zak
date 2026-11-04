@@ -82,7 +82,7 @@ import Zak.Internal.Runtime
         , mapOutcomeResult
         , nonNegativeIndex
         , requireDone
-        , wholeNumberIndex
+        , wholeNumber
         )
 
 
@@ -1498,7 +1498,7 @@ getArrayIndex : State game -> Value -> Value -> Result RuntimeError Value
 getArrayIndex state target indexValue =
     case ( target, indexValue ) of
         ( VArray id, VNumber indexFloat ) ->
-            wholeNumberIndex indexFloat
+            wholeNumber indexFloat
                 |> Result.andThen
                     (\index ->
                         let
@@ -1524,7 +1524,7 @@ setArrayIndex : State game -> Value -> Value -> Value -> Result RuntimeError (St
 setArrayIndex state target indexValue value =
     case ( target, indexValue ) of
         ( VArray id, VNumber indexFloat ) ->
-            wholeNumberIndex indexFloat
+            wholeNumber indexFloat
                 |> Result.andThen
                     (\index ->
                         let
@@ -2384,7 +2384,7 @@ arrayGet state args =
 {-| `Array.get_default(array, index, default)` — like `Array.get`, but
 returns `default` instead of raising `IndexOutOfBounds` when `index` is
 out of range. `default` is optional, `nil` when omitted. Only the bounds
-check is softened: a non-integer `index` (`wholeNumberIndex`) or a
+check is softened: a non-integer `index` (`wholeNumber`) or a
 non-`Array` `array` is still a hard error, the same split
 `Table.get_default` draws between a missing _field_ (softened) and a
 wrong-typed target (still an error). The `Array` counterpart to
@@ -2397,7 +2397,7 @@ arrayGetDefault state args =
             arrayGetDefault state [ arrayValue, indexValue, VNil ]
 
         [ VArray id, VNumber indexFloat, default ] ->
-            wholeNumberIndex indexFloat
+            wholeNumber indexFloat
                 |> Result.map
                     (\index ->
                         ( Array.get index (arrayContents state id) |> Maybe.withDefault default
@@ -2918,21 +2918,24 @@ whole-collection derivation (there's no existing array to mutate or
 derive from at all), so it doesn't fit either half of the mutation rule;
 it just always allocates and returns a new array. Matches Elm's real
 `List.range` exactly: inclusive of both `lo` and `hi`, and simply empty — not an
-error — when `lo > hi` (`Array.range(6, 3) == []`).
+error — when `lo > hi` (`Array.range(6, 3) == []`). Both bounds must be
+whole numbers (`wholeNumber`), as an index must: a fractional one is
+`NotAnInteger`, not rounded.
 -}
 arrayRange : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayRange state args =
     case args of
         [ VNumber loFloat, VNumber hiFloat ] ->
-            let
-                elements =
-                    List.range (round loFloat) (round hiFloat)
-                        |> List.map (\i -> VNumber (toFloat i))
-
-                ( newId, state1 ) =
-                    allocArrayCell state (Array.fromList elements)
-            in
-            Ok ( VArray newId, state1 )
+            Result.map2
+                (\lo hi ->
+                    let
+                        ( newId, state1 ) =
+                            allocArrayCell state (Array.fromList (List.map (\i -> VNumber (toFloat i)) (List.range lo hi)))
+                    in
+                    ( VArray newId, state1 )
+                )
+                (wholeNumber loFloat)
+                (wholeNumber hiFloat)
 
         [ VNumber _, other ] ->
             Err (TypeError { expected = "Number", got = other })

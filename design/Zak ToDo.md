@@ -17,7 +17,7 @@ Things to ponder to improve usability of the language.
 * Add Math.power() function
 
 # Quirks
-* Array.range rounds value and doesn't error
+* ~~Array.range rounds value and doesn't error~~ Done: a fractional or infinite bound is a `NotAnInteger` error, as an index is, and its message no longer says "index"
 * Native functions can accept variadic arguments while pure Zak functions do not.
 
 # Guide findings 

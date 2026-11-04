@@ -180,7 +180,7 @@ Array.foldl(["a", "b", "c"], String.append, "")   # "cba"
 
 ## Array.range(low, hi)
 
-A new array of consecutive integers from `low` to `hi`, inclusive of both. Empty, not an error, when `low > hi`.
+A new array of consecutive integers from `low` to `hi`, inclusive of both. Empty, not an error, when `low > hi`. Both must be whole numbers: `Array.range(1, 2.5)` is an error, not rounded.
 
 ```
 Array.range(3, 6)   # [3, 4, 5, 6]
