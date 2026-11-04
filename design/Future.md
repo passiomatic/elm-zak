@@ -153,7 +153,7 @@ name = function(self): return if self.sploded then "radioactive crater" else "Ed
 
 - 4 guard returns can use `and` today. `if not is_table(value): return false end` / `return "_is_actor" in value` becomes `return is_table(value) and "_is_actor" in value` (`ActorHelpers.zak:51`). The same goes for `SheriffsOffice.zak:204`, `IdleHelpers.zak:90`, and `Items.zak:266` (if `get_value` always returns a `Bool` there).
 - Only 3 cases default a `nil` (`Items.zak:29`, `DoorHelpers.zak:117`, `InventoryHelpers.zak:194`): too few to justify `??` now.
-- Most of the verbosity comes from the function wrapper, not the `if`. Dinky's `name = @expr` shorthand made a property one line. Even with a conditional expression, Zak still needs `function(self): return … end`. That's a separate idea, if it comes up.
+- Most of the verbosity comes from the function wrapper, not the `if`. Dinky's `name = @expr` shorthand made a property one line. Even with a conditional expression, Zak still needs `function(self): return … end`. That's a separate idea: see section 9.
 
 
 ## ✅ 7. Private `_` names in included files - DONE
@@ -275,18 +275,76 @@ Revisit option 3 if bugs from wrong strings show up. Ruby-style symbols would pr
 
 ## 9. Simpler lambda functions
 
-Instead of today's:
+A function that only computes a value still needs the whole block form, `return` and `end` included. The first draft took Elm's backslash-arrow form, whose body is a single expression:
 
-    Array.filter(prices, function(p): return p <= 25 end)
+```
+Array.filter(prices, function(p): return p <= 25 end)    # today
+Array.filter(prices, \(p) -> p <= 25)
+Array.map(prices, \(p) -> if p > 100 then "Expensive" else "Quite cheap")    # with section 6
+```
 
-We could have: 
+**Use cases in Delores** (as of 2026-11-04: `Delores/` and `Shared/` in elm-adventure, 623 function literals):
 
-    Array.filter(prices, \(p) -> p <= 25)
+| Body | Count | Where |
+|---|---|---|
+| A single `return expr` | 122 (20%) | 104 table fields (54 `can_*` verb guards, 20 `to_door`, ...), 10 `let`s, 8 call arguments |
+| … of which `return nil` only | 16 | empty `exit` / `enter` hooks (side findings below) |
+| `if … return a end`, then `return b` | 22 | property functions: `name`, `for_story`, `icon`, `photo_name`. Needs section 6 too |
+| Anything else | 479 | |
 
-or, coupled with a Elm-like ternary op:
+- The call-argument case the draft starts from is rare: 8 of the 122 (3 `Array.filter`, 1 `Array.map`, 2 `Thread.wait_while`, 2 `door_trigger`). Most of the 72 functions passed as arguments are thread bodies (`Thread.start`, `Thread.with_input_off`, `Scene.start_thread`, `Cutscene.run`). They wait, so an expression can't replace them (below).
+- The typical case is a verb guard in an object's table (`SheriffsOffice.zak:729`):
 
-    Array.map(prices, \(p) -> if p > 100 then "Expensive" else "Quite cheap")
+  ```
+  can_open = function(self, noun2 = nil): return not self.open end,
+  ```
 
-The `\(args) -> expr` only holds an expression, so no `return` required. 
+- 51 of the 122 already fit on one line. The other 71 take three (`function(...):`, `return ...`, `end`) and would take one.
+- Sections 6 and 9 add up. Section 6 found that most of a property function's length is the wrapper, not the `if`. With both, the 22 `if` / `return` property functions take one line too.
 
-The backslash-arrow combo comes from Elm.
+**Options considered:**
+
+1. **Elm: `\(p) -> p <= 25`.** The shortest. But `\` is a symbol to learn, the objection section 6 made against `?`, and in code full of strings it reads like an escape. It only appears inside strings today, so the lexer has no clash.
+2. **The keyword, then an arrow: `function(p) -> p <= 25`.** No new word, and it's visibly a function. 7 characters longer than option 1, but most of the saving comes from dropping `return`, `end` and the line breaks, which both do.
+3. **A bare arrow: `(p) -> p <= 25`.** It looks like a parenthesized expression until the arrow, so the parser has to backtrack, and an error inside it is harder to report.
+4. **A short keyword: `fn(p) -> p <= 25`.** One more reserved word, and `SheriffsOffice.zak:191` already uses `fn` as a parameter name.
+
+The typical case with each:
+
+```
+can_open = \(self, noun2 = nil) -> not self.open,
+can_open = function(self, noun2 = nil) -> not self.open,
+can_open = (self, noun2 = nil) -> not self.open,
+can_open = fn(self, noun2 = nil) -> not self.open,
+```
+
+**Proposal: option 2, `function(params) -> expr`.**
+
+- It extends section 6's rule: **`:` opens a block, closed by `end`. The value forms, `then` and `->`, never use `:` and never need `end`.**
+- No new concept to teach: a function's body is either a block or a single expression.
+- The parser decides right after the parameter list's `)`: `:` starts a block, `->` an expression. No backtracking, no ambiguity.
+- It costs one new token, `->`, and no reserved word. Today `->` can only appear in a syntax error (`a -> b`), so no valid program changes meaning.
+
+Option 1 works too. Between the two it's a matter of taste: brevity, or one word per concept.
+
+**How it would work:**
+
+- The parser turns `function(params) -> e` into `function(params): return e end`. A parser-only change: closures, default parameters (all 54 verb guards use `noun2 = nil`), arity checks and error positions work as they do today.
+- Parentheses are always required, even for one parameter, as in the block form. Parameter lists keep one grammar.
+- The body is a full expression, so it extends as far as it can, like section 6's `else` branch. It ends at a `,`, `)` or `}` that isn't its own: `Array.filter(prices, function(p) -> p <= 25)`. A function that returns a function needs no parentheses: `function(a) -> function(b) -> a + b`.
+- Outside brackets, a newline ends it, as it ends any expression, so a long body keeps the block form.
+- It can't wait. Its body is a `return`, and `return Thread.wait_for(1.0)` is already an error. So the rule is: this form computes a value, and anything that takes time keeps the block form. A waiting call here should get a message that says so, not the generic "a waiting call must be a statement on its own".
+- Only an expression: an assignment isn't one, so `function() -> count = count + 1` is a syntax error. So is `function(p) -> return p`. Both get a targeted message.
+
+**Docs.** `guide/language/Functions.md` gets the expression form. The `Thread.wait_while(function(): return not door.open end)` examples in `guide/language/Threads.md` become `Thread.wait_while(function() -> not door.open)`.
+
+**Side findings, with no language change:**
+
+- 16 of the single-return functions are empty, like `exit = function(self): return nil end` (13 `exit`, 2 `enter`, 1 `verb_look_at`). A scene's hooks are optional (elm-adventure's `Engine.Callback`), so the `exit` and `enter` ones can probably go. `verb_look_at` needs a look first: returning `nil` there may override a default.
+
+**Prior art:**
+
+- **Elm:** `\p -> p <= 25`, the first draft's form.
+- **Python:** `lambda p: p <= 25`. A keyword, and a single expression only, like this proposal.
+- **Java:** `(p) -> p <= 25`, option 3's form. JavaScript, Dart and C# write it with `=>`.
+- **Lua:** `function(p) return p <= 25 end` is the only form, as in Zak today.
