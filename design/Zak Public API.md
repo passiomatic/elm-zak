@@ -4,6 +4,8 @@ The open questions about the public `Zak` module, left over from the API refacto
 
 An item that would change a signature or remove a name has to be settled before the package is published. After that, it can only change in a major release.
 
+The test for anything a host asks of Zak: would it make sense in Zak if that host didn't exist? A native receiving its host's state passes, since any host with state would want it.
+
 ## Before publishing
 
 ### The names of the data functions
@@ -18,7 +20,7 @@ Since 2026-10-20, `init` logs a native it ignores the same way: one the standard
 
 ### The world carries the game
 
-Decided and done (2026-10-21), on the `twp` branch: step 2 of elm-adventure's TWP-like model (`design/TWP-like Model.md` there), whose natives act on the game at once, as TWP's reach its engine through a global, instead of queuing effects.
+Decided and done (2026-10-21), on the `twp` branch: step 2 of elm-adventure's TWP-like model, whose natives act on the game at once, as TWP's reach its engine through a global, instead of queuing effects.
 
 - `World game` and `Native game` take the host's own type; `init : game -> List ( String, Native game ) -> World game` takes its first value. A host with nothing to share uses `()`.
 - `Zak.game` reads it and `Zak.updateGame` changes it, from a native or from the host's own code between calls. No `setGame` (`updateGame (always g)` does it), and no way to change the type of an existing world's game, since its natives are typed for it.
@@ -87,6 +89,6 @@ A `nativeExpression` closes over the natives' frame, so it can't read the script
 Fixed (2026-10-21) with a function store: a function lives in its own heap, `functionHeap`, and both the interpreter's `VFunction` and the public `FunctionRef` hold its id, as `VTable` and `TableRef` do. Two consequences:
 
 - **In Zak, a function is `==` to itself,** as a table is, where before no function was equal to anything, itself included. Two functions built from the same source are still different functions.
-- **No `Value` holds an Elm function any more,** so the game type parameter of the TWP-like model (elm-adventure's `design/TWP-like Model.md`) stops at the interpreter's state and its functions: `Value`, the heaps of tables and arrays, and environments don't take it.
+- **No `Value` holds an Elm function any more,** so the game type parameter of elm-adventure's TWP-like model stops at the interpreter's state and its functions: `Value`, the heaps of tables and arrays, and environments don't take it.
 
 A function allocates when it's created, once per evaluation of a function literal, as a table literal allocates a table; with no garbage collection, closures built in a loop grow the heap, as tables already do.
