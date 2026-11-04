@@ -48,7 +48,9 @@ let pool = Table.get_default(scene, "music_pool", nil)
 
 Making `default` optional, with `nil` as its own default, shortens all 30. The same change applies to `Array.get_default`, as the ToDo already suggests, along with its question about renaming it (`safe_get`, `get_or_default`).
 
-### 2. `Table.merge(table, other)`
+### 2. `Table.merge(table, other)` (being tried in the game)
+
+**Tried in the game first (2026-11-04).** elm-adventure's `Shared/Helpers.zak` adds a Zak `Table.merge` onto the stdlib's `Table` table, as `SoundHelpers.zak` already does with `Thread.wait_while_sound`, and the two blocks below call it. Call sites use the stdlib's name and signature, so moving it into the stdlib means deleting that definition. Until then, an assert just above it fails the boot once `Table` has a `merge` of its own. One difference from a native: if `other` isn't a table, the error points inside `Helpers.zak`, not at the caller.
 
 Sets every field of `other` on `table`, overwriting the ones `table` already has, and returns `table`. `other` is left untouched. The copy is shallow, like `Table.clone`. It mutates the way `Array.append` does: it edits one specific table.
 
@@ -285,7 +287,7 @@ Zak has `Math.round`, and `//` rounds down (`x // 1`), so the only thing missing
 ## Suggested order
 
 1. ✅ An optional default for `get_default`: the most call sites. Done.
-2. `Table.merge`: small, with no open questions.
+2. `Table.merge`: small, with no open questions. Being tried in the game first.
 3. `Array.any` and `Array.find`, maybe with `Array.all`.
 4. Adding to a set, once the name is settled.
 5. `Table.keys` and `Table.values`, if the table side should be complete.
