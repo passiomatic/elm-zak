@@ -71,7 +71,13 @@ end)
 let object = Table.merge(Table.clone(base), table)
 ```
 
-### 3. `Array.any(array, predicate)` and `Array.find(array, predicate)`
+### 3. `Array.any(array, predicate)` and `Array.find(array, predicate)` (being tried in the game)
+
+**Tried in the game first (2026-11-04),** like `Table.merge`: elm-adventure's `Shared/Helpers.zak` adds both onto the stdlib's `Array` table, each a `for` loop that returns at the first match, and the four loops below call them. An assert above each fails the boot once `Array` has its own. The Zak versions differ from natives in three ways, none of which the four call sites hit:
+
+- an error points inside `Helpers.zak`, not at the caller;
+- `for` reads the array afresh on each pass, where a native would walk the array as it was at the call, like `Array.filter`;
+- a predicate that waits gets "a waiting call must be a statement on its own", not `SuspendedNotAllowed`.
 
 `any` is `true` if `predicate` is `true` for at least one element. `find` returns the first element `predicate` is `true` for, or `nil` if there's none.
 
@@ -288,7 +294,7 @@ Zak has `Math.round`, and `//` rounds down (`x // 1`), so the only thing missing
 
 1. ✅ An optional default for `get_default`: the most call sites. Done.
 2. `Table.merge`: small, with no open questions. Being tried in the game first.
-3. `Array.any` and `Array.find`, maybe with `Array.all`.
+3. `Array.any` and `Array.find`, maybe with `Array.all`. Being tried in the game first.
 4. Adding to a set, once the name is settled.
 5. `Table.keys` and `Table.values`, if the table side should be complete.
 6. `Array.sort`, `String.contains`, and width and precision in `String.format`, when game code needs them.
