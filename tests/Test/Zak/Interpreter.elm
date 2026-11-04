@@ -1589,11 +1589,11 @@ return count.n"""
             , test "indexing with a fractional number, reading" <|
                 \_ ->
                     I.runExpr noNatives "[1, 2, 3][2.5]"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 2.5 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger 2.5)))
             , test "indexing with a fractional number, assigning" <|
                 \_ ->
                     run noNatives "let a = [1, 2, 3]\na[2.5] = 99"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 2.5 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger 2.5)))
             , test "[index] assignment on a non-array" <|
                 \_ ->
                     run noNatives "let r = { x = 1 }\nr[0] = 99"

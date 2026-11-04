@@ -267,19 +267,19 @@ suite =
             , test "a negative start is a NegativeIndex error, not a count-from-the-end" <|
                 \_ ->
                     runExpr "String.slice(\"abc\", -1, 2)"
-                        |> Expect.equal (Err (RuntimeError (NegativeIndex { index = -1 })))
+                        |> Expect.equal (Err (RuntimeError (NegativeIndex -1)))
             , test "a negative end is a NegativeIndex error" <|
                 \_ ->
                     runExpr "String.slice(\"abc\", 0, -1)"
-                        |> Expect.equal (Err (RuntimeError (NegativeIndex { index = -1 })))
+                        |> Expect.equal (Err (RuntimeError (NegativeIndex -1)))
             , test "a non-whole-number start is a NotAnInteger error" <|
                 \_ ->
                     runExpr "String.slice(\"abc\", 0.5, 2)"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 0.5 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger 0.5)))
             , test "a non-whole-number end is a NotAnInteger error" <|
                 \_ ->
                     runExpr "String.slice(\"abc\", 0, 2.5)"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 2.5 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger 2.5)))
             , test "wrong first argument type" <|
                 \_ ->
                     runExpr "String.slice(1, 0, 1)"

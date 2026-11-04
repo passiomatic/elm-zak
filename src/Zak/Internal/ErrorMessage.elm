@@ -103,10 +103,10 @@ describeRuntimeError runtimeError =
         IndexOutOfBounds { index, length } ->
             "index " ++ formatNumber index ++ " is out of bounds — the array has " ++ pluralize length "element"
 
-        NotAnInteger { value } ->
+        NotAnInteger value ->
             formatNumber value ++ " is not a whole number"
 
-        NegativeIndex { index } ->
+        NegativeIndex index ->
             "index " ++ formatNumber index ++ " can't be negative"
 
         EmptyArray ->

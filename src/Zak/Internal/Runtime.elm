@@ -132,8 +132,8 @@ type RuntimeError
     | DomainError String
     | AssertionFailed String
     | IndexOutOfBounds { index : Float, length : Int }
-    | NotAnInteger { value : Float }
-    | NegativeIndex { index : Float }
+    | NotAnInteger Float
+    | NegativeIndex Float
     | EmptyArray
     | SuspendedNotAllowed
     | FormatArgMismatch { expected : Int, got : Int }
@@ -608,7 +608,7 @@ wholeNumber float =
         Ok rounded
 
     else
-        Err (NotAnInteger { value = float })
+        Err (NotAnInteger float)
 
 
 {-| Like `wholeNumber`, but also rejects a negative value with
@@ -621,7 +621,7 @@ problems to report at once.
 nonNegativeIndex : Float -> Result RuntimeError Int
 nonNegativeIndex indexFloat =
     if indexFloat < 0 then
-        Err (NegativeIndex { index = indexFloat })
+        Err (NegativeIndex indexFloat)
 
     else
         wholeNumber indexFloat

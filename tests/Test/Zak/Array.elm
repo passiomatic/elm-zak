@@ -82,7 +82,7 @@ suite =
             , test "a fractional index is a hard error, not silently rounded" <|
                 \_ ->
                     runExpr "Array.get([10, 20, 30], 2.5)"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 2.5 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger 2.5)))
             ]
         , describe "get_default (like get, but an out-of-range index returns the default instead of erroring)" <|
             [ test "in-range index, ignoring the default" <|
@@ -120,7 +120,7 @@ suite =
             , test "a fractional index is still a hard error — only an out-of-range index is softened" <|
                 \_ ->
                     runExpr "Array.get_default([10, 20, 30], 2.5, 0)"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 2.5 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger 2.5)))
             ]
         , describe "set (mutating, in place — no pure sibling)" <|
             [ test "mutates in place, visible through an alias — the whole point of Array having heap identity" <|
@@ -153,7 +153,7 @@ suite =
             , test "a fractional index is a hard error, not silently rounded" <|
                 \_ ->
                     runExpr "Array.set([1, 2, 3], 2.5, 99)"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 2.5 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger 2.5)))
             ]
         , describe "push (mutating, in place — grows the array by one)" <|
             [ test "mutates in place, visible through an alias" <|
@@ -420,19 +420,19 @@ suite =
             , test "a negative start is a NegativeIndex error, not a count-from-the-end" <|
                 \_ ->
                     runExpr "Array.slice([1, 2, 3], -1, 2)"
-                        |> Expect.equal (Err (RuntimeError (NegativeIndex { index = -1 })))
+                        |> Expect.equal (Err (RuntimeError (NegativeIndex -1)))
             , test "a negative end is a NegativeIndex error" <|
                 \_ ->
                     runExpr "Array.slice([1, 2, 3], 0, -1)"
-                        |> Expect.equal (Err (RuntimeError (NegativeIndex { index = -1 })))
+                        |> Expect.equal (Err (RuntimeError (NegativeIndex -1)))
             , test "a non-whole-number start is a NotAnInteger error" <|
                 \_ ->
                     runExpr "Array.slice([1, 2, 3], 0.5, 2)"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 0.5 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger 0.5)))
             , test "a non-whole-number end is a NotAnInteger error" <|
                 \_ ->
                     runExpr "Array.slice([1, 2, 3], 0, 2.5)"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 2.5 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger 2.5)))
             , test "wrong first argument type" <|
                 \_ ->
                     runExpr "Array.slice(\"abc\", 0, 1)"
@@ -665,11 +665,11 @@ suite =
             , test "a fractional low bound is a NotAnInteger error, not rounded" <|
                 \_ ->
                     runExpr "Array.range(1.5, 4)"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 1.5 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger 1.5)))
             , test "a fractional high bound is a NotAnInteger error, not rounded" <|
                 \_ ->
                     runExpr "Array.range(1, 4.4)"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 4.4 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger 4.4)))
             , test "an infinite bound is a NotAnInteger error, not a range that never ends" <|
                 \_ ->
                     run
@@ -689,7 +689,7 @@ suite =
                                     SyntaxError _ ->
                                         error
                             )
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger { value = 1 / 0 })))
+                        |> Expect.equal (Err (RuntimeError (NotAnInteger (1 / 0))))
             , test "wrong first argument type" <|
                 \_ ->
                     runExpr "Array.range(\"a\", 3)"
