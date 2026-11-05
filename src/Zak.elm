@@ -1,7 +1,7 @@
 module Zak exposing
     ( World, init, game, updateGame, run, call, tick, reseed
-    , Value(..), TableRef, ArrayRef, FunctionRef
-    , getGlobal, setGlobal, globals, newTable, getField, setField, removeField, fields, items
+    , Value(..), TableRef, ArrayRef, FunctionRef, refId
+    , getGlobal, setGlobal, globals, newTable, getField, setField, removeField, fields, newArray, items, setItems
     , ThreadOwner, startThread, stopThreads, hasThreads, isThreadRunning, setThreadOwner, threadCount
     , Effect(..), LogLevel(..), emitEffect, log, takeEffects
     , Error, Problem(..), Position, errorProblem, errorPosition, errorToString
@@ -46,12 +46,12 @@ second, so updates chain with `|>`.
 
 # Values
 
-@docs Value, TableRef, ArrayRef, FunctionRef
+@docs Value, TableRef, ArrayRef, FunctionRef, refId
 
 
 # Data
 
-@docs getGlobal, setGlobal, globals, newTable, getField, setField, removeField, fields, items
+@docs getGlobal, setGlobal, globals, newTable, getField, setField, removeField, fields, newArray, items, setItems
 
 
 # Threads
@@ -276,6 +276,31 @@ type FunctionRef
     = FunctionRef Int
 
 
+{-| A number for what a table, array or function reference points at:
+two references have the same one exactly when they're `==`. `Nothing`
+for any other value. Unlike a reference, it can key a `Dict`, so a host
+walking many tables can tell which ones it has already met. It only
+means something within one world, so don't save it.
+
+    Zak.refId table1 == Zak.refId table2 -- the same table
+
+-}
+refId : Value -> Maybe Int
+refId value =
+    case value of
+        Table (TableRef id) ->
+            Just id
+
+        Array (ArrayRef id) ->
+            Just id
+
+        Function (FunctionRef id) ->
+            Just id
+
+        _ ->
+            Nothing
+
+
 fromInternal : Runtime.Value -> Value
 fromInternal value =
     case value of
@@ -484,6 +509,21 @@ fields table (World state) =
             Nothing
 
 
+{-| A new array with `values` as its items.
+
+    ( list, world1 ) =
+        Zak.newArray [ Number 1, String "two" ] world
+
+-}
+newArray : List Value -> World game -> ( Value, World game )
+newArray values (World state) =
+    let
+        ( id, state1 ) =
+            Runtime.allocArrayCell state (Array.fromList (List.map toInternal values))
+    in
+    ( Array (ArrayRef id), World state1 )
+
+
 {-| The items of `array`, in order. `Nothing` if `array` isn't an array.
 -}
 items : Value -> World game -> Maybe (List Value)
@@ -495,6 +535,28 @@ items array (World state) =
 
         _ ->
             Nothing
+
+
+{-| Replaces every item of `array` with `values`, in place, so every
+reference to the array sees them. Does nothing if `array` isn't an
+array.
+
+    world
+        |> Zak.setItems [ Number 1, Number 2 ] list
+
+-}
+setItems : List Value -> Value -> World game -> World game
+setItems values array (World state) =
+    case array of
+        Array (ArrayRef id) ->
+            if Dict.member id state.arrayHeap then
+                World { state | arrayHeap = Dict.insert id (Array.fromList (List.map toInternal values)) state.arrayHeap }
+
+            else
+                World state
+
+        _ ->
+            World state
 
 
 
