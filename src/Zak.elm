@@ -1,7 +1,7 @@
 module Zak exposing
     ( World, init, game, updateGame, run, call, tick, reseed
     , Value(..), TableRef, ArrayRef, FunctionRef, refId
-    , getGlobal, setGlobal, globals, fileGlobals, setFileGlobal, newTable, getField, setField, removeField, fields, newArray, items, setItems
+    , getGlobal, setGlobal, globals, newTable, getField, setField, removeField, fields, newArray, items, setItems
     , ThreadOwner, startThread, stopThreads, hasThreads, isThreadRunning, setThreadOwner, threadCount
     , Effect(..), LogLevel(..), emitEffect, log, takeEffects
     , Error, Problem(..), Position, errorProblem, errorPosition, errorToString
@@ -51,7 +51,7 @@ second, so updates chain with `|>`.
 
 # Data
 
-@docs getGlobal, setGlobal, globals, fileGlobals, setFileGlobal, newTable, getField, setField, removeField, fields, newArray, items, setItems
+@docs getGlobal, setGlobal, globals, newTable, getField, setField, removeField, fields, newArray, items, setItems
 
 
 # Threads
@@ -374,8 +374,7 @@ getGlobal name (World state) =
 existing global changes, wherever it's defined (a native included). A
 name that isn't defined yet becomes a new top-level global, as with
 `let`. A `_` name an included file keeps private can't be reached this
-way: setting it adds a new global, which the file's own code doesn't see
-(see [`setFileGlobal`](#setFileGlobal)).
+way: setting it adds a new global, which the file's own code doesn't see.
 
 To give a [`nativeExpression`](#nativeExpression) a global it can read,
 declare it as a native (`nativeConstant Nil`) and set it with this:
@@ -395,61 +394,13 @@ setGlobal name value (World state) =
 {-| Every global the scripts defined at the top level, and every one
 [`setGlobal`](#setGlobal) added. Natives and the standard library aren't
 included, and neither are the `_` names an included file keeps private
-(see [`fileGlobals`](#fileGlobals)).
+(see [`nativeInclude`](#nativeInclude)).
 -}
 globals : World game -> Dict String Value
 globals (World state) =
     Dict.get state.globalFrameId state.heap
         |> Maybe.withDefault Dict.empty
         |> Dict.map (\_ value -> fromInternal value)
-
-
-{-| The `_` names each included file keeps private (see
-[`nativeInclude`](#nativeInclude)), by the file's path. Together with
-[`globals`](#globals), these are every top-level name the scripts
-defined.
-
-    -- after include("lib.zak"), where lib.zak says `let _count = 0`
-    Zak.fileGlobals world
-    --> Dict.fromList [ ( "lib.zak", Dict.fromList [ ( "_count", Number 0 ) ] ) ]
-
--}
-fileGlobals : World game -> Dict String (Dict String Value)
-fileGlobals (World state) =
-    state.fileFrames
-        |> Dict.toList
-        |> List.map
-            (\( frameId, path ) ->
-                ( path
-                , Dict.get frameId state.heap
-                    |> Maybe.withDefault Dict.empty
-                    |> Dict.map (\_ value -> fromInternal value)
-                )
-            )
-        |> Dict.fromList
-
-
-{-| Sets the `_` name `name` that the file at `path` keeps private, as
-the file's own code would: only that file's code sees it. A name the
-file doesn't define yet is added to it. Does nothing if no file at
-`path` was included, or if `name` doesn't start with `_`, since any
-other name a file defines is a global (see [`setGlobal`](#setGlobal)).
-
-    Zak.setFileGlobal "lib.zak" "_count" (Number 5) world
-
--}
-setFileGlobal : String -> String -> Value -> World game -> World game
-setFileGlobal path name value (World state) =
-    case List.filter (\( _, framePath ) -> framePath == path) (Dict.toList state.fileFrames) of
-        ( frameId, _ ) :: _ ->
-            if String.startsWith "_" name then
-                World { state | heap = Dict.update frameId (Maybe.map (Dict.insert name (toInternal value))) state.heap }
-
-            else
-                World state
-
-        [] ->
-            World state
 
 
 {-| The frame `name` resolves to at the top level: the world's own

@@ -625,39 +625,6 @@ suite =
                         \( table, world ) ->
                             Zak.fields table (Zak.setItems [ Number 2 ] table world)
                                 |> Expect.equal (Just (Dict.fromList [ ( "a", Number 1 ) ]))
-            , test "fileGlobals lists each included file's private _ names, which globals leaves out" <|
-                \_ ->
-                    withWorld (withFiles [ ( "a.zak", "let _count = 0\nlet shown = 1" ), ( "b.zak", "let _name = \"b\"" ) ] "include(\"a.zak\")\ninclude(\"b.zak\")") <|
-                        \( _, world ) ->
-                            ( Zak.fileGlobals world, Dict.keys (Zak.globals world) )
-                                |> Expect.equal
-                                    ( Dict.fromList
-                                        [ ( "a.zak", Dict.fromList [ ( "_count", Number 0 ) ] )
-                                        , ( "b.zak", Dict.fromList [ ( "_name", String "b" ) ] )
-                                        ]
-                                    , [ "shown" ]
-                                    )
-            , test "setFileGlobal changes a file's private _ name, and the file's own code sees it" <|
-                \_ ->
-                    withWorld (withFiles [ ( "lib.zak", "let _count = 0\nlet read = function(): return _count end" ) ] "include(\"lib.zak\")") <|
-                        \( _, world ) ->
-                            world
-                                |> Zak.setFileGlobal "lib.zak" "_count" (Number 5)
-                                |> Zak.run "return read()"
-                                |> Result.map Tuple.first
-                                |> Expect.equal (Ok (Number 5))
-            , test "setFileGlobal does nothing for a file never included, or a name without _" <|
-                \_ ->
-                    withWorld (withFiles [ ( "lib.zak", "let _count = 0" ) ] "include(\"lib.zak\")") <|
-                        \( _, world ) ->
-                            let
-                                world1 =
-                                    world
-                                        |> Zak.setFileGlobal "nope.zak" "_count" (Number 1)
-                                        |> Zak.setFileGlobal "lib.zak" "shown" (Number 2)
-                            in
-                            ( Zak.fileGlobals world1, Zak.getGlobal "shown" world1 )
-                                |> Expect.equal ( Dict.fromList [ ( "lib.zak", Dict.fromList [ ( "_count", Number 0 ) ] ) ], Nothing )
             ]
         , describe "threads"
             [ test "threadCount counts the waiting threads, and tick advances them" <|
