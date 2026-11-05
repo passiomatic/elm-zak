@@ -500,6 +500,19 @@ suite =
                         \( _, world ) ->
                             ( Zak.getGlobal "f" world == Zak.getGlobal "g" world, Zak.getGlobal "f" world == Zak.getGlobal "h" world )
                                 |> Expect.equal ( True, False )
+            , test "refId is the same for two references to one table, array or function, and differs otherwise" <|
+                \_ ->
+                    withWorld (runIn [] "let t = {}\nlet t2 = t\nlet u = {}\nlet a = []\nlet f = function(): return 1 end") <|
+                        \( _, world ) ->
+                            let
+                                id name =
+                                    Zak.getGlobal name world |> Maybe.andThen Zak.refId
+                            in
+                            ( ( id "t" == id "t2", id "t" == id "u" )
+                            , List.map (id >> (/=) Nothing) [ "a", "f" ]
+                            , List.map Zak.refId [ Nil, Bool True, Number 1, String "t" ]
+                            )
+                                |> Expect.equal ( ( True, False ), [ True, True ], [ Nothing, Nothing, Nothing, Nothing ] )
             , test "getGlobal reads a script's global, and a native" <|
                 \_ ->
                     withWorld (runIn [ ( "seven", Zak.nativeConstant (Number 7) ) ] "let name = \"Zak\"") <|
@@ -586,6 +599,65 @@ suite =
                     withWorld (runIn [] "return [1, \"two\", nil]") <|
                         \( array, world ) ->
                             Zak.items array world |> Expect.equal (Just [ Number 1, String "two", Nil ])
+            , test "newArray makes an array the scripts can read" <|
+                \_ ->
+                    let
+                        ( list, world ) =
+                            Zak.newArray [ Number 1, Number 2, Number 3 ] (Zak.init () [])
+                    in
+                    world
+                        |> Zak.setGlobal "list" list
+                        |> Zak.run "let total = 0\nfor x in list:\n    total = total + x\nend\nreturn total"
+                        |> Result.map Tuple.first
+                        |> Expect.equal (Ok (Number 6))
+            , test "setItems refills a script's array in place, so every reference sees the new items" <|
+                \_ ->
+                    withWorld (runIn [] "let a = [1, 2]\nlet b = a\nreturn a") <|
+                        \( array, world ) ->
+                            world
+                                |> Zak.setItems [ String "x", Nil ] array
+                                |> Zak.run "return b"
+                                |> Result.map (\( b, world1 ) -> Zak.items b world1)
+                                |> Expect.equal (Ok (Just [ String "x", Nil ]))
+            , test "setItems on anything but an array does nothing" <|
+                \_ ->
+                    withWorld (runIn [] "return { a = 1 }") <|
+                        \( table, world ) ->
+                            Zak.fields table (Zak.setItems [ Number 2 ] table world)
+                                |> Expect.equal (Just (Dict.fromList [ ( "a", Number 1 ) ]))
+            , test "fileGlobals lists each included file's private _ names, which globals leaves out" <|
+                \_ ->
+                    withWorld (withFiles [ ( "a.zak", "let _count = 0\nlet shown = 1" ), ( "b.zak", "let _name = \"b\"" ) ] "include(\"a.zak\")\ninclude(\"b.zak\")") <|
+                        \( _, world ) ->
+                            ( Zak.fileGlobals world, Dict.keys (Zak.globals world) )
+                                |> Expect.equal
+                                    ( Dict.fromList
+                                        [ ( "a.zak", Dict.fromList [ ( "_count", Number 0 ) ] )
+                                        , ( "b.zak", Dict.fromList [ ( "_name", String "b" ) ] )
+                                        ]
+                                    , [ "shown" ]
+                                    )
+            , test "setFileGlobal changes a file's private _ name, and the file's own code sees it" <|
+                \_ ->
+                    withWorld (withFiles [ ( "lib.zak", "let _count = 0\nlet read = function(): return _count end" ) ] "include(\"lib.zak\")") <|
+                        \( _, world ) ->
+                            world
+                                |> Zak.setFileGlobal "lib.zak" "_count" (Number 5)
+                                |> Zak.run "return read()"
+                                |> Result.map Tuple.first
+                                |> Expect.equal (Ok (Number 5))
+            , test "setFileGlobal does nothing for a file never included, or a name without _" <|
+                \_ ->
+                    withWorld (withFiles [ ( "lib.zak", "let _count = 0" ) ] "include(\"lib.zak\")") <|
+                        \( _, world ) ->
+                            let
+                                world1 =
+                                    world
+                                        |> Zak.setFileGlobal "nope.zak" "_count" (Number 1)
+                                        |> Zak.setFileGlobal "lib.zak" "shown" (Number 2)
+                            in
+                            ( Zak.fileGlobals world1, Zak.getGlobal "shown" world1 )
+                                |> Expect.equal ( Dict.fromList [ ( "lib.zak", Dict.fromList [ ( "_count", Number 0 ) ] ) ], Nothing )
             ]
         , describe "threads"
             [ test "threadCount counts the waiting threads, and tick advances them" <|

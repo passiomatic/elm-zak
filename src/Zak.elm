@@ -1,7 +1,7 @@
 module Zak exposing
     ( World, init, game, updateGame, run, call, tick, reseed
-    , Value(..), TableRef, ArrayRef, FunctionRef
-    , getGlobal, setGlobal, globals, newTable, getField, setField, removeField, fields, items
+    , Value(..), TableRef, ArrayRef, FunctionRef, refId
+    , getGlobal, setGlobal, globals, fileGlobals, setFileGlobal, newTable, getField, setField, removeField, fields, newArray, items, setItems
     , ThreadOwner, startThread, stopThreads, hasThreads, isThreadRunning, setThreadOwner, threadCount
     , Effect(..), LogLevel(..), emitEffect, log, takeEffects
     , Error, Problem(..), Position, errorProblem, errorPosition, errorToString
@@ -46,12 +46,12 @@ second, so updates chain with `|>`.
 
 # Values
 
-@docs Value, TableRef, ArrayRef, FunctionRef
+@docs Value, TableRef, ArrayRef, FunctionRef, refId
 
 
 # Data
 
-@docs getGlobal, setGlobal, globals, newTable, getField, setField, removeField, fields, items
+@docs getGlobal, setGlobal, globals, fileGlobals, setFileGlobal, newTable, getField, setField, removeField, fields, newArray, items, setItems
 
 
 # Threads
@@ -276,6 +276,31 @@ type FunctionRef
     = FunctionRef Int
 
 
+{-| A number for what a table, array or function reference points at:
+two references have the same one exactly when they're `==`. `Nothing`
+for any other value. Unlike a reference, it can key a `Dict`, so a host
+walking many tables can tell which ones it has already met. It only
+means something within one world, so don't save it.
+
+    Zak.refId table1 == Zak.refId table2 -- the same table
+
+-}
+refId : Value -> Maybe Int
+refId value =
+    case value of
+        Table (TableRef id) ->
+            Just id
+
+        Array (ArrayRef id) ->
+            Just id
+
+        Function (FunctionRef id) ->
+            Just id
+
+        _ ->
+            Nothing
+
+
 fromInternal : Runtime.Value -> Value
 fromInternal value =
     case value of
@@ -349,7 +374,8 @@ getGlobal name (World state) =
 existing global changes, wherever it's defined (a native included). A
 name that isn't defined yet becomes a new top-level global, as with
 `let`. A `_` name an included file keeps private can't be reached this
-way: setting it adds a new global, which the file's own code doesn't see.
+way: setting it adds a new global, which the file's own code doesn't see
+(see [`setFileGlobal`](#setFileGlobal)).
 
 To give a [`nativeExpression`](#nativeExpression) a global it can read,
 declare it as a native (`nativeConstant Nil`) and set it with this:
@@ -369,13 +395,61 @@ setGlobal name value (World state) =
 {-| Every global the scripts defined at the top level, and every one
 [`setGlobal`](#setGlobal) added. Natives and the standard library aren't
 included, and neither are the `_` names an included file keeps private
-(see [`nativeInclude`](#nativeInclude)).
+(see [`fileGlobals`](#fileGlobals)).
 -}
 globals : World game -> Dict String Value
 globals (World state) =
     Dict.get state.globalFrameId state.heap
         |> Maybe.withDefault Dict.empty
         |> Dict.map (\_ value -> fromInternal value)
+
+
+{-| The `_` names each included file keeps private (see
+[`nativeInclude`](#nativeInclude)), by the file's path. Together with
+[`globals`](#globals), these are every top-level name the scripts
+defined.
+
+    -- after include("lib.zak"), where lib.zak says `let _count = 0`
+    Zak.fileGlobals world
+    --> Dict.fromList [ ( "lib.zak", Dict.fromList [ ( "_count", Number 0 ) ] ) ]
+
+-}
+fileGlobals : World game -> Dict String (Dict String Value)
+fileGlobals (World state) =
+    state.fileFrames
+        |> Dict.toList
+        |> List.map
+            (\( frameId, path ) ->
+                ( path
+                , Dict.get frameId state.heap
+                    |> Maybe.withDefault Dict.empty
+                    |> Dict.map (\_ value -> fromInternal value)
+                )
+            )
+        |> Dict.fromList
+
+
+{-| Sets the `_` name `name` that the file at `path` keeps private, as
+the file's own code would: only that file's code sees it. A name the
+file doesn't define yet is added to it. Does nothing if no file at
+`path` was included, or if `name` doesn't start with `_`, since any
+other name a file defines is a global (see [`setGlobal`](#setGlobal)).
+
+    Zak.setFileGlobal "lib.zak" "_count" (Number 5) world
+
+-}
+setFileGlobal : String -> String -> Value -> World game -> World game
+setFileGlobal path name value (World state) =
+    case List.filter (\( _, framePath ) -> framePath == path) (Dict.toList state.fileFrames) of
+        ( frameId, _ ) :: _ ->
+            if String.startsWith "_" name then
+                World { state | heap = Dict.update frameId (Maybe.map (Dict.insert name (toInternal value))) state.heap }
+
+            else
+                World state
+
+        [] ->
+            World state
 
 
 {-| The frame `name` resolves to at the top level: the world's own
@@ -484,6 +558,21 @@ fields table (World state) =
             Nothing
 
 
+{-| A new array with `values` as its items.
+
+    ( list, world1 ) =
+        Zak.newArray [ Number 1, String "two" ] world
+
+-}
+newArray : List Value -> World game -> ( Value, World game )
+newArray values (World state) =
+    let
+        ( id, state1 ) =
+            Runtime.allocArrayCell state (Array.fromList (List.map toInternal values))
+    in
+    ( Array (ArrayRef id), World state1 )
+
+
 {-| The items of `array`, in order. `Nothing` if `array` isn't an array.
 -}
 items : Value -> World game -> Maybe (List Value)
@@ -495,6 +584,28 @@ items array (World state) =
 
         _ ->
             Nothing
+
+
+{-| Replaces every item of `array` with `values`, in place, so every
+reference to the array sees them. Does nothing if `array` isn't an
+array.
+
+    world
+        |> Zak.setItems [ Number 1, Number 2 ] list
+
+-}
+setItems : List Value -> Value -> World game -> World game
+setItems values array (World state) =
+    case array of
+        Array (ArrayRef id) ->
+            if Dict.member id state.arrayHeap then
+                World { state | arrayHeap = Dict.insert id (Array.fromList (List.map toInternal values)) state.arrayHeap }
+
+            else
+                World state
+
+        _ ->
+            World state
 
 
 
