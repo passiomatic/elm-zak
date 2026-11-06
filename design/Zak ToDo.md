@@ -13,13 +13,6 @@ Things to ponder to improve usability of the language.
 * ~~Should we suppport \n and \t in strings? What does they mean since we don't have a tradional stdout?~~ Done: elm-adventure's close-up text (`Scene.draw_text`) needs line breaks, and the host decides what a line break or a tab looks like
 * Add += and other assign in place operators
 
-# Nice to have math stuff
-* Add Math.power() function
-
-# Quirks
-* ~~Array.range rounds value and doesn't error~~ Done: a fractional or infinite bound is a `NotAnInteger` error, as an index is, and its message no longer says "index"
-* Native functions can accept variadic arguments while pure Zak functions do not.
-
 # Guide findings 
 * Unbounded recursion crashes the host. Do you want that limit added to the interpreter?
 
