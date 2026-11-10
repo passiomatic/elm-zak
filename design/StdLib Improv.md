@@ -7,7 +7,7 @@ Which `Array`, `Table` and `String` functions would make game scripts shorter an
 - an optional default for `get_default`;
 - `Table.merge`;
 - `Array.any` and `Array.find`;
-- a way to add to an array used as a set.
+- `Array.add`, to add to an array used as a set.
 
 `Table.keys` and `Table.values` are optional. On the string side, the game has everything it needs. `Array.sort`, `String.contains`, and width and precision in `String.format` wait for a use case.
 
@@ -110,7 +110,13 @@ Notes:
 - **No use case for counting.** Nickel's good and bad photo counts play a sound and a line for each photo, so they stay a loop.
 - **Lambdas are long.** With today's syntax, these one-liners run long. The shorter lambdas in `Future.md` (section 9) would help most here.
 
-### 4. Adding to an array used as a set
+### 4. `Array.add(array, value)`: adding to an array used as a set (being tried in the game)
+
+**Tried in the game first (2026-11-10),** like `Table.merge`: elm-adventure's `Shared/Helpers.zak` adds `Array.add` onto the stdlib's `Array` table, and the six call sites below use it, each now a single call. An assert above it fails the boot once `Array` has its own. The two "remove, then push" sites in `Note.zak` now leave a story where it was instead of moving it to the end, which nothing reads.
+
+**The name is `add`, not `push_unique`.** `Array` has two families. `push`, `pop`, `append` and `set` work by position and hand back the array or an element. `contains`, `remove` and `in` work by value, comparing with `==`, and `remove` returns whether it changed the array. `add` works by value and returns whether it changed the array, so it belongs with `remove`, as its opposite. "At the end, like `push`" is in its doc. A `push_...` name would have been the one `push` that doesn't return the array.
+
+**Not a set type.** A real `Set` value would cost what a real enum type would (`Future.md`, section 8): a new value kind through equality, display, `in`, `for` and saves, and a breaking change to the public `Zak.Value`. The six sets are small, mostly strings, and the inventory needs its order, which a set would lose.
 
 Zak has no set type, so six arrays act as one:
 
@@ -134,15 +140,15 @@ Nothing reads the order of `_active_photos_taken` or `_completed_stories`, so "p
 The proposal is a function that pushes `value` unless `array` already holds an equal one, compared the same way as `==`. It returns `true` if it pushed, like `Array.remove` returns `true` if it removed. That return value folds the "check, react" shape into one call:
 
 ```
-if not Array.push_unique(_photos_taken, taken_key):
+if not Array.add(photos_taken, taken_key):
     Actor.say_line(actor, "I already took a photo of that.")
-    return nil
+    return
 end
 ```
 
-**Open: the name.** `Array.push` returns the array, so a `push_...` name that returns a `Bool` breaks that pattern. Other names to consider: `Array.add`, `Array.include`.
+### 5. Maybe: `Table.keys(table)` and `Table.values(table)` (likely superseded)
 
-### 5. Maybe: `Table.keys(table)` and `Table.values(table)`
+**Likely superseded (2026-11-10)** by `for` over tables (`Future.md`, section 11): `for key, value in table` covers both uses below, and would replace `Table.each` and `Array.each` too.
 
 `Table.each` is the only way to walk a table. Two of its four uses only filter fields, or collect them into an array declared outside the loop:
 
@@ -295,6 +301,6 @@ Zak has `Math.round`, and `//` rounds down (`x // 1`), so the only thing missing
 1. ✅ An optional default for `get_default`: the most call sites. Done.
 2. `Table.merge`: small, with no open questions. Being tried in the game first.
 3. `Array.any` and `Array.find`, maybe with `Array.all`. Being tried in the game first.
-4. Adding to a set, once the name is settled.
-5. `Table.keys` and `Table.values`, if the table side should be complete.
+4. `Array.add`, for an array used as a set. Being tried in the game first.
+5. `Table.keys` and `Table.values`: likely superseded by `for` over tables (`Future.md`, section 11).
 6. `Array.sort`, `String.contains`, and width and precision in `String.format`, when game code needs them.
