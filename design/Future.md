@@ -35,6 +35,7 @@ let { x, y } = {x=1, y=2}
 Notes:
 * [Quirrel][q] allows this by using the `[a, b]` or `{x, y}` to specify the source data structure, which makes sense too since it communicates the intent better.
 * Using `_` from point 1.
+* In a `for` too: `for [story, line] in bad_story` unpacks each element of an array of pairs. Going over a table's fields, with no brackets, is section 11.
 
 ## 3. Expand String.format to use name look ups
 
@@ -402,3 +403,61 @@ Array.filter(prices, fn(p) -> p <= 25)
 - **Clojure:** `fn` for an anonymous function.
 - **Elixir:** `fn p -> p <= 25 end`, an anonymous function with `fn` and `->`, closed by `end`.
 - **Lua, JavaScript:** the full `function`, as Zak today.
+
+
+## 11. `for` over tables
+
+`for` only goes over arrays. A table's fields can only be visited with `Table.each`, a callback, so that loop can't wait, `break`, `continue`, or `return` from the enclosing function. Letting `for` go over a table, with both the field's name and its value, removes the need for `Table.each`. `Array.each` can go with it: `for` already does everything it does on arrays.
+
+```
+for key, value in object:
+    Table.set(copy, key, value)
+end
+```
+
+**Use cases in Delores** (as of 2026-11-10: `Delores/` and `Shared/` in elm-adventure):
+
+| Where | Uses |
+|---|---|
+| `check_verbs` (`Shared/VerbHelpers.zak:36`) | the name and the value |
+| `Table.merge` (`Shared/Helpers.zak:11`) | the name and the value |
+| `define_scene` (`Shared/SystemHelpers.zak:36`) | the value only (`function(_, value)`) |
+
+- Those are the only three `Table.each` calls. None uses the name alone.
+- Nothing calls `Array.each`.
+- One array loop needs an index: the shuffle's swap (`Delores/Note.zak:132`), which loops over `Array.range`.
+
+**Options considered:**
+
+1. **Two names in the `for`: `for key, value in table:`.** Needs no other feature. `for _, value in table` covers the value-only case, with the throwaway `_` (section 1).
+2. **Unpacking (section 2): `for [key, value] in Table.pairs(table):`.** More general, but it needs section 2 and a `Table.pairs` that builds a `[key, value]` array for every field. Heavy for the common case.
+3. **No new syntax: `for key in Table.keys(table):`,** then `Table.get(table, key)` in the body. `Table.keys` and `Table.values` are a stdlib idea already (`design/StdLib Improv.md`, item 5). It adds a lookup to every pass, and the name and the value are never side by side.
+
+**Proposal: option 1.**
+
+- **One name gives the field's name:** `for key in table`. That matches `in`, which already checks a table's field names (`"_is_actor" in value`).
+- **Two names give the name and the value:** `for key, value in table`.
+- **Order:** sorted by field name, as `Table.each` does today.
+- **Changes during the loop:** the field names are read once, when the loop starts. A field removed partway through is skipped, and one added isn't visited. Each value is read when its turn comes, which is the closest to how an array is read afresh on every pass.
+- **Everything a `for` allows works:** waiting, `break`, `continue`, and a `return` that leaves the enclosing function. That's the real gain over `Table.each`.
+- **Anything else** than an array or a table is a `TypeError`, as today.
+- **Not now: `for index, element in array`.** The same rule, "where, then what", but the evidence is one loop. Wait for a use.
+
+**Unpacking is a separate thing.** Section 2's `for [story, line] in bad_story` unpacks each *element* of an array of pairs (StdLib Improv's "pairs read with `[0]` and `[1]`"). Two names without brackets go over a *table's fields*. The brackets keep the two apart, so `for a, b` never has to guess which one is meant.
+
+**How it would work:**
+
+- The parser: `For String Expr Block` gets an optional second name.
+- The interpreter: `execFor` gets a table branch next to the array one. Its loop resumes after a wait through a closure that holds where it is, so the table branch keeps its list of field names the same way.
+- The game: the three `Table.each` calls become `for` loops. `Table.merge` becomes `for key, value in other: Table.set(table, key, value) end`.
+- Then `Array.each` and `Table.each` go, with their tests and guide entries. `guide/language/Threads.md` names both among the callbacks that can't wait.
+- StdLib Improv's item 5, `Table.keys` and `Table.values`, goes too: its only two use cases are `Table.each` calls that this covers.
+
+**Docs.** `guide/language/Statements.md`'s `for` section, and `guide/language/Tables.md`, which today sends a reader to `Table.each` to go through a table.
+
+**Prior art:**
+
+- **Lua:** `for k, v in pairs(t)`, through a function that walks the table.
+- **Python:** `for k in d` gives the keys, `for k, v in d.items()` both.
+- **Go:** `for k, v := range m`, and `for k := range m` for the keys alone.
+- **Squirrel:** `foreach (k, v in t)`, and `foreach (v in t)` for the values alone.
