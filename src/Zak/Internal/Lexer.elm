@@ -129,7 +129,10 @@ unknownEscape char =
 {-| The structural keywords that are part of the grammar itself (the
 grammar's `reserved-word` rule). These are the only names special-cased at the
 tokenizer level. `true`, `false`, and `nil` are deliberately **not** here —
-they're ordinary pre-bound values, not reserved words.
+they're ordinary pre-bound values, not reserved words. `function` is the
+one exception that isn't grammar: `fn` replaced it, and it stays reserved
+so an older script gets `Zak.Internal.Parser.rejectFunctionKeyword`'s
+message rather than a `function` name quietly taking its place.
 -}
 reservedWords : Set String
 reservedWords =
@@ -146,6 +149,7 @@ reservedWords =
         , "and"
         , "or"
         , "not"
+        , "fn"
         , "function"
         , "break"
         , "continue"

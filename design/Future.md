@@ -319,7 +319,7 @@ can_open = (self, noun2 = nil) -> not self.open,
 can_open = fn(self, noun2 = nil) -> not self.open,
 ```
 
-**Proposal: option 4, `fn(params) -> expr`,** once section 10 renames `function` to `fn`. The arrow doesn't depend on the keyword: before the rename it's option 2, `function(params) -> expr`.
+**Proposal: option 4, `fn(params) -> expr`.** Section 10's rename to `fn` is done (2026-11-11).
 
 - It extends section 6's rule: **`:` opens a block, closed by `end`. The value forms, `then` and `->`, never use `:` and never need `end`.**
 - No new concept to teach: a function's body is either a block or a single expression.
@@ -336,7 +336,7 @@ can_open = fn(self, noun2 = nil) -> not self.open,
 - It can't wait. Its body is a `return`, and `return Thread.wait_for(1.0)` is already an error. So the rule is: this form computes a value, and anything that takes time keeps the block form. A waiting call here should get a message that says so, not the generic "a waiting call must be a statement on its own".
 - Only an expression: an assignment isn't one, so `fn() -> count = count + 1` is a syntax error. So is `fn(p) -> return p`. Both get a targeted message.
 
-**Docs.** `guide/language/Functions.md` gets the expression form. The `Thread.wait_while(function(): return not door.open end)` examples in `guide/language/Threads.md` become `Thread.wait_while(fn() -> not door.open)`.
+**Docs.** `guide/language/Functions.md` gets the expression form. The `Thread.wait_while(fn(): return not door.open end)` examples in `guide/language/Threads.md` become `Thread.wait_while(fn() -> not door.open)`.
 
 **Side findings, with no language change:**
 
@@ -350,7 +350,9 @@ can_open = fn(self, noun2 = nil) -> not self.open,
 - **Lua:** `function(p) return p <= 25 end` is the only form, as in Zak today.
 
 
-## 10. `fn` instead of `function`
+## ✅ 10. `fn` instead of `function` - DONE
+
+**Done (2026-11-11),** as described below, in both repos. `Zak.Internal.Parser.functionLiteral` reads `fn`, and `function` stays a reserved word: `Parser.rejectFunctionKeyword` reports "“function” is now “fn”" on the word itself. The guide's stdlib signatures name an `fn` parameter `f`. The VS Code grammar highlights `fn` (0.2.1). The counts below are as of 2026-11-04; the design docs keep `function` where they show old code.
 
 Replace the `function` keyword with `fn`, in both forms: the block, `fn(params): … end`, and section 9's expression, `fn(params) -> expr`.
 

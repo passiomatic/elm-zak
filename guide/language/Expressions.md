@@ -195,4 +195,4 @@ A field name is an identifier, written bare: `{ x = 1 }`, not `{ "x" = 1 }`. Eac
 
 Both constructors build a new, separate array or table every time they're evaluated, so two identical-looking constructors never produce equal values.
 
-A function literal — `function(x): ... end` — is an expression too. See [Functions](Functions.md).
+A function literal — `fn(x): ... end` — is an expression too. See [Functions](Functions.md).

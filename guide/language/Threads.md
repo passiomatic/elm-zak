@@ -5,7 +5,7 @@ Everything a script does normally runs to completion straight away: a function c
 A thread runs a function that can pause partway through, and resume later exactly where it left off, with all its variables intact.
 
 ```
-Thread.start(function():
+Thread.start(fn():
     Debug.log("Knock knock.")
     Thread.wait_for(2.0)
     Debug.log("Who's there?")
@@ -27,7 +27,7 @@ A thread resumes at most once per tick. Each wait counts its time from the momen
 `Thread.start` takes a function with no parameters, and runs it as a new thread:
 
 ```
-let blinker = Thread.start(function():
+let blinker = Thread.start(fn():
     while true:
         Debug.log("blink")
         Thread.wait_for(0.5)
@@ -55,13 +55,13 @@ A thread pauses by calling one of the waiting functions:
 
 The program that runs your scripts can add waiting functions of its own, for things only it knows about: a game might add one that waits while a character walks. They work like these: the thread waits from the call, the program checks on every tick whether the wait is over, and the thread resumes on the tick after it is.
 
-`Thread.wait_while` calls its function once per tick, so the condition is checked afresh each time. Pass a function, not the condition itself: `Thread.wait_while(function(): return not door.open end)`, not `Thread.wait_while(not door.open)`.
+`Thread.wait_while` calls its function once per tick, so the condition is checked afresh each time. Pass a function, not the condition itself: `Thread.wait_while(fn(): return not door.open end)`, not `Thread.wait_while(not door.open)`.
 
 ```
 let door = { open = false }
 
-Thread.start(function():
-    Thread.wait_while(function(): return not door.open end)
+Thread.start(fn():
+    Thread.wait_while(fn(): return not door.open end)
     Debug.log("Finally!")
 end)
 ```
@@ -71,7 +71,7 @@ end)
 A waiting function can only be called inside a thread, and only as a statement on its own — not as part of an expression:
 
 ```
-Thread.start(function():
+Thread.start(fn():
     Thread.wait_for(1.0)                  # fine
 
     if ready:
@@ -86,11 +86,11 @@ end)
 A function called from a thread can wait too, as long as the call to it is itself a statement on its own:
 
 ```
-let pause = function(seconds):
+let pause = fn(seconds):
     Thread.wait_for(seconds)
 end
 
-Thread.start(function():
+Thread.start(fn():
     pause(1.0)            # fine
     let x = pause(1.0)    # error
 end)
@@ -111,7 +111,7 @@ A thread ends when its function returns, or reaches its `end`.
 `Thread.stop(thread_id)` ends a thread: it never resumes, and any thread joining it carries on. Stopping a thread that has already finished does nothing.
 
 ```
-Thread.start(function():
+Thread.start(fn():
     Thread.wait_for(3.0)
     Thread.stop(blinker)   # no more blinks
 end)

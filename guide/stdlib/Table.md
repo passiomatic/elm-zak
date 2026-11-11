@@ -71,8 +71,8 @@ Table.set(Table.get(u, "nested"), "y", 99)
 t   # { nested = { y = 99 } } — the nested table was shared, not copied
 ```
 
-## Table.each(table, fn)
+## Table.each(table, f)
 
-Calls `fn(name, value)` once per field, sorted by field name (not in the order the fields were added), for the side effect alone — discards whatever `fn` returns and never mutates `table`. An empty `table` is a no-op.
+Calls `f(name, value)` once per field, sorted by field name (not in the order the fields were added), for the side effect alone — discards whatever `f` returns and never mutates `table`. An empty `table` is a no-op.
 
-`fn` may remove fields with `Table.remove`: `each` still visits every field `table` had when it started, so a field removed partway through gets its turn later, with its old value.
+`f` may remove fields with `Table.remove`: `each` still visits every field `table` had when it started, so a field removed partway through gets its turn later, with its old value.

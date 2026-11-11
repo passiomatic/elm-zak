@@ -12,7 +12,7 @@ There are seven types:
 | Nil        | `nil`                       | `"nil"`          |
 | Array      | `[1, 2, 3]`                 | `"array"`        |
 | Table      | `{ x = 1, y = 2 }`          | `"table"`        |
-| Function   | `function(x): return x end` | `"function"`     |
+| Function   | `fn(x): return x end` | `"function"`     |
 
 Use [`type(value)`](../stdlib/Global.md) to find out a value's type at runtime, or [`is_string(value)`](../stdlib/Global.md) and its siblings to check for one type.
 
@@ -71,7 +71,7 @@ end
 `nil` is the single value of its type, and stands for "no value". A function that ends without a `return`, or with a bare `return`, returns `nil`:
 
 ```
-let f = function():
+let f = fn():
     let x = 1
 end
 
@@ -109,12 +109,12 @@ The standard library's `Array`, `Math`, `String`, and the rest are tables too, w
 A piece of code that can be called with arguments. Functions are values like any other: they can be stored in variables and table fields, passed to other functions, and returned from them.
 
 ```
-let double = function(x):
+let double = fn(x):
     return x * 2
 end
 
 let shapes = {
-    square = function(side):
+    square = fn(side):
         return side * side
     end
 }
@@ -139,7 +139,7 @@ a.health   # 50 — a and b are the same table
 ```
 
 ```
-let add_key = function(items):
+let add_key = fn(items):
     Array.push(items, "key")
 end
 

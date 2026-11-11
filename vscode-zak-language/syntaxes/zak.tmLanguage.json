@@ -46,7 +46,7 @@
     },
     "storage-keywords": {
       "name": "storage.type.zak",
-      "match": "\\b(let|const|function)\\b"
+      "match": "\\b(let|const|fn)\\b"
     },
     "control-keywords": {
       "name": "keyword.control.zak",

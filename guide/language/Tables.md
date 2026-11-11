@@ -91,7 +91,7 @@ Table.contains(player, stat)     # same as "health" in player
 `Table.each` calls a function once for every field, passing it the field's name and value:
 
 ```
-Table.each(player, function(name, value):
+Table.each(player, fn(name, value):
     Debug.log(name)
 end)
 ```
@@ -108,7 +108,7 @@ A field can hold a function, and calling it looks like calling any other functio
 
 ```
 let greeter = {
-    greet = function(name):
+    greet = fn(name):
         return "Hi, " ++ name
     end
 }
@@ -121,7 +121,7 @@ A function stored in a table doesn't automatically know which table it came from
 ```
 let door = {
     locked = true,
-    unlock = function(self):
+    unlock = fn(self):
         self.locked = false
     end
 }

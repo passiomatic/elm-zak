@@ -241,7 +241,7 @@ shape: `let x = ...` (a new binding) vs. bare `x = ...` (reassigning an
 existing one). `for`'s loop variable was never actually in that
 situation — there's no second, "reuse an existing name" form of `for`
 for a keyword to disambiguate against, the same reason a function's own
-parameters (`function(a, b): ... end`) never needed `let` either: a
+parameters (`fn(a, b): ... end`) never needed `let` either: a
 fresh per-call binding with no competing form isn't the thing `let`
 exists to mark. Zak's own function parameters already establish this
 precedent.
@@ -582,12 +582,43 @@ primaryExpr =
             |= P.lazy (\_ -> expr)
             |. L.blankSpace
             |. L.symbol ")"
+        , rejectFunctionKeyword
 
         -- names, numbers and strings start with a bare `chompIf`, which
         -- can only report "unexpected character", so without this the
         -- message would list `{`, `[`, `(`... and leave those out
         , P.problem "expected an expression"
         ]
+
+
+{-| `function` was the keyword before `fn`. It stays reserved, so an
+older script gets this message, on the word itself, rather than a
+generic "expected an expression". Peeks first and fails with
+`P.commit`, as `rejectThrowaway` does; anything else fails without
+progress, leaving the next branch to report.
+-}
+rejectFunctionKeyword : Parser Expr
+rejectFunctionKeyword =
+    P.succeed (\offset source -> String.slice offset (offset + 9) source)
+        |= P.getOffset
+        |= P.getSource
+        |> P.andThen
+            (\next ->
+                let
+                    continuesName =
+                        case String.uncons (String.dropLeft 8 next) of
+                            Just ( c, _ ) ->
+                                Char.isAlphaNum c || c == '_'
+
+                            Nothing ->
+                                False
+                in
+                if String.startsWith "function" next && not continuesName then
+                    P.commit () |> P.andThen (\_ -> P.problem "“function” is now “fn”")
+
+                else
+                    P.problem "expected an expression"
+            )
 
 
 {-| A bare `_` is the throwaway name: `let`, `const`, a parameter or a
@@ -679,7 +710,7 @@ tableField =
 functionLiteral : Parser Expr
 functionLiteral =
     P.succeed FunctionLiteral
-        |. L.keyword "function"
+        |. L.keyword "fn"
         |. L.symbol "("
         |= (commaSeparated parameter |> P.andThen validateTrailingDefaults |> P.andThen validateUniqueParams)
         |. L.symbol ")"
@@ -703,7 +734,7 @@ parameter =
 
 
 {-| Once a parameter has a default, every parameter after it must too —
-`function(a=1, b)` is invalid, a hard parse-time error. `commaSeparated` itself has no notion
+`fn(a=1, b)` is invalid, a hard parse-time error. `commaSeparated` itself has no notion
 of ordering constraints between the items it collects, so this is
 checked as a separate pass afterward, the same structural,
 parse-time-not-runtime treatment `breakStmt`/`continueStmt`'s
@@ -732,9 +763,9 @@ isTrailingDefaultsOnly params =
             List.all (\( _, default ) -> default /= Nothing) rest
 
 
-{-| `function(a, a)` is a hard parse-time error — otherwise the later
+{-| `fn(a, a)` is a hard parse-time error — otherwise the later
 argument silently wins, which is almost always a typo. The throwaway
-name `_` (see `rejectThrowaway`) is the one exception: `function(_, _)` is
+name `_` (see `rejectThrowaway`) is the one exception: `fn(_, _)` is
 fine, since nothing is ever bound under it. Same
 separate-pass-after-`commaSeparated` shape as `validateTrailingDefaults`
 above.
@@ -801,7 +832,7 @@ multi-line literal like
 
     define_actor("Taylor", {
         health = 100,
-        talk_to = function(self): ... end
+        talk_to = fn(self): ... end
     })
 
 parses. This is deliberately _not_ what `L.spaces` (plain horizontal

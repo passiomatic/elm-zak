@@ -3,10 +3,10 @@
 Zak (after [Zak McKracken][z]) is a small, imperative, dynamically-typed scripting language meant to be embedded in an Elm host application, which exposes its own functions to scripts and drives them over time.
 
 ```
-let main = function():
+let main = fn():
     let log = { value = "" }
 
-    Thread.start(function():
+    Thread.start(fn():
         log.value = log.value ++ "A"
         Thread.wait_for(1.0)
         log.value = log.value ++ "B"

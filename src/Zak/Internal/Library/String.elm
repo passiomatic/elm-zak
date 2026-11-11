@@ -500,7 +500,7 @@ matching `Hex.toString`'s own behavior, not inventing a new rule.
 `format` has no placeholders at all (`String.format("100%%", [])`, not
 `String.format("100%%")`) — this native's own arity is exact, matching
 every other `NativeFunction` in the language (Zak's real default-argument
-mechanism, `function(a, b=1): ... end`, only applies to `function(...)`
+mechanism, `fn(a, b=1): ... end`, only applies to `fn(...)`
 closures, not natives — though an embedder's own native may still opt
 into the same _calling convention_, via Elm-side arity handling rather
 than Zak-level defaults).

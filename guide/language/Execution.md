@@ -105,7 +105,7 @@ Variables declared outside any block are global: they're visible from every func
 A function looks up the variables it uses when it runs, not when it's defined. So a function can use a global declared further down the script, as long as it's only called after that declaration has run:
 
 ```
-let greet = function():
+let greet = fn():
     return greeting ++ ", world"
 end
 
@@ -116,7 +116,7 @@ greet()   # "Hello, world"
 The same rule is what lets a function call itself by name:
 
 ```
-let factorial = function(n):
+let factorial = fn(n):
     if n <= 1:
         return 1
     end
@@ -134,7 +134,7 @@ When the world spans several scripts, a global whose name starts with `_` is pri
 # In Doors.zak
 let _open_doors = []
 
-let open_door = function(door):
+let open_door = fn(door):
     Array.push(_open_doors, door)
 end
 

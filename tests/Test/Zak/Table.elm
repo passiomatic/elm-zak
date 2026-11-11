@@ -267,7 +267,7 @@ suite =
                     run
                         """
                         let copy = {}
-                        Table.each({ x = 1, y = 2 }, function(name, value):
+                        Table.each({ x = 1, y = 2 }, fn(name, value):
                             Table.set(copy, name, value)
                         end)
                         return Table.get(copy, "x") * 10 + Table.get(copy, "y")
@@ -278,7 +278,7 @@ suite =
                     run
                         """
                         let visited = []
-                        Table.each({}, function(name, value):
+                        Table.each({}, fn(name, value):
                             Array.push(visited, name)
                         end)
                         return Array.length(visited)
@@ -289,7 +289,7 @@ suite =
                     run
                         """
                         let r = { x = 1 }
-                        Table.each(r, function(name, value):
+                        Table.each(r, fn(name, value):
                             value
                         end)
                         return Table.get(r, "x")
@@ -301,20 +301,20 @@ suite =
                         """
                         let r = { a = 1, b = 2, c = 3 }
                         let sum = 0
-                        Table.each(r, function(name, value):
+                        Table.each(r, fn(name, value):
                             Table.remove(r, "c")
                             sum = sum + value
                         end)
-                        return sum * 10 + Array.length(Array.filter(["a", "b", "c"], function(name): return name in r end))
+                        return sum * 10 + Array.length(Array.filter(["a", "b", "c"], fn(name): return name in r end))
                         """
                         |> Expect.equal (Ok (VNumber 62))
             , test "returns nil" <|
                 \_ ->
-                    runExpr "Table.each({ x = 1 }, function(name, value): value end)"
+                    runExpr "Table.each({ x = 1 }, fn(name, value): value end)"
                         |> Expect.equal (Ok VNil)
             , test "wrong argument type" <|
                 \_ ->
-                    runExpr "Table.each(1, function(name, value): value end)"
+                    runExpr "Table.each(1, fn(name, value): value end)"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "Table", got = VNumber 1 })))
             , test "wrong argument count" <|
                 \_ ->
@@ -323,6 +323,6 @@ suite =
             ]
         , test "a script can still shadow Table itself with its own let, same as any other global" <|
             \_ ->
-                run "let Table = { get = function(r, name): return 999 end }\nreturn Table.get({ x = 1 }, \"x\")"
+                run "let Table = { get = fn(r, name): return 999 end }\nreturn Table.get({ x = 1 }, \"x\")"
                     |> Expect.equal (Ok (VNumber 999))
         ]

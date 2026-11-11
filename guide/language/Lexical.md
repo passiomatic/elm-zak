@@ -22,7 +22,7 @@ A bare `_` is special: it names a value you don't need. `let`, `const`, a functi
 let _ = Array.pop(queue)   # remove the last item, drop it
 let _ = Array.pop(queue)   # no "already defined" error
 
-let second = function(_, b): return b end
+let second = fn(_, b): return b end
 ```
 
 Because nothing is stored, using `_` as a value is a syntax error: `print(_)`, `_ = 1`, and `_.x` are all rejected.
@@ -34,10 +34,13 @@ Only a bare `_` works this way. Names that merely start with `_`, like `_sound_i
 These words are reserved by the language and can't be used as identifiers:
 
 ```
-and       const     else      end       for
-function  if        in        let       not
-or        return    while     break     continue
+and       const     else      end       fn
+for       function  if        in        let
+not       or        return    while     break
+continue
 ```
+
+`function` is reserved but not used: a function is written with `fn`, and `function` gets an error saying so.
 
 `true`, `false`, and `nil` are not keywords: they're predefined constants, always available in every script. Like any other constant, they can't be reassigned.
 
@@ -67,7 +70,7 @@ When one operator is a prefix of another, the longer one always wins: `++` is co
 | `{ }`   | a table literal                                                   |
 | `.`     | reading or writing a table field                                  |
 | `,`     | separating array elements, table fields, arguments, and parameters |
-| `:`     | opening a block, after `if`, `else`, `while`, `for`, and `function(...)` |
+| `:`     | opening a block, after `if`, `else`, `while`, `for`, and `fn(...)` |
 
 A trailing comma after the last item is a syntax error, in every position: `[1, 2,]`, `{ x = 1, }`, `f(a,)`.
 

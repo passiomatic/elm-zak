@@ -84,7 +84,7 @@ natives =
                 , ( "abs"
                   , NativeZakExpr
                         """
-                        function(n):
+                        fn(n):
                             if n < 0:
                                 return -n
                             end

@@ -189,7 +189,7 @@ suite =
         , describe "calling"
             [ test "call runs a script's function with arguments from the host" <|
                 \_ ->
-                    withWorld (runIn [] "let add = function(a, b): return a + b end") <|
+                    withWorld (runIn [] "let add = fn(a, b): return a + b end") <|
                         \( _, world ) ->
                             case Zak.getGlobal "add" world of
                                 Just fn ->
@@ -271,7 +271,7 @@ suite =
                                             Ok ( Nil, world )
                                 )
                     in
-                    returns [ ( "apply", apply ) ] "return apply(function(x): return x * 10 end, 4)"
+                    returns [ ( "apply", apply ) ] "return apply(fn(x): return x * 10 end, 4)"
                         |> Expect.equal (Ok (Number 40))
             , test "nativeTable groups natives behind a dot" <|
                 \_ ->
@@ -279,11 +279,11 @@ suite =
                         |> Expect.equal (Ok (Number 14))
             , test "nativeExpression is a native written in Zak" <|
                 \_ ->
-                    returns [ ( "triple", Zak.nativeExpression "function(n): return n * 3 end" ) ] "return triple(5)"
+                    returns [ ( "triple", Zak.nativeExpression "fn(n): return n * 3 end" ) ] "return triple(5)"
                         |> Expect.equal (Ok (Number 15))
             , test "a broken nativeExpression is left undefined, and logged by name" <|
                 \_ ->
-                    case Zak.takeEffects (Zak.init () [ ( "broken", Zak.nativeExpression "function(:" ) ]) of
+                    case Zak.takeEffects (Zak.init () [ ( "broken", Zak.nativeExpression "fn(:" ) ]) of
                         ( [ Log LogError message ], world ) ->
                             Expect.all
                                 [ \_ -> message |> String.startsWith "native “broken” is left undefined" |> Expect.equal True
@@ -384,7 +384,7 @@ suite =
                     let
                         files =
                             [ ( "a.zak", "let _secret = 1" )
-                            , ( "b.zak", "let peek = function():\n    return _secret\nend\nlet poke = function():\n    _secret = 2\nend" )
+                            , ( "b.zak", "let peek = fn():\n    return _secret\nend\nlet poke = fn():\n    _secret = 2\nend" )
                             ]
 
                         run call =
@@ -397,15 +397,15 @@ suite =
                             )
             , test "the file's own functions read and change its _ names" <|
                 \_ ->
-                    withFiles [ ( "lib.zak", "let _count = 0\nlet bump = function():\n    _count = _count + 1\n    return _count\nend" ) ]
+                    withFiles [ ( "lib.zak", "let _count = 0\nlet bump = fn():\n    _count = _count + 1\n    return _count\nend" ) ]
                         "include(\"lib.zak\")\nbump()\nreturn bump()"
                         |> Result.map Tuple.first
                         |> Expect.equal (Ok (Number 2))
             , test "two files can each have a _ name of their own with the same name" <|
                 \_ ->
                     withFiles
-                        [ ( "a.zak", "let _name = \"a\"\nlet name_a = function(): return _name end" )
-                        , ( "b.zak", "let _name = \"b\"\nlet name_b = function(): return _name end" )
+                        [ ( "a.zak", "let _name = \"a\"\nlet name_a = fn(): return _name end" )
+                        , ( "b.zak", "let _name = \"b\"\nlet name_b = fn(): return _name end" )
                         ]
                         "include(\"a.zak\")\ninclude(\"b.zak\")\nreturn name_a() ++ name_b()"
                         |> Result.map Tuple.first
@@ -417,7 +417,7 @@ suite =
                         |> Expect.equal (Just (ConstReassigned "LIMIT"))
             , test "a let inside a file's function stays local to the call" <|
                 \_ ->
-                    withFiles [ ( "lib.zak", "let f = function():\n    let inner = 1\n    return inner\nend" ) ]
+                    withFiles [ ( "lib.zak", "let f = fn():\n    let inner = 1\n    return inner\nend" ) ]
                         "include(\"lib.zak\")\nf()\nreturn inner"
                         |> problem
                         |> Expect.equal (Just (UndefinedName "inner"))
@@ -428,12 +428,12 @@ suite =
                         |> Expect.equal (Ok (Bool True))
             , test "a file included from inside a function still puts its public names in the world" <|
                 \_ ->
-                    withFiles [ ( "lib.zak", "let answer = 42" ) ] "let load = function():\n    include(\"lib.zak\")\nend\nload()\nreturn answer"
+                    withFiles [ ( "lib.zak", "let answer = 42" ) ] "let load = fn():\n    include(\"lib.zak\")\nend\nload()\nreturn answer"
                         |> Result.map Tuple.first
                         |> Expect.equal (Ok (Number 42))
             , test "the host's own script keeps its _ names global" <|
                 \_ ->
-                    withFiles [ ( "lib.zak", "let peek = function(): return _shared end" ) ] "let _shared = 5\ninclude(\"lib.zak\")\nreturn peek()"
+                    withFiles [ ( "lib.zak", "let peek = fn(): return _shared end" ) ] "let _shared = 5\ninclude(\"lib.zak\")\nreturn peek()"
                         |> Result.map Tuple.first
                         |> Expect.equal (Ok (Number 5))
             , test "a _ name no file has is just not defined" <|
@@ -463,7 +463,7 @@ suite =
                         |> Expect.equal (Ok (Number 42))
             , test "a thread's changes to the game survive its waits" <|
                 \_ ->
-                    case Zak.run "Thread.start(function():\n    bump()\n    Thread.wait_for(1)\n    bump()\nend)" counterWorld of
+                    case Zak.run "Thread.start(fn():\n    bump()\n    Thread.wait_for(1)\n    bump()\nend)" counterWorld of
                         Ok ( _, world ) ->
                             Expect.all
                                 [ \_ -> Zak.game world |> Expect.equal 1
@@ -475,7 +475,7 @@ suite =
                             Expect.fail (Zak.errorToString "" error)
             , test "a thread that fails while resumed loses its changes to the game" <|
                 \_ ->
-                    case Zak.run "Thread.start(function():\n    Thread.wait_for(1)\n    bump()\n    let broken = 1 + nil\nend)" counterWorld of
+                    case Zak.run "Thread.start(fn():\n    Thread.wait_for(1)\n    bump()\n    let broken = 1 + nil\nend)" counterWorld of
                         Ok ( _, world ) ->
                             case Zak.tick 1.5 world of
                                 ( [ _ ], world1 ) ->
@@ -496,13 +496,13 @@ suite =
         , describe "data"
             [ test "two references to the same function are ==, and comparing functions doesn't crash" <|
                 \_ ->
-                    withWorld (runIn [] "let f = function(): return 1 end\nlet g = f\nlet h = function(): return 1 end") <|
+                    withWorld (runIn [] "let f = fn(): return 1 end\nlet g = f\nlet h = fn(): return 1 end") <|
                         \( _, world ) ->
                             ( Zak.getGlobal "f" world == Zak.getGlobal "g" world, Zak.getGlobal "f" world == Zak.getGlobal "h" world )
                                 |> Expect.equal ( True, False )
             , test "refId is the same for two references to one table, array or function, and differs otherwise" <|
                 \_ ->
-                    withWorld (runIn [] "let t = {}\nlet t2 = t\nlet u = {}\nlet a = []\nlet f = function(): return 1 end") <|
+                    withWorld (runIn [] "let t = {}\nlet t2 = t\nlet u = {}\nlet a = []\nlet f = fn(): return 1 end") <|
                         \( _, world ) ->
                             let
                                 id name =
@@ -528,7 +528,7 @@ suite =
                         |> Expect.equal (Ok (String "hi"))
             , test "setGlobal changes a script's own global" <|
                 \_ ->
-                    withWorld (runIn [] "let score = 1\nlet read = function(): return score end") <|
+                    withWorld (runIn [] "let score = 1\nlet read = fn(): return score end") <|
                         \( _, world ) ->
                             world
                                 |> Zak.setGlobal "score" (Number 2)
@@ -537,14 +537,14 @@ suite =
                                 |> Expect.equal (Ok (Number 2))
             , test "setGlobal on a name declared as a native is seen by a nativeExpression" <|
                 \_ ->
-                    Zak.init () [ ( "_current", Zak.nativeConstant Nil ), ( "current", Zak.nativeExpression "function(): return _current end" ) ]
+                    Zak.init () [ ( "_current", Zak.nativeConstant Nil ), ( "current", Zak.nativeExpression "fn(): return _current end" ) ]
                         |> Zak.setGlobal "_current" (String "Diner")
                         |> Zak.run "return current()"
                         |> Result.map Tuple.first
                         |> Expect.equal (Ok (String "Diner"))
             , test "globals lists the scripts' top-level definitions and setGlobal's, not the natives" <|
                 \_ ->
-                    withWorld (runIn [ ( "seven", Zak.nativeConstant (Number 7) ) ] "let a = 1\nlet f = function(): let local = 2 end") <|
+                    withWorld (runIn [ ( "seven", Zak.nativeConstant (Number 7) ) ] "let a = 1\nlet f = fn(): let local = 2 end") <|
                         \( _, world ) ->
                             world
                                 |> Zak.setGlobal "b" (Bool True)
@@ -629,7 +629,7 @@ suite =
         , describe "threads"
             [ test "threadCount counts the waiting threads, and tick advances them" <|
                 \_ ->
-                    withWorld (runIn [] "Thread.start(function(): Thread.wait_for(1.0) end)") <|
+                    withWorld (runIn [] "Thread.start(fn(): Thread.wait_for(1.0) end)") <|
                         \( _, world ) ->
                             let
                                 ( _, world1 ) =
@@ -638,7 +638,7 @@ suite =
                             ( Zak.threadCount world, Zak.threadCount world1 ) |> Expect.equal ( 1, 0 )
             , test "tick gives back the errors of failed threads, in the order they failed" <|
                 \_ ->
-                    withWorld (runIn [] "Thread.start(function(): Thread.wait_for(1.0)\nreturn first end)\nThread.start(function(): Thread.wait_for(1.0)\nreturn second end)") <|
+                    withWorld (runIn [] "Thread.start(fn(): Thread.wait_for(1.0)\nreturn first end)\nThread.start(fn(): Thread.wait_for(1.0)\nreturn second end)") <|
                         \( _, world ) ->
                             Zak.tick 1.0 world
                                 |> Tuple.first
@@ -648,7 +648,7 @@ suite =
                 \_ ->
                     let
                         start world =
-                            Zak.run "Thread.start(function(): Thread.wait_for(1.0) end)" world |> Result.map Tuple.second
+                            Zak.run "Thread.start(fn(): Thread.wait_for(1.0) end)" world |> Result.map Tuple.second
                     in
                     Zak.init () []
                         |> Zak.setThreadOwner "level"
@@ -662,7 +662,7 @@ suite =
                 \_ ->
                     let
                         world0 =
-                            Zak.run "let waits = function(): Thread.wait_for(1.0) end" (Zak.init () [])
+                            Zak.run "let waits = fn(): Thread.wait_for(1.0) end" (Zak.init () [])
                                 |> Result.map Tuple.second
                                 |> Result.withDefault (Zak.init () [])
                     in
@@ -681,7 +681,7 @@ suite =
                     \_ ->
                         let
                             source =
-                                "let door = { opening = true }\nlet log = { value = \"\" }\nThread.start(function():\n    log.value = \"waiting\"\n    wait_door(door)\n    log.value = \"through\"\nend)\nreturn [door, log]"
+                                "let door = { opening = true }\nlet log = { value = \"\" }\nThread.start(fn():\n    log.value = \"waiting\"\n    wait_door(door)\n    log.value = \"through\"\nend)\nreturn [door, log]"
                         in
                         withWorld (runIn [ ( "wait_door", waitDoor ) ] source) <|
                             \( pair, world ) ->
@@ -701,13 +701,13 @@ suite =
                                         Expect.fail ("expected [door, log], got: " ++ Debug.toString other)
                 , test "a condition that's false at once still waits for the next tick" <|
                     \_ ->
-                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "let door = { opening = false }\nlet log = { value = \"\" }\nThread.start(function():\n    wait_door(door)\n    log.value = \"through\"\nend)\nreturn log") <|
+                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "let door = { opening = false }\nlet log = { value = \"\" }\nThread.start(fn():\n    wait_door(door)\n    log.value = \"through\"\nend)\nreturn log") <|
                             \( log, world ) ->
                                 ( Zak.getField "value" log world, Zak.getField "value" log (Zak.tick 0 world |> Tuple.second) )
                                     |> Expect.equal ( Just (String ""), Just (String "through") )
                 , test "the condition sees what threads resumed earlier in the same tick did" <|
                     \_ ->
-                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "let door = { opening = true }\nlet log = { value = \"\" }\nThread.start(function():\n    Thread.wait_for(1.0)\n    door.opening = false\nend)\nThread.start(function():\n    wait_door(door)\n    log.value = \"through\"\nend)\nreturn log") <|
+                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "let door = { opening = true }\nlet log = { value = \"\" }\nThread.start(fn():\n    Thread.wait_for(1.0)\n    door.opening = false\nend)\nThread.start(fn():\n    wait_door(door)\n    log.value = \"through\"\nend)\nreturn log") <|
                             \( log, world ) ->
                                 Zak.tick 1.0 world
                                     |> Tuple.second
@@ -719,7 +719,7 @@ suite =
                             waitCount =
                                 Zak.nativeWaitingFunction (\_ world -> Ok ( \w -> Zak.game w < 3, world ))
                         in
-                        case Zak.run "let log = { value = \"\" }\nThread.start(function():\n    wait_count()\n    log.value = \"three\"\nend)\nreturn log" (Zak.init 0 [ ( "wait_count", waitCount ) ]) of
+                        case Zak.run "let log = { value = \"\" }\nThread.start(fn():\n    wait_count()\n    log.value = \"three\"\nend)\nreturn log" (Zak.init 0 [ ( "wait_count", waitCount ) ]) of
                             Ok ( log, world ) ->
                                 let
                                     ( _, world1 ) =
@@ -735,7 +735,7 @@ suite =
                                 Expect.fail (Zak.errorToString "" error)
                 , test "other threads carry on while one waits on the host" <|
                     \_ ->
-                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "let door = { opening = true }\nlet log = { value = \"\" }\nThread.start(function():\n    wait_door(door)\n    log.value = log.value ++ \"door\"\nend)\nThread.start(function():\n    Thread.wait_for(1.0)\n    log.value = log.value ++ \"timer\"\nend)\nreturn log") <|
+                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "let door = { opening = true }\nlet log = { value = \"\" }\nThread.start(fn():\n    wait_door(door)\n    log.value = log.value ++ \"door\"\nend)\nThread.start(fn():\n    Thread.wait_for(1.0)\n    log.value = log.value ++ \"timer\"\nend)\nreturn log") <|
                             \( log, world ) ->
                                 Zak.tick 1.0 world
                                     |> Tuple.second
@@ -743,7 +743,7 @@ suite =
                                     |> Expect.equal (Just (String "timer"))
                 , test "a stopped thread never resumes, whatever its condition" <|
                     \_ ->
-                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "let door = { opening = false }\nlet log = { value = \"\" }\nThread.start(function():\n    wait_door(door)\n    log.value = \"through\"\nend)\nreturn log") <|
+                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "let door = { opening = false }\nlet log = { value = \"\" }\nThread.start(fn():\n    wait_door(door)\n    log.value = \"through\"\nend)\nreturn log") <|
                             \( log, world ) ->
                                 Zak.stopThreads "" world
                                     |> Zak.tick 1.0
@@ -756,13 +756,13 @@ suite =
                             |> Expect.err
                 , test "only in a call that's a statement of its own: inside an expression, it's an error" <|
                     \_ ->
-                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "return function():\n    let x = wait_door({ opening = true })\nend") <|
+                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "return fn():\n    let x = wait_door({ opening = true })\nend") <|
                             \( fn, world ) ->
                                 Zak.startThread "" fn [] world
                                     |> Expect.err
                 , test "the waiting native's own problem is the caller's error, as with nativeFunction" <|
                     \_ ->
-                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "return function(): wait_door() end") <|
+                        withWorld (runIn [ ( "wait_door", waitDoor ) ] "return fn(): wait_door() end") <|
                             \( fn, world ) ->
                                 Zak.startThread "" fn [] world
                                     |> Result.mapError Zak.errorProblem
@@ -770,7 +770,7 @@ suite =
                 ]
             , test "startThread runs a function as a thread of the given owner" <|
                 \_ ->
-                    withWorld (runIn [] "return function(): Thread.wait_for(1.0) end") <|
+                    withWorld (runIn [] "return fn(): Thread.wait_for(1.0) end") <|
                         \( fn, world ) ->
                             Zak.startThread "cutscene" fn [] world
                                 |> Result.map (Tuple.second >> Zak.hasThreads "cutscene")
@@ -790,7 +790,7 @@ suite =
                                 )
 
                         source =
-                            "let log = { value = \"waiting\" }\nThread.start(function():\n    Thread.join(start_as_cutscene(function(): Thread.wait_for(1.0) end))\n    log.value = \"joined\"\nend)\nreturn log"
+                            "let log = { value = \"waiting\" }\nThread.start(fn():\n    Thread.join(start_as_cutscene(fn(): Thread.wait_for(1.0) end))\n    log.value = \"joined\"\nend)\nreturn log"
 
                         logAfter seconds ( log, world ) =
                             List.foldl (\dt w -> Zak.tick dt w |> Tuple.second) world seconds

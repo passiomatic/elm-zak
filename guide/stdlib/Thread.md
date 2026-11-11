@@ -11,7 +11,7 @@ Spawns `closure` (called with no arguments) as an independent thread. Returns th
 ```
 let log = { value = "" }
 
-let worker_id = Thread.start(function():
+let worker_id = Thread.start(fn():
     log.value = log.value ++ "A"   # runs immediately, as part of start's own call
     Thread.wait_for(1.0)           # suspends this thread for 1 second
     log.value = log.value ++ "B"   # runs once a later tick resumes it
@@ -27,7 +27,7 @@ The new thread belongs to whatever the code calling `start` belongs to, so the t
 Suspends the calling thread until at least `seconds` of elapsed tick time have passed. `seconds` may be fractional.
 
 ```
-Thread.start(function():
+Thread.start(fn():
     Thread.wait_for(0.5)
 end)
 ```
@@ -37,11 +37,11 @@ end)
 Suspends the calling thread until the thread named by `thread_id` (an id previously returned by `start`) is no longer running. An unknown or already-finished `thread_id` isn't an error — the call resolves immediately.
 
 ```
-let worker_id = Thread.start(function():
+let worker_id = Thread.start(fn():
     Thread.wait_for(1.0)
 end)
 
-Thread.start(function():
+Thread.start(fn():
     Thread.join(worker_id)
     # runs only once worker_id has finished
 end)
@@ -54,14 +54,14 @@ Ends the thread named by `thread_id`. It never resumes, even once its wait would
 Stopping the thread that's currently running (the caller itself, or the thread that started it) ends it at its next wait: the code up to there still runs. To end at once, a thread returns from its function.
 
 ```
-let blink_id = Thread.start(function():
+let blink_id = Thread.start(fn():
     while true:
         Debug.log("blink")
         Thread.wait_for(0.5)
     end
 end)
 
-Thread.start(function():
+Thread.start(fn():
     Thread.wait_for(3.0)
     Thread.stop(blink_id)   # no more blinks after this
 end)
@@ -74,12 +74,12 @@ Suspends the calling thread, calling `predicate()` (no arguments) once per tick,
 ```
 let door = { open = false }
 
-Thread.start(function():
-    Thread.wait_while(function(): return not door.open end)
+Thread.start(fn():
+    Thread.wait_while(fn(): return not door.open end)
     Debug.log("Finally!")   # only once door.open becomes true
 end)
 
-Thread.start(function():
+Thread.start(fn():
     Thread.wait_for(3.0)
     door.open = true
 end)

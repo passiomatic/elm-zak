@@ -1764,7 +1764,7 @@ rest) — evaluated against `env`, the function's own captured _enclosing_
 scope, never the call frame being built for this call. Two consequences,
 both deliberate:
 
-  - A default can't reference an earlier parameter (`function(a, b=a):
+  - A default can't reference an earlier parameter (`fn(a, b=a):
     ...`) — there's no call frame in scope yet at this point, only the
     enclosing one.
   - Evaluating fresh here, on every call that needs it, rather than once

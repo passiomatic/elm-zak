@@ -366,7 +366,7 @@ suite =
             let
                 -- The elements, bracketed and joined: [1, 2] reads "[1][2]".
                 elements source =
-                    run ("return Array.foldr(" ++ source ++ ", function(x, acc): return \"[\" ++ String.from(x) ++ \"]\" ++ acc end, \"\")")
+                    run ("return Array.foldr(" ++ source ++ ", fn(x, acc): return \"[\" ++ String.from(x) ++ \"]\" ++ acc end, \"\")")
             in
             [ test "a plain 3-arg slice" <|
                 \_ -> elements "Array.slice([10, 20, 30, 40], 1, 3)" |> Expect.equal (Ok (VString "[20][30]"))
@@ -505,7 +505,7 @@ suite =
                     run
                         """
                         let visited = []
-                        Array.each([1, 2, 3], function(value):
+                        Array.each([1, 2, 3], fn(value):
                             Array.push(visited, value)
                         end)
                         return Array.get(visited, 0) * 100 + Array.get(visited, 1) * 10 + Array.get(visited, 2)
@@ -516,7 +516,7 @@ suite =
                     run
                         """
                         let visited = []
-                        Array.each([], function(value):
+                        Array.each([], fn(value):
                             Array.push(visited, value)
                         end)
                         return Array.length(visited)
@@ -527,7 +527,7 @@ suite =
                     run
                         """
                         let a = [1, 2, 3]
-                        Array.each(a, function(value):
+                        Array.each(a, fn(value):
                             value
                         end)
                         return Array.get(a, 0)
@@ -535,11 +535,11 @@ suite =
                         |> Expect.equal (Ok (VNumber 1))
             , test "returns nil" <|
                 \_ ->
-                    runExpr "Array.each([1, 2, 3], function(value): value end)"
+                    runExpr "Array.each([1, 2, 3], fn(value): value end)"
                         |> Expect.equal (Ok VNil)
             , test "wrong argument type" <|
                 \_ ->
-                    runExpr "Array.each(1, function(value): value end)"
+                    runExpr "Array.each(1, fn(value): value end)"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VNumber 1 })))
             , test "wrong argument count" <|
                 \_ ->
@@ -552,7 +552,7 @@ suite =
                     run
                         """
                         let a = [1, 2, 3]
-                        let b = Array.map(a, function(x): return x * 2 end)
+                        let b = Array.map(a, fn(x): return x * 2 end)
                         return Array.get(b, 1)
                         """
                         |> Expect.equal (Ok (VNumber 4))
@@ -561,76 +561,76 @@ suite =
                     run
                         """
                         let a = [1, 2, 3]
-                        Array.map(a, function(x): return x * 2 end)
+                        Array.map(a, fn(x): return x * 2 end)
                         return Array.get(a, 0)
                         """
                         |> Expect.equal (Ok (VNumber 1))
             , test "preserves length" <|
                 \_ ->
-                    runExpr "Array.length(Array.map([1, 2, 3], function(x): return x end))"
+                    runExpr "Array.length(Array.map([1, 2, 3], fn(x): return x end))"
                         |> Expect.equal (Ok (VNumber 3))
             , test "wrong argument type" <|
                 \_ ->
-                    runExpr "Array.map(1, function(x): return x end)"
+                    runExpr "Array.map(1, fn(x): return x end)"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VNumber 1 })))
             , test "wrong argument count" <|
                 \_ ->
-                    runExpr "Array.map(function(x): return x end)"
+                    runExpr "Array.map(fn(x): return x end)"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
             ]
         , describe "filter (pure, whole-collection derivation)" <|
             [ test "keeps only elements where the predicate is true" <|
                 \_ ->
-                    runExpr "Array.length(Array.filter([1, 2, 3, 4], function(x): return x > 2 end))"
+                    runExpr "Array.length(Array.filter([1, 2, 3, 4], fn(x): return x > 2 end))"
                         |> Expect.equal (Ok (VNumber 2))
             , test "does not mutate the original array" <|
                 \_ ->
                     run
                         """
                         let a = [1, 2, 3, 4]
-                        Array.filter(a, function(x): return x > 2 end)
+                        Array.filter(a, fn(x): return x > 2 end)
                         return Array.length(a)
                         """
                         |> Expect.equal (Ok (VNumber 4))
             , test "predicate must return a Bool" <|
                 \_ ->
-                    runExpr "Array.filter([1], function(x): return x end)"
+                    runExpr "Array.filter([1], fn(x): return x end)"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "Bool", got = VNumber 1 })))
             , test "wrong argument type" <|
                 \_ ->
-                    runExpr "Array.filter(1, function(x): return true end)"
+                    runExpr "Array.filter(1, fn(x): return true end)"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VNumber 1 })))
             , test "wrong argument count" <|
                 \_ ->
-                    runExpr "Array.filter(function(x): return true end)"
+                    runExpr "Array.filter(fn(x): return true end)"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
             ]
         , describe "foldl (pure, reduces left to right)" <|
             [ test "fn takes (element, accumulator), matching Elm's order" <|
                 \_ ->
-                    runExpr "Array.foldl([\"a\", \"b\", \"c\"], function(x, acc): return acc ++ x end, \"\")"
+                    runExpr "Array.foldl([\"a\", \"b\", \"c\"], fn(x, acc): return acc ++ x end, \"\")"
                         |> Expect.equal (Ok (VString "abc"))
             , test "wrong argument type" <|
                 \_ ->
-                    runExpr "Array.foldl(1, function(x, acc): return acc end, 0)"
+                    runExpr "Array.foldl(1, fn(x, acc): return acc end, 0)"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VNumber 1 })))
             , test "wrong argument count" <|
                 \_ ->
-                    runExpr "Array.foldl([1], function(x, acc): return acc end)"
+                    runExpr "Array.foldl([1], fn(x, acc): return acc end)"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 3, got = 2 })))
             ]
         , describe "foldr (pure, reduces right to left)" <|
             [ test "folds in the opposite order from foldl" <|
                 \_ ->
-                    runExpr "Array.foldr([\"a\", \"b\", \"c\"], function(x, acc): return acc ++ x end, \"\")"
+                    runExpr "Array.foldr([\"a\", \"b\", \"c\"], fn(x, acc): return acc ++ x end, \"\")"
                         |> Expect.equal (Ok (VString "cba"))
             , test "wrong argument type" <|
                 \_ ->
-                    runExpr "Array.foldr(1, function(x, acc): return acc end, 0)"
+                    runExpr "Array.foldr(1, fn(x, acc): return acc end, 0)"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VNumber 1 })))
             , test "wrong argument count" <|
                 \_ ->
-                    runExpr "Array.foldr([1], function(x, acc): return acc end)"
+                    runExpr "Array.foldr([1], fn(x, acc): return acc end)"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 3, got = 2 })))
             ]
         , describe "range (pure, a constructor — inclusive both ends, matching Elm's real List.range)" <|
@@ -705,6 +705,6 @@ suite =
             ]
         , test "a script can still shadow Array itself with its own let, same as any other global" <|
             \_ ->
-                run "let Array = { length = function(a): return 999 end }\nreturn Array.length([1, 2, 3])"
+                run "let Array = { length = fn(a): return 999 end }\nreturn Array.length([1, 2, 3])"
                     |> Expect.equal (Ok (VNumber 999))
         ]

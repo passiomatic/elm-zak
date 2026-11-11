@@ -67,7 +67,7 @@ suite =
                 -- nested: the second statement of an if body, where the
                 -- if is itself the second statement of its block
                 , ( "let x = 1\nif true:\n    let y = 2\n    print(_)\nend", ( 4, 11 ), throwawayMessage )
-                , ( "let f = function():\n    let y = 2\n    return y +\nend", ( 3, 15 ), "" )
+                , ( "let f = fn():\n    let y = 2\n    return y +\nend", ( 3, 15 ), "" )
                 ]
         , describe "errorToString: a failed chompIf (a name, number or string) never shows up as a vague \"something else here\" -- each case says what was expected" <|
             List.map testSyntaxError
@@ -78,7 +78,7 @@ suite =
                 , ( "let 1 = 2", ( 1, 5 ), "expected a name" )
                 , ( "const = 2", ( 1, 7 ), "expected a name" )
                 , ( "for 1 in x:\nend", ( 1, 5 ), "expected a name" )
-                , ( "let f = function(a, 1): return 1 end", ( 1, 21 ), "expected a name" )
+                , ( "let f = fn(a, 1): return 1 end", ( 1, 15 ), "expected a name" )
                 , ( "let x = t.1", ( 1, 11 ), "expected a name" )
                 , ( "let t = { a = 1, 2 = 3 }", ( 1, 18 ), "expected a name" )
                 , ( "let s = \"abc", ( 1, 13 ), "this string is missing its closing “\"”" )
@@ -100,6 +100,20 @@ suite =
                 [ ( "let a = [1]\nreturn a[0.5]", "\n\n0.5 is not a whole number" )
                 , ( "return Array.range(1, 2.5)", "\n\n2.5 is not a whole number" )
                 ]
+        , describe "errorToString: `function`, the keyword before `fn`, says so, on the word itself; `fn` is reserved" <|
+            List.map testSyntaxError
+                [ ( "let f = function(x): return x end", ( 1, 9 ), "“function” is now “fn”" )
+                , ( "let x = 1\nfunction(): return 1 end", ( 2, 1 ), "“function” is now “fn”" )
+                , ( "Array.map([1], function(x): return x end)", ( 1, 16 ), "“function” is now “fn”" )
+                , ( "let fn = 1", ( 1, 7 ), "\"fn\" is a reserved word, not a valid identifier" )
+                ]
+        , describe "a name that only starts with `function` or `fn` is an ordinary name" <|
+            List.map
+                (\source -> test source <| \_ -> errorMessage source |> Expect.equal "")
+                [ "let functional = 1\nreturn functional"
+                , "let fnord = fn(): return 1 end\nreturn fnord()"
+                , "let function_name = \"x\"\nreturn function_name"
+                ]
         , describe "errorToString: a line no statement can start with still gets the generic message, at that line" <|
             List.map testSyntaxError
                 [ ( "let x = 1\n)", ( 2, 1 ), "expected the end of the program" )
@@ -114,6 +128,6 @@ suite =
                 , "if true:\n    let a = 1\n    let b = 2\n    # trailing\n\nelse:\n    let c = 3\n    let d = 4\nend"
                 , "if false:\n    let a = 1\n    let b = 2\nelse if true:\n    let c = 3\n    let d = 4\nend"
                 , "let i = 0\nwhile i < 2:\n    i = i + 1\n    continue\nend"
-                , "let f = function():\n    let a = 1\n    return a\nend\nlet b = f()"
+                , "let f = fn():\n    let a = 1\n    return a\nend\nlet b = f()"
                 ]
         ]

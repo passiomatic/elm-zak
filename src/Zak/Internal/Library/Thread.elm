@@ -52,7 +52,7 @@ natives =
 — a condition, re-evaluated every iteration, with a suspend in between.
 Zak has no macros, so the condition has to be `predicate` (a
 zero-argument closure the caller supplies, called fresh each iteration)
-rather than a bare expression: `Thread.wait_while(function(): return
+rather than a bare expression: `Thread.wait_while(fn(): return
 is_busy(x) end)`, not `Thread.wait_while(is_busy(x))` (which would
 evaluate the condition once, up front, and wait on a frozen `Bool`
 forever).
@@ -88,7 +88,7 @@ checking (exactly one required parameter) and a non-callable `predicate`
 waitWhileSource : String
 waitWhileSource =
     """
-    function(predicate):
+    fn(predicate):
         while predicate():
             Thread.wait_for(0)
         end

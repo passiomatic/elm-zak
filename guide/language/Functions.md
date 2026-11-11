@@ -7,7 +7,7 @@ A function is a block of code that runs when it's called, with values passed in 
 A function is written as a function literal: the keyword `function`, a list of parameters in parentheses, a `:`, the body, and `end`:
 
 ```
-function(a, b):
+fn(a, b):
     return a + b
 end
 ```
@@ -15,12 +15,12 @@ end
 A function literal is an expression like any other, and produces a function value. Functions don't have names of their own: to call a function by name, store it in a variable, or in a table field.
 
 ```
-let add = function(a, b):
+let add = fn(a, b):
     return a + b
 end
 
 let shapes = {
-    square = function(side):
+    square = fn(side):
         return side * side
     end
 }
@@ -29,7 +29,7 @@ let shapes = {
 A short function can stay on a single line, as long as its body is a single statement:
 
 ```
-let double = function(x): return x * 2 end
+let double = fn(x): return x * 2 end
 ```
 
 ## Calling a function
@@ -62,10 +62,10 @@ add(1)         # error: expected 2 arguments, got 1
 add(1, 2, 3)   # error: expected 2 arguments, got 3
 ```
 
-Every parameter must have a different name: `function(a, a)` is a syntax error. The one exception is the throwaway name `_` (see [Lexical structure](Lexical.md#the-throwaway-name-_)), which marks an argument the function ignores and can appear any number of times:
+Every parameter must have a different name: `fn(a, a)` is a syntax error. The one exception is the throwaway name `_` (see [Lexical structure](Lexical.md#the-throwaway-name-_)), which marks an argument the function ignores and can appear any number of times:
 
 ```
-Table.each(scores, function(_, value):
+Table.each(scores, fn(_, value):
     print(value)
     return nil
 end)
@@ -78,7 +78,7 @@ There's no way to accept a variable number of arguments. To pass any number of v
 A parameter can be given a default value, used when the call leaves that argument out:
 
 ```
-let greet = function(name, greeting = "Hello"):
+let greet = fn(name, greeting = "Hello"):
     return greeting ++ ", " ++ name
 end
 
@@ -86,14 +86,14 @@ greet("Taylor")          # "Hello, Taylor"
 greet("Taylor", "Hi")    # "Hi, Taylor"
 ```
 
-Once a parameter has a default, every parameter after it must have one too — `function(a = 1, b)` is a syntax error. Arguments are always matched to parameters in order, so there's no way to skip one in the middle.
+Once a parameter has a default, every parameter after it must have one too — `fn(a = 1, b)` is a syntax error. Arguments are always matched to parameters in order, so there's no way to skip one in the middle.
 
 A default is only used when the argument is left out entirely. Passing `nil` explicitly passes `nil`, not the default.
 
 A default can be any expression, and is evaluated anew on every call that needs it. So a default of `[]` or `{}` gives each call its own new array or table, never one shared between calls:
 
 ```
-let collect = function(item, into = []):
+let collect = fn(item, into = []):
     Array.push(into, item)
     return into
 end
@@ -102,7 +102,7 @@ collect("a")   # ["a"]
 collect("b")   # ["b"] — a new array, not ["a", "b"]
 ```
 
-A default is evaluated in the scope where the function was defined, not among the other parameters, so it can't refer to an earlier parameter: `function(a, b = a)` fails when `b`'s default is needed.
+A default is evaluated in the scope where the function was defined, not among the other parameters, so it can't refer to an earlier parameter: `fn(a, b = a)` fails when `b`'s default is needed.
 
 ## Returning a value
 
@@ -111,7 +111,7 @@ A default is evaluated in the scope where the function was defined, not among th
 A function returns a single value. To give back several, return an array or a table:
 
 ```
-let bounds = function(items):
+let bounds = fn(items):
     return { low = items[0], high = items[Array.length(items) - 1] }
 end
 ```
@@ -123,14 +123,14 @@ A function can be stored, passed, and returned like any other value.
 Passing a function to another one is how the standard library's `Array.map`, `Array.filter`, `Table.each`, and the like work:
 
 ```
-let is_expensive = function(price): return price > 100 end
+let is_expensive = fn(price): return price > 100 end
 Array.filter([50, 150, 300], is_expensive)   # [150, 300]
 ```
 
 The function can also be written right where it's passed:
 
 ```
-Array.map([1, 2, 3], function(x): return x * x end)   # [1, 4, 9]
+Array.map([1, 2, 3], fn(x): return x * x end)   # [1, 4, 9]
 ```
 
 Standard library and host functions are values in the same way, and can be passed along or stored just like a function defined in the script:
@@ -147,9 +147,9 @@ A function is `==` only to itself, as a table or an array is: two functions buil
 A function can use the variables of the scope it was defined in, and keeps access to them even after that scope has ended. A function that does this is called a closure:
 
 ```
-let make_counter = function():
+let make_counter = fn():
     let count = 0
-    return function():
+    return fn():
         count = count + 1
         return count
     end
@@ -168,7 +168,7 @@ A closure shares the variable itself, not a copy of its value at the time the fu
 ```
 let getters = []
 for i in [1, 2, 3]:
-    Array.push(getters, function(): return i end)
+    Array.push(getters, fn(): return i end)
 end
 
 getters[0]()   # 1
@@ -180,7 +180,7 @@ getters[2]()   # 3
 A function can call itself, through the variable it's stored in:
 
 ```
-let factorial = function(n):
+let factorial = fn(n):
     if n <= 1:
         return 1
     end

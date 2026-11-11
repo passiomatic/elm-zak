@@ -44,7 +44,7 @@ end
 Further conditions can be chained with `else if`, checked in order until one is `true`. A whole chain closes with a single `end`:
 
 ```
-let grade = function(score):
+let grade = fn(score):
     if score >= 90:
         return "A"
     else if score >= 75:
@@ -130,7 +130,7 @@ end
 `return` ends the function it's in right away, and gives back a value to whoever called it. A bare `return`, with no value, gives back `nil`, the same as reaching the end of the function:
 
 ```
-let find = function(items, wanted):
+let find = fn(items, wanted):
     for item in items:
         if item == wanted:
             return true   # also ends the loop

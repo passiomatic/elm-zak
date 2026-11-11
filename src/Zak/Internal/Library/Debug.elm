@@ -131,7 +131,7 @@ genuine 1-or-2 case, so the `[]`/`_` branches below
 report whichever bound was actually violated (`expected = 1` for too few,
 `expected = 2` for too many), the same convention `Zak.Internal.Interpreter`'s
 `callFunction` already established for a Zak-_defined_ function with
-default parameters (`function(a, b=1): ... end`, `min`/`max` arity
+default parameters (`fn(a, b=1): ... end`, `min`/`max` arity
 instead of one exact count) — this is that same rule, just needed by a
 _native_ for the first time instead of a `VFunction`.
 

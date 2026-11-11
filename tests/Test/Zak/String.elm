@@ -51,7 +51,7 @@ suite =
             , test "a table gets a fixed placeholder" <|
                 \_ -> runExpr "String.from({ x = 1 })" |> Expect.equal (Ok (VString "<table>"))
             , test "a function gets a fixed placeholder" <|
-                \_ -> runExpr "String.from(function(): end)" |> Expect.equal (Ok (VString "<function>"))
+                \_ -> runExpr "String.from(fn(): end)" |> Expect.equal (Ok (VString "<function>"))
             , test "wrong argument count" <|
                 \_ ->
                     runExpr "String.from(1, 2)"
@@ -309,7 +309,7 @@ suite =
             let
                 -- The pieces, bracketed and joined: ["a", "b"] reads "[a][b]".
                 pieces source =
-                    run ("return Array.foldr(" ++ source ++ ", function(piece, acc): return \"[\" ++ piece ++ \"]\" ++ acc end, \"\")")
+                    run ("return Array.foldr(" ++ source ++ ", fn(piece, acc): return \"[\" ++ piece ++ \"]\" ++ acc end, \"\")")
             in
             [ test "splits on every occurrence, in order" <|
                 \_ -> pieces "String.split(\"thimbleweed_county,videogames\", \",\")" |> Expect.equal (Ok (VString "[thimbleweed_county][videogames]"))
@@ -499,6 +499,6 @@ suite =
             ]
         , test "a script can still shadow String itself with its own let, same as any other global" <|
             \_ ->
-                run "let String = { from = function(v): return 999 end }\nreturn String.from(1)"
+                run "let String = { from = fn(v): return 999 end }\nreturn String.from(1)"
                     |> Expect.equal (Ok (VNumber 999))
         ]

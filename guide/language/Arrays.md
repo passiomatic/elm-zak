@@ -110,16 +110,16 @@ A few functions build a new array, or a single value, out of an existing one, le
 
 | Function                          | Result                                               |
 | --------------------------------- | ---------------------------------------------------- |
-| `Array.map(array, fn)`            | a new array with `fn(element)` for every element     |
+| `Array.map(array, f)`             | a new array with `f(element)` for every element      |
 | `Array.filter(array, predicate)`  | a new array with only the elements `predicate` accepts |
 | `Array.slice(array, start, end)`  | a new array with the elements from `start` up to `end` |
-| `Array.foldl(array, fn, initial)` | a single value, combining elements left to right     |
-| `Array.foldr(array, fn, initial)` | the same, right to left                              |
+| `Array.foldl(array, f, initial)`  | a single value, combining elements left to right     |
+| `Array.foldr(array, f, initial)`  | the same, right to left                              |
 
 ```
 let prices = [10, 25, 40]
-let affordable = Array.filter(prices, function(p): return p <= 25 end)   # [10, 25]
-let total = Array.foldl(prices, function(p, sum): return sum + p end, 0) # 75
+let affordable = Array.filter(prices, fn(p): return p <= 25 end)   # [10, 25]
+let total = Array.foldl(prices, fn(p, sum): return sum + p end, 0) # 75
 ```
 
 The rule is the same across every `Array` function: one that edits a specific part of the array — a slot, the end — changes it in place; one that derives something from the whole array returns a new value.

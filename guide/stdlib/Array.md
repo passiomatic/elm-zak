@@ -133,24 +133,24 @@ Array.slice([1, 2], 0, 5)             # [1, 2] (end past the array's length clam
 Array.slice([1, 2, 3], 2, 1)          # [] (start at or past end)
 ```
 
-## Array.each(array, fn)
+## Array.each(array, f)
 
-Calls `fn(element)` once per element, in order, for the side effect alone — discards whatever `fn` returns and never mutates `array`. An empty `array` is a no-op. For a transform, see `Array.map`.
+Calls `f(element)` once per element, in order, for the side effect alone — discards whatever `f` returns and never mutates `array`. An empty `array` is a no-op. For a transform, see `Array.map`.
 
 ```
-Array.each([1, 2, 3], function(x): Debug.log(x) end)   # logs 1, then 2, then 3
+Array.each([1, 2, 3], fn(x): Debug.log(x) end)   # logs 1, then 2, then 3
 
 let doubled = []
-Array.each([1, 2, 3], function(x): Array.push(doubled, x * 2) end)
+Array.each([1, 2, 3], fn(x): Array.push(doubled, x * 2) end)
 doubled   # [2, 4, 6]
 ```
 
-## Array.map(array, fn)
+## Array.map(array, f)
 
-A new array with `fn(element)` in place of every element. `array` itself is unchanged.
+A new array with `f(element)` in place of every element. `array` itself is unchanged.
 
 ```
-Array.map([1, 2, 3], function(x): return x * 2 end)   # [2, 4, 6]
+Array.map([1, 2, 3], fn(x): return x * 2 end)   # [2, 4, 6]
 ```
 
 ## Array.filter(array, predicate)
@@ -158,20 +158,20 @@ Array.map([1, 2, 3], function(x): return x * 2 end)   # [2, 4, 6]
 A new array holding only the elements where `predicate(element)` is `true`.
 
 ```
-Array.filter([1, 2, 3], function(x): return x > 1 end)   # [2, 3]
+Array.filter([1, 2, 3], fn(x): return x > 1 end)   # [2, 3]
 ```
 
-## Array.foldl(array, fn, initial)
+## Array.foldl(array, f, initial)
 
-Reduces `array` to a single value, left to right: `fn(element, accumulator)`, starting from `initial`.
+Reduces `array` to a single value, left to right: `f(element, accumulator)`, starting from `initial`.
 
 ```
-Array.foldl([1, 2, 3], function(x, acc): return acc + x end, 0)   # 6
+Array.foldl([1, 2, 3], fn(x, acc): return acc + x end, 0)   # 6
 ```
 
-## Array.foldr(array, fn, initial)
+## Array.foldr(array, f, initial)
 
-Like `foldl`, but right to left — the direction matters whenever `fn` isn't commutative.
+Like `foldl`, but right to left — the direction matters whenever `f` isn't commutative.
 
 ```
 Array.foldr(["a", "b", "c"], String.append, "")   # "abc"

@@ -370,21 +370,21 @@ suite =
                 ]
         , describe "expr: function literal" <|
             List.map (testValue normalizeExpr P.parseExpr)
-                [ ( "function(): return 1 end", Just (testFn [] [ Return (Just (NumberLiteral 1)) ]) )
-                , ( "function(a, b): return a + b end"
+                [ ( "fn(): return 1 end", Just (testFn [] [ Return (Just (NumberLiteral 1)) ]) )
+                , ( "fn(a, b): return a + b end"
                   , Just (testFn [ "a", "b" ] [ Return (Just (Binary Add (Name "a") (Name "b"))) ])
                   )
 
                 -- no trailing comma anywhere, parameters included — the
                 -- fourth and last of the "all four agree" positions
-                , ( "function(a, b,): return a + b end", Nothing )
+                , ( "fn(a, b,): return a + b end", Nothing )
                 ]
         , describe "expr: function literal, default parameter values (positional-fill, trailing-only)" <|
             List.map (testValue normalizeExpr P.parseExpr)
-                [ ( "function(a=1): return a end"
+                [ ( "fn(a=1): return a end"
                   , Just (FunctionLiteral [ ( "a", Just (NumberLiteral 1) ) ] (dummyBlock [ Return (Just (Name "a")) ]))
                   )
-                , ( "function(a, b=1, c=2): return a end"
+                , ( "fn(a, b=1, c=2): return a end"
                   , Just
                         (FunctionLiteral
                             [ ( "a", Nothing ), ( "b", Just (NumberLiteral 1) ), ( "c", Just (NumberLiteral 2) ) ]
@@ -394,34 +394,34 @@ suite =
 
                 -- a default isn't restricted to a literal -- any expression
                 -- is accepted, same as a table field's own value
-                , ( "function(a=1+2): return a end"
+                , ( "fn(a=1+2): return a end"
                   , Just (FunctionLiteral [ ( "a", Just (Binary Add (NumberLiteral 1) (NumberLiteral 2)) ) ] (dummyBlock [ Return (Just (Name "a")) ]))
                   )
 
                 -- trailing-only: a plain parameter can never follow a
                 -- defaulted one -- both a single plain param right after one default,
                 -- and two plain params after one, are rejected
-                , ( "function(a=1, b): return a end", Nothing )
-                , ( "function(a=1, b, c): return a end", Nothing )
+                , ( "fn(a=1, b): return a end", Nothing )
+                , ( "fn(a=1, b, c): return a end", Nothing )
                 ]
         , describe "expr: function literal, parameter names must be unique" <|
             List.map (testValue normalizeExpr P.parseExpr)
-                [ ( "function(a, a): return a end", Nothing )
+                [ ( "fn(a, a): return a end", Nothing )
 
                 -- not just adjacent repeats
-                , ( "function(a, b, a): return a end", Nothing )
+                , ( "fn(a, b, a): return a end", Nothing )
 
                 -- a default doesn't make a repeated name any less repeated
-                , ( "function(a, a=1): return a end", Nothing )
+                , ( "fn(a, a=1): return a end", Nothing )
 
                 -- the throwaway `_` is the one name that may repeat
-                , ( "function(_, _): return 1 end"
+                , ( "fn(_, _): return 1 end"
                   , Just (FunctionLiteral [ ( "_", Nothing ), ( "_", Nothing ) ] (dummyBlock [ Return (Just (NumberLiteral 1)) ]))
                   )
-                , ( "function(_, b, _): return b end"
+                , ( "fn(_, b, _): return b end"
                   , Just (FunctionLiteral [ ( "_", Nothing ), ( "b", Nothing ), ( "_", Nothing ) ] (dummyBlock [ Return (Just (Name "b")) ]))
                   )
-                , ( "function(a, b): return a end"
+                , ( "fn(a, b): return a end"
                   , Just (FunctionLiteral [ ( "a", Nothing ), ( "b", Nothing ) ] (dummyBlock [ Return (Just (Name "a")) ]))
                   )
                 ]
@@ -445,7 +445,7 @@ suite =
     # a comment on its own line
     health = 100,
 
-    talk_to = function(self):
+    talk_to = fn(self):
         return self.health
     end
 })"""
@@ -708,13 +708,13 @@ let b = 2"""
                 -- a function literal resets loop context even when the
                 -- literal itself is written inside a while — break/continue
                 -- don't cross into a nested function body
-                , ( "while true:\n    let f = function():\n        break\n    end\nend", Nothing )
+                , ( "while true:\n    let f = fn():\n        break\n    end\nend", Nothing )
 
                 -- for establishes loop context exactly the same way while does
                 , ( "for x in items:\n    if true:\n        continue\n    end\nend"
                   , Just [ testFor "x" (Name "items") [ testIf (Name "true") [ Continue ] Nothing ] ]
                   )
-                , ( "for x in items:\n    let f = function():\n        break\n    end\nend", Nothing )
+                , ( "for x in items:\n    let f = fn():\n        break\n    end\nend", Nothing )
                 ]
         , describe "statement: return" <|
             List.map testProgram
@@ -743,7 +743,7 @@ let b = 2"""
                 ]
         , describe "program: end-to-end examples from the reference manual" <|
             List.map testProgram
-                [ ( """let abs = function(n):
+                [ ( """let abs = fn(n):
     if n < 0:
         return -n
     end
@@ -760,7 +760,7 @@ end"""
                             )
                         ]
                   )
-                , ( """let factorial = function(n):
+                , ( """let factorial = fn(n):
     if n == 0:
         return 1
     end

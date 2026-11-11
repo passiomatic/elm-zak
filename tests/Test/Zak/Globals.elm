@@ -61,7 +61,7 @@ suite =
             , test "table — not \"record\" (see Zak.Internal.Library.Globals's own doc for why)" <|
                 \_ -> runExpr "type({ x = 1 })" |> Expect.equal (Ok (VString "table"))
             , test "function" <|
-                \_ -> runExpr "type(function(): end)" |> Expect.equal (Ok (VString "function"))
+                \_ -> runExpr "type(fn(): end)" |> Expect.equal (Ok (VString "function"))
             , test "wrong argument count" <|
                 \_ ->
                     runExpr "type(1, 2)"
@@ -82,7 +82,7 @@ suite =
                         |> Expect.equal (Ok (VNumber 1))
             , test "a script can still shadow type itself with its own let, same as any other global" <|
                 \_ ->
-                    run "let type = function(v): return 999 end\nreturn type(1)"
+                    run "let type = fn(v): return 999 end\nreturn type(1)"
                         |> Expect.equal (Ok (VNumber 999))
             ]
         , describe "is_string/is_number/is_bool/is_array/is_table/is_function (type(value) == name)" <|
@@ -99,7 +99,7 @@ suite =
                     , ( "[1, 2]", "array" )
                     , ( "[]", "array" )
                     , ( "{ x = 1 }", "table" )
-                    , ( "function(): return 1 end", "function" )
+                    , ( "fn(): return 1 end", "function" )
                     , ( "type", "function" )
                     ]
 
@@ -133,7 +133,7 @@ suite =
                         \_ ->
                             run
                                 """
-                                let values = ["hi", 1, true, nil, [1], { x = 1 }, function(): return 1 end, type]
+                                let values = ["hi", 1, true, nil, [1], { x = 1 }, fn(): return 1 end, type]
                                 let ok = true
                                 for v in values:
                                     if is_string(v) != (type(v) == "string") or is_number(v) != (type(v) == "number") or is_bool(v) != (type(v) == "bool") or is_array(v) != (type(v) == "array") or is_table(v) != (type(v) == "table") or is_function(v) != (type(v) == "function"):
@@ -147,7 +147,7 @@ suite =
                         \_ -> run "return is_string(\"x\")" |> Expect.equal (Ok (VBool True))
                    , test "a script's own let is_string still shadows it, so existing helper definitions keep working" <|
                         \_ ->
-                            run "let is_string = function(value): return type(value) == \"string\" end\nreturn is_string(1)"
+                            run "let is_string = fn(value): return type(value) == \"string\" end\nreturn is_string(1)"
                                 |> Expect.equal (Ok (VBool False))
                    ]
         ]

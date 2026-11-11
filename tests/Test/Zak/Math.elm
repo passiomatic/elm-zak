@@ -214,7 +214,7 @@ suite =
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 2 })))
             , test "a script can still shadow Math itself with its own let, same as any other global" <|
                 \_ ->
-                    run "let Math = { abs = function(n): return 999 end }\nreturn Math.abs(-5)"
+                    run "let Math = { abs = fn(n): return 999 end }\nreturn Math.abs(-5)"
                         |> Expect.equal (Ok (VNumber 999))
             ]
         ]

@@ -180,7 +180,7 @@ suite =
                             Expect.fail ("expected success, got: " ++ Debug.toString error)
             , test "any value is logged as its String.from rendering" <|
                 \_ ->
-                    case runWithState "Debug.log(\"hi\")\nDebug.log(99)\nDebug.log(1.5)\nDebug.log(true)\nDebug.log(nil)\nDebug.log([1, 2])\nDebug.log({ x = 1 })\nDebug.log(function(): end)\nDebug.log(Math.cos)\nreturn nil" of
+                    case runWithState "Debug.log(\"hi\")\nDebug.log(99)\nDebug.log(1.5)\nDebug.log(true)\nDebug.log(nil)\nDebug.log([1, 2])\nDebug.log({ x = 1 })\nDebug.log(fn(): end)\nDebug.log(Math.cos)\nreturn nil" of
                         Ok ( _, state ) ->
                             logMessages state.pendingEffects
                                 |> Expect.equal [ "hi", "99", "1.5", "true", "nil", "<array>", "<table>", "<function>", "<function>" ]

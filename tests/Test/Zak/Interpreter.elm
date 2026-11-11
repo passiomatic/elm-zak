@@ -267,14 +267,14 @@ suite =
                 ]
         , describe "runExpr: function calls" <|
             List.map (testValue (I.runExpr noNatives))
-                [ ( "function(a, b): return a + b end(1, 2)", Just (VNumber 3) )
-                , ( "function(): return 1 end()", Just (VNumber 1) )
+                [ ( "fn(a, b): return a + b end(1, 2)", Just (VNumber 3) )
+                , ( "fn(): return 1 end()", Just (VNumber 1) )
 
                 -- no explicit return -> nil
-                , ( "function(): let x = 1 end()", Just VNil )
+                , ( "fn(): let x = 1 end()", Just VNil )
 
                 -- wrong arity
-                , ( "function(a, b): return a + b end(1)", Nothing )
+                , ( "fn(a, b): return a + b end(1)", Nothing )
 
                 -- calling a non-function
                 , ( "(1)(2)", Nothing )
@@ -282,28 +282,28 @@ suite =
         , describe "runExpr: default parameter values (positional-fill, trailing-only)" <|
             List.map (testValue (I.runExpr noNatives))
                 [ -- a 3-param function, 2 defaulted, called with 1/2/3 args
-                  ( "function(a, b=10, c=20): return a + b + c end(1)", Just (VNumber 31) )
-                , ( "function(a, b=10, c=20): return a + b + c end(1, 2)", Just (VNumber 23) )
-                , ( "function(a, b=10, c=20): return a + b + c end(1, 2, 3)", Just (VNumber 6) )
+                  ( "fn(a, b=10, c=20): return a + b + c end(1)", Just (VNumber 31) )
+                , ( "fn(a, b=10, c=20): return a + b + c end(1, 2)", Just (VNumber 23) )
+                , ( "fn(a, b=10, c=20): return a + b + c end(1, 2, 3)", Just (VNumber 6) )
 
                 -- too few: fewer than the mandatory (non-defaulted) params
-                , ( "function(a, b=10, c=20): return a + b + c end()", Nothing )
+                , ( "fn(a, b=10, c=20): return a + b + c end()", Nothing )
 
                 -- too many: more than every param, defaulted ones included
-                , ( "function(a, b=10, c=20): return a + b + c end(1, 2, 3, 4)", Nothing )
+                , ( "fn(a, b=10, c=20): return a + b + c end(1, 2, 3, 4)", Nothing )
                 ]
         , describe "runExpr: default parameter values -- exact error shapes" <|
             [ test "too few arguments reports the minimum (mandatory-only) arity as \"expected\"" <|
                 \_ ->
-                    I.runExpr noNatives "function(a, b=1, c=2): return a end()"
+                    I.runExpr noNatives "fn(a, b=1, c=2): return a end()"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 0 })))
             , test "too many arguments reports the maximum (every param) arity as \"expected\"" <|
                 \_ ->
-                    I.runExpr noNatives "function(a, b=1, c=2): return a end(1, 2, 3, 4)"
+                    I.runExpr noNatives "fn(a, b=1, c=2): return a end(1, 2, 3, 4)"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 3, got = 4 })))
             , test "no defaults at all is unaffected -- min == max == the old exact-arity check" <|
                 \_ ->
-                    I.runExpr noNatives "function(a, b): return a end(1)"
+                    I.runExpr noNatives "fn(a, b): return a end(1)"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
             ]
         , describe "runExpr: default parameter values -- evaluated fresh per call, in the enclosing scope, not once at definition time" <|
@@ -311,7 +311,7 @@ suite =
                 \_ ->
                     run noNatives
                         """
-                        let f = function(a, list=[]):
+                        let f = fn(a, list=[]):
                             Array.push(list, a)
                             return Array.length(list)
                         end
@@ -326,11 +326,11 @@ suite =
                     run noNatives
                         """
                         let counter = { value = 0 }
-                        let next = function():
+                        let next = fn():
                             counter.value = counter.value + 1
                             return counter.value
                         end
-                        let f = function(a, b=next()):
+                        let f = fn(a, b=next()):
                             return b
                         end
                         let first = f(1)
@@ -343,11 +343,11 @@ suite =
                     run noNatives
                         """
                         let counter = { value = 0 }
-                        let next = function():
+                        let next = fn():
                             counter.value = counter.value + 1
                             return counter.value
                         end
-                        let f = function(a, b=next()):
+                        let f = fn(a, b=next()):
                             return a + b
                         end
                         let result = f(1, 100)
@@ -356,14 +356,14 @@ suite =
                         |> Expect.equal (Ok (VBool True))
             , test "a default cannot reference an earlier parameter" <|
                 \_ ->
-                    I.runExpr noNatives "function(a, b=a): return b end(1)"
+                    I.runExpr noNatives "fn(a, b=a): return b end(1)"
                         |> Expect.equal (Err (RuntimeError (UndefinedName "a")))
             , test "a default CAN reference a legitimate outer-scope name -- ordinary closure capture, not a sibling parameter" <|
                 \_ ->
                     run noNatives
                         """
                         let outer = 99
-                        let f = function(a, b=outer):
+                        let f = fn(a, b=outer):
                             return b
                         end
                         return f(1)
@@ -378,7 +378,7 @@ return r.health"""
                   , Just (VNumber 99)
                   )
                 , ( """let r = { health = 100 }
-let f = function(rec):
+let f = fn(rec):
     rec.health = rec.health - 1
 end
 f(r)
@@ -406,7 +406,7 @@ return s.y"""
 
                 -- ...and through a function argument, same as updating
                 , ( """let r = { x = 1 }
-let f = function(rec):
+let f = fn(rec):
     rec.y = 2
 end
 f(r)
@@ -432,7 +432,7 @@ r.a.b = 2"""
         , describe "run: an assignment target's base can be any expression, not just a name (e.g. a call)" <|
             List.map (testValue (run noNatives))
                 [ ( """let r = { health = 100 }
-let get_actor = function():
+let get_actor = fn():
     return r
 end
 get_actor().health = 99
@@ -445,7 +445,7 @@ return r.health"""
                 -- pins down by making the "get" itself something observable
                 , ( """let calls = { count = 0 }
 let r = { x = 1 }
-let get_actor = function():
+let get_actor = fn():
     calls.count = calls.count + 1
     return r
 end
@@ -457,7 +457,7 @@ return calls.count"""
                 -- index-chain form, and a call nested deeper in the chain
                 -- (not just as the immediate base)
                 , ( """let inventory = [{ name = "sword" }]
-let get_actor = function():
+let get_actor = fn():
     return { inventory = inventory }
 end
 get_actor().inventory[0].name = "shield"
@@ -467,7 +467,7 @@ return inventory[0].name"""
 
                 -- still no slot to rebind for a bare call with no
                 -- field/index chain — unchanged from before this relaxation
-                , ( """let f = function(): return 1 end
+                , ( """let f = fn(): return 1 end
 f() = 2"""
                   , Nothing
                   )
@@ -486,7 +486,7 @@ return b[0]"""
                   , Just (VNumber 99)
                   )
                 , ( """let a = [1, 2, 3]
-let f = function(ary):
+let f = fn(ary):
     ary[0] = 99
 end
 f(a)
@@ -558,7 +558,7 @@ return count"""
                 [ -- repeated in one scope, by let and const alike, and
                   -- the value is still evaluated for its effects
                   ( """let t = { n = 0 }
-let bump = function():
+let bump = fn():
     t.n = t.n + 1
     return t.n
 end
@@ -568,16 +568,16 @@ const _ = bump()
 return t.n"""
                   , Just (VNumber 3)
                   )
-                , ( "let f = function(_, b): return b end\nreturn f(1, 2)", Just (VNumber 2) )
-                , ( "let f = function(_, _): return 3 end\nreturn f(1, 2)", Just (VNumber 3) )
+                , ( "let f = fn(_, b): return b end\nreturn f(1, 2)", Just (VNumber 2) )
+                , ( "let f = fn(_, _): return 3 end\nreturn f(1, 2)", Just (VNumber 3) )
 
                 -- a defaulted `_` still evaluates its default
-                , ( "let f = function(a, _ = 1): return a end\nreturn f(5)", Just (VNumber 5) )
+                , ( "let f = fn(a, _ = 1): return a end\nreturn f(5)", Just (VNumber 5) )
 
                 -- nothing is stored, so an outer `let _` and a `_`
                 -- parameter or loop variable never collide
                 , ( """let _ = 1
-let f = function(_):
+let f = fn(_):
     let _ = 2
     return 4
 end
@@ -615,7 +615,7 @@ end"""
 
                 -- scoped exactly like let -- a const
                 -- declared inside a function body is gone once it returns
-                , ( """let f = function():
+                , ( """let f = fn():
     const x = 1
     return x
 end
@@ -626,7 +626,7 @@ return x"""
 
                 -- const accepts any expression, not just a literal --
                 -- deliberately not restricted to literals
-                , ( """const greet = function(name): return "hi " ++ name end
+                , ( """const greet = fn(name): return "hi " ++ name end
 return greet("Taylor")"""
                   , Just (VString "hi Taylor")
                   )
@@ -733,7 +733,7 @@ return innerRuns"""
                 -- return still propagates all the way out through an
                 -- enclosing while, unaffected by break/continue's own
                 -- narrower propagation
-                , ( """let f = function():
+                , ( """let f = fn():
     let i = 0
     while true:
         if i == 3:
@@ -851,7 +851,7 @@ return Array.length(seen)"""
                         ( env, state1 ) =
                             I.initialWorld () noNatives
                     in
-                    case I.runIncremental env state1 "let get_y = function(): return y end" of
+                    case I.runIncremental env state1 "let get_y = fn(): return y end" of
                         Err _ ->
                             Expect.fail "first script failed to run"
 
@@ -920,7 +920,7 @@ return Array.length(seen)"""
                         |> Expect.equal (Ok (VNumber 42))
             , test "a NativeZakExpr whose source doesn't parse is left undefined, instead of crashing" <|
                 \_ ->
-                    run (Dict.singleton "broken" (NativeZakExpr "function(:")) "return broken"
+                    run (Dict.singleton "broken" (NativeZakExpr "fn(:")) "return broken"
                         |> Expect.equal (Err (RuntimeError (UndefinedName "broken")))
             , test "a NativeZakExpr whose source fails to evaluate is left undefined too" <|
                 \_ ->
@@ -930,8 +930,8 @@ return Array.length(seen)"""
                 \_ ->
                     run
                         (Dict.fromList
-                            [ ( "broken", NativeZakExpr "function(:" )
-                            , ( "one", NativeZakExpr "function(): return 1 end" )
+                            [ ( "broken", NativeZakExpr "fn(:" )
+                            , ( "one", NativeZakExpr "fn(): return 1 end" )
                             ]
                         )
                         "return one()"
@@ -940,13 +940,13 @@ return Array.length(seen)"""
                 \_ ->
                     let
                         ( _, state ) =
-                            I.initialWorld () (Dict.singleton "broken" (NativeZakExpr "function(:"))
+                            I.initialWorld () (Dict.singleton "broken" (NativeZakExpr "fn(:"))
                     in
                     case state.pendingEffects of
                         [ Log LogError message ] ->
                             Expect.all
                                 [ \_ -> message |> String.startsWith "native “broken” is left undefined, because its expression is broken.\n\nSyntax error at line 1" |> Expect.equal True
-                                , \_ -> message |> String.contains "    function(:\n" |> Expect.equal True
+                                , \_ -> message |> String.contains "    fn(:\n" |> Expect.equal True
                                 ]
                                 ()
 
@@ -976,7 +976,7 @@ return Array.length(seen)"""
                 \_ ->
                     let
                         ( _, state ) =
-                            I.initialWorld () (Dict.singleton "one" (NativeZakExpr "function(): return 1 end"))
+                            I.initialWorld () (Dict.singleton "one" (NativeZakExpr "fn(): return 1 end"))
                     in
                     state.pendingEffects |> Expect.equal []
             ]
@@ -1102,7 +1102,7 @@ return Array.length(seen)"""
             ]
         , describe "run: functions, recursion, and closures" <|
             List.map (testValue (run noNatives))
-                [ ( """let factorial = function(n):
+                [ ( """let factorial = fn(n):
     if n == 0:
         return 1
     end
@@ -1111,7 +1111,7 @@ end
 return factorial(5)"""
                   , Just (VNumber 120)
                   )
-                , ( """let abs = function(n):
+                , ( """let abs = fn(n):
     if n < 0:
         return -n
     end
@@ -1123,9 +1123,9 @@ return abs(-7)"""
 
                 -- the counter-closure example: each call to make_counter
                 -- produces an independent, privately-mutated counter
-                , ( """let make_counter = function():
+                , ( """let make_counter = fn():
     let count = 0
-    return function():
+    return fn():
         count = count + 1
         return count
     end
@@ -1136,9 +1136,9 @@ next()
 return next()"""
                   , Just (VNumber 3)
                   )
-                , ( """let make_counter = function():
+                , ( """let make_counter = fn():
     let count = 0
-    return function():
+    return fn():
         count = count + 1
         return count
     end
@@ -1158,7 +1158,7 @@ return counter_a()"""
                   -- loop variable, and each closure keeps its own
                   ( """let fns = []
 for x in [1, 2, 3]:
-    Array.push(fns, function(): return x end)
+    Array.push(fns, fn(): return x end)
 end
 return fns[0]() * 100 + fns[1]() * 10 + fns[2]()"""
                   , Just (VNumber 123)
@@ -1166,14 +1166,14 @@ return fns[0]() * 100 + fns[1]() * 10 + fns[2]()"""
                 , ( """let f = nil
 if true:
     let secret = 42
-    f = function(): return secret end
+    f = fn(): return secret end
 end
 return f()"""
                   , Just (VNumber 42)
                   )
-                , ( """let outer = function(a):
-    let middle = function(b):
-        return function(c): return a + b + c end
+                , ( """let outer = fn(a):
+    let middle = fn(b):
+        return fn(c): return a + b + c end
     end
     return middle(20)
 end
@@ -1183,8 +1183,8 @@ return outer(100)(3)"""
 
                 -- a default value that's a function literal is made in
                 -- the scope the function was written in
-                , ( """let make = function(base):
-    return function(f = function(): return base end):
+                , ( """let make = fn(base):
+    return fn(f = fn(): return base end):
         return f()
     end
 end
@@ -1197,7 +1197,7 @@ return get()"""
             [ test "calls, loops and if branches leave the heap as they found it" <|
                 \_ ->
                     measureAround (.heap >> Dict.size)
-                        """let add = function(a, b):
+                        """let add = fn(a, b):
     let sum = a + b
     if sum > 10:
         return sum
@@ -1221,7 +1221,7 @@ end"""
             , test "a return or a break out of nested blocks still frees them" <|
                 \_ ->
                     measureAround (.heap >> Dict.size)
-                        """let find = function(items, wanted):
+                        """let find = fn(items, wanted):
     for item in items:
         while true:
             if item == wanted:
@@ -1247,9 +1247,9 @@ end"""
                 \_ ->
                     case
                         measureAround (.heap >> Dict.size)
-                            """let make_counter = function():
+                            """let make_counter = fn():
     let count = 0
-    return function():
+    return fn():
         count = count + 1
         return count
     end
@@ -1317,22 +1317,22 @@ return last"""
                   , Just (VNumber 20000)
                   )
                 , ( """let t = { n = 0 }
-Array.each(Array.range(1, 100000), function(x): t.n = t.n + 1 end)
+Array.each(Array.range(1, 100000), fn(x): t.n = t.n + 1 end)
 return t.n"""
                   , Just (VNumber 100000)
                   )
-                , ( """let doubled = Array.map(Array.range(1, 100000), function(x): return x * 2 end)
+                , ( """let doubled = Array.map(Array.range(1, 100000), fn(x): return x * 2 end)
 return doubled[99999]"""
                   , Just (VNumber 200000)
                   )
-                , ( """let even = Array.filter(Array.range(1, 100000), function(x): return x % 2 == 0 end)
+                , ( """let even = Array.filter(Array.range(1, 100000), fn(x): return x % 2 == 0 end)
 return Array.length(even) * 10 + even[0]"""
                   , Just (VNumber 500002)
                   )
-                , ( "return Array.foldl(Array.range(1, 100000), function(x, acc): return acc + x end, 0)"
+                , ( "return Array.foldl(Array.range(1, 100000), fn(x, acc): return acc + x end, 0)"
                   , Just (VNumber 5000050000)
                   )
-                , ( "return Array.foldr(Array.range(1, 100000), function(x, acc): return x end, 0)"
+                , ( "return Array.foldr(Array.range(1, 100000), fn(x, acc): return x end, 0)"
                   , Just (VNumber 1)
                   )
                 , ( """let t = {}
@@ -1340,7 +1340,7 @@ for i in Array.range(1, 20000):
     Table.set(t, String.from(i), i)
 end
 let count = { n = 0 }
-Table.each(t, function(name, value): count.n = count.n + 1 end)
+Table.each(t, fn(name, value): count.n = count.n + 1 end)
 return count.n"""
                   , Just (VNumber 20000)
                   )
@@ -1395,7 +1395,7 @@ return count.n"""
                 \_ ->
                     let
                         natives =
-                            Dict.singleton "triple" (NativeZakExpr "function(n): return n * 3 end")
+                            Dict.singleton "triple" (NativeZakExpr "fn(n): return n * 3 end")
                     in
                     run natives "return triple(7)"
                         |> Expect.equal (Ok (VNumber 21))
@@ -1417,7 +1417,7 @@ return count.n"""
                                                             Err (TypeError { expected = "Number", got = VNil })
                                                 )
                                           )
-                                        , ( "triple", NativeZakExpr "function(n): return n * 3 end" )
+                                        , ( "triple", NativeZakExpr "fn(n): return n * 3 end" )
                                         ]
                                     )
                                 )
@@ -1491,17 +1491,17 @@ return count.n"""
         , describe "function equality is reference identity too" <|
             [ test "a function is == to itself" <|
                 \_ ->
-                    run noNatives "let f = function(): return 1 end\nlet g = f\nreturn f == g"
+                    run noNatives "let f = fn(): return 1 end\nlet g = f\nreturn f == g"
                         |> Expect.equal (Ok (VBool True))
             , test "two functions built from the same source are not ==" <|
                 \_ ->
-                    run noNatives "let make = function(): return function(): return 1 end end\nreturn make() == make()"
+                    run noNatives "let make = fn(): return fn(): return 1 end end\nreturn make() == make()"
                         |> Expect.equal (Ok (VBool False))
             , test "a native is == to itself" <|
                 \_ -> run noNatives "return Math.abs == Math.abs" |> Expect.equal (Ok (VBool True))
             , test "Array.contains finds a function, and Array.remove removes it" <|
                 \_ ->
-                    run noNatives "let f = function(): return 1 end\nlet fs = [f]\nlet found = Array.contains(fs, f)\nArray.remove(fs, f)\nreturn found and Array.is_empty(fs)"
+                    run noNatives "let f = fn(): return 1 end\nlet fs = [f]\nlet found = Array.contains(fs, f)\nArray.remove(fs, f)\nreturn found and Array.is_empty(fs)"
                         |> Expect.equal (Ok (VBool True))
             ]
         , describe "exact RuntimeError returned (not just \"some\" failure)" <|
@@ -1604,7 +1604,7 @@ return count.n"""
                         |> Expect.equal (Err (RuntimeError (NotAFunction (VNumber 1))))
             , test "wrong argument count" <|
                 \_ ->
-                    I.runExpr noNatives "function(a, b): return a end(1)"
+                    I.runExpr noNatives "fn(a, b): return a end(1)"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
             , test "type error: adding a string to a number" <|
                 \_ ->

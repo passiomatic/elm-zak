@@ -113,7 +113,7 @@ suite =
                 -- body really did run immediately, not lazily.
                 case
                     runWithState """let log = { value = "" }
-Thread.start(function():
+Thread.start(fn():
     log.value = log.value ++ "A"
     Thread.wait_for(1.0)
     log.value = log.value ++ "C"
@@ -128,7 +128,7 @@ return log"""
                         Expect.fail ("expected success, got: " ++ Debug.toString err)
         , test "start's own result is always the new thread id, never Suspended" <|
             \_ ->
-                case runWithState "return Thread.start(function(): Thread.wait_for(1.0) end)" of
+                case runWithState "return Thread.start(fn(): Thread.wait_for(1.0) end)" of
                     Ok ( VNumber _, _ ) ->
                         Expect.pass
 
@@ -136,7 +136,7 @@ return log"""
                         Expect.fail ("expected a thread id (VNumber), got: " ++ Debug.toString other)
         , test "a suspended thread is registered in state.threads until it finishes" <|
             \_ ->
-                case runWithState "Thread.start(function(): Thread.wait_for(1.0) end)\nreturn nil" of
+                case runWithState "Thread.start(fn(): Thread.wait_for(1.0) end)\nreturn nil" of
                     Ok ( _, state ) ->
                         Expect.equal 1 (Dict.size state.threads)
 
@@ -144,7 +144,7 @@ return log"""
                         Expect.fail ("expected success, got: " ++ Debug.toString err)
         , test "a thread with nothing left to suspend on isn't registered at all" <|
             \_ ->
-                case runWithState "Thread.start(function(): 1 + 1 end)\nreturn nil" of
+                case runWithState "Thread.start(fn(): 1 + 1 end)\nreturn nil" of
                     Ok ( _, state ) ->
                         Expect.equal 0 (Dict.size state.threads)
 
@@ -154,7 +154,7 @@ return log"""
             \_ ->
                 case
                     runWithState """let log = { value = "" }
-Thread.start(function():
+Thread.start(fn():
     Thread.wait_for(1.0)
     log.value = log.value ++ "resumed"
 end)
@@ -187,8 +187,8 @@ return log"""
             \_ ->
                 case
                     runWithState """let log = { value = "" }
-let slow_id = Thread.start(function(): Thread.wait_for(1.0) end)
-Thread.start(function():
+let slow_id = Thread.start(fn(): Thread.wait_for(1.0) end)
+Thread.start(fn():
     Thread.join(slow_id)
     log.value = log.value ++ "done"
 end)
@@ -226,7 +226,7 @@ return log"""
                 case
                     runWithState """let log = { value = "" }
 let counter = { n = 0 }
-Thread.start(function():
+Thread.start(fn():
     while counter.n < 3:
         counter.n = counter.n + 1
         log.value = log.value ++ String.from(counter.n)
@@ -274,7 +274,7 @@ return log"""
             \_ ->
                 case
                     runWithState """let log = { value = "" }
-Thread.start(function():
+Thread.start(fn():
     for n in [1, 2, 3]:
         log.value = log.value ++ String.from(n)
         Thread.wait_for(1.0)
@@ -324,8 +324,8 @@ return log"""
                 case
                     runWithState """let log = { value = "" }
 let counter = { n = 0 }
-Thread.start(function():
-    Thread.wait_while(function():
+Thread.start(fn():
+    Thread.wait_while(fn():
         counter.n = counter.n + 1
         log.value = log.value ++ String.from(counter.n)
         return counter.n < 3
@@ -364,21 +364,21 @@ return log"""
             \_ ->
                 Expect.all
                     [ \_ ->
-                        case runWithState "Thread.start(function(): Thread.wait_while(1) end)\nreturn nil" of
+                        case runWithState "Thread.start(fn(): Thread.wait_while(1) end)\nreturn nil" of
                             Err (I.RuntimeError (NotAFunction (VNumber n))) ->
                                 Expect.within (Expect.Absolute 0.0001) 1 n
 
                             other ->
                                 Expect.fail ("expected NotAFunction, got: " ++ Debug.toString other)
                     , \_ ->
-                        case runWithState "Thread.start(function(): Thread.wait_while() end)\nreturn nil" of
+                        case runWithState "Thread.start(fn(): Thread.wait_while() end)\nreturn nil" of
                             Err (I.RuntimeError (WrongArgCount { expected, got })) ->
                                 Expect.equal ( 1, 0 ) ( expected, got )
 
                             other ->
                                 Expect.fail ("expected WrongArgCount, got: " ++ Debug.toString other)
                     , \_ ->
-                        case runWithState "Thread.start(function(): Thread.wait_while(function(): return false end, 1) end)\nreturn nil" of
+                        case runWithState "Thread.start(fn(): Thread.wait_while(fn(): return false end, 1) end)\nreturn nil" of
                             Err (I.RuntimeError (WrongArgCount { expected, got })) ->
                                 Expect.equal ( 1, 2 ) ( expected, got )
 
@@ -396,7 +396,7 @@ return log"""
                         Expect.fail ("expected SuspendedNotAllowed, got: " ++ Debug.toString other)
         , test "wait_for called from a plain expression position (not a bare statement) is also SuspendedNotAllowed" <|
             \_ ->
-                case runWithState "Thread.start(function(): let x = Thread.wait_for(1.0) end)\nreturn nil" of
+                case runWithState "Thread.start(fn(): let x = Thread.wait_for(1.0) end)\nreturn nil" of
                     Err (I.RuntimeError SuspendedNotAllowed) ->
                         Expect.pass
 
@@ -406,7 +406,7 @@ return log"""
             \_ ->
                 case
                     runWithState """let log = { value = "" }
-let id = Thread.start(function():
+let id = Thread.start(fn():
     Thread.wait_for(1.0)
     log.value = "resumed"
 end)
@@ -429,8 +429,8 @@ return log"""
         , test "stop on a finished, already-stopped, or never-valid id is a no-op returning nil" <|
             \_ ->
                 case
-                    runWithState """let finished = Thread.start(function(): return nil end)
-let waiting = Thread.start(function(): Thread.wait_for(1.0) end)
+                    runWithState """let finished = Thread.start(fn(): return nil end)
+let waiting = Thread.start(fn(): Thread.wait_for(1.0) end)
 Thread.stop(waiting)
 return Thread.stop(finished) == nil and Thread.stop(waiting) == nil and Thread.stop(999) == nil"""
                 of
@@ -447,8 +447,8 @@ return Thread.stop(finished) == nil and Thread.stop(waiting) == nil and Thread.s
             \_ ->
                 case
                     runWithState """let log = { value = "" }
-let slow = Thread.start(function(): Thread.wait_for(100.0) end)
-Thread.start(function():
+let slow = Thread.start(fn(): Thread.wait_for(100.0) end)
+Thread.start(fn():
     Thread.join(slow)
     log.value = "released"
 end)
@@ -478,16 +478,16 @@ return log"""
                 case
                     runWithState """let log = { value = "" }
 let victims = { ready = nil, waiting = nil }
-Thread.start(function():
+Thread.start(fn():
     Thread.wait_for(1.0)
     Thread.stop(victims.ready)
     Thread.stop(victims.waiting)
 end)
-victims.ready = Thread.start(function():
+victims.ready = Thread.start(fn():
     Thread.wait_for(1.0)
     log.value = log.value ++ "ready ran"
 end)
-victims.waiting = Thread.start(function():
+victims.waiting = Thread.start(fn():
     Thread.wait_for(5.0)
     log.value = log.value ++ "waiting ran"
 end)
@@ -514,7 +514,7 @@ return log"""
                 case
                     runWithState """let log = { value = "" }
 let me = { id = nil }
-me.id = Thread.start(function():
+me.id = Thread.start(fn():
     Thread.wait_for(1.0)
     Thread.stop(me.id)
     log.value = log.value ++ "a"
@@ -545,9 +545,9 @@ return log"""
                 case
                     runWithState """let log = { value = "" }
 let parent = { id = nil }
-parent.id = Thread.start(function():
+parent.id = Thread.start(fn():
     Thread.wait_for(1.0)
-    Thread.start(function(): Thread.stop(parent.id) end)
+    Thread.start(fn(): Thread.stop(parent.id) end)
     log.value = log.value ++ "a"
     Thread.wait_for(1.0)
     log.value = log.value ++ "b"
@@ -576,9 +576,9 @@ return log"""
                 -- The first thread's id is 0 (`nextThreadId` starts there).
                 case
                     runWithState """let log = { value = "" }
-let stop_parent = function(id): Thread.stop(id) end
+let stop_parent = fn(id): Thread.stop(id) end
 let next = { id = 0 }
-Thread.start(function():
+Thread.start(fn():
     stop_parent(next.id)
     log.value = log.value ++ "a"
     Thread.wait_for(1.0)
@@ -605,12 +605,12 @@ return log"""
                 case
                     runWithState """let log = { value = "" }
 let target = { id = nil }
-target.id = Thread.start(function():
+target.id = Thread.start(fn():
     Thread.wait_for(1.0)
     Thread.stop(target.id)
     Thread.wait_for(5.0)
 end)
-Thread.start(function():
+Thread.start(fn():
     Thread.join(target.id)
     log.value = "released"
 end)
@@ -661,7 +661,7 @@ return log"""
         , describe "owners (host-side thread control)" <|
             [ test "threadCount counts the threads waiting for tick, and drops back as they finish" <|
                 \_ ->
-                    case runWithState "Thread.start(function(): Thread.wait_for(1.0) end)\nThread.start(function(): Thread.wait_for(2.0) end)\nreturn nil" of
+                    case runWithState "Thread.start(fn(): Thread.wait_for(1.0) end)\nThread.start(fn(): Thread.wait_for(2.0) end)\nreturn nil" of
                         Ok ( _, state0 ) ->
                             let
                                 ( state1, _ ) =
@@ -678,8 +678,8 @@ return log"""
             , test "code outside any thread starts threads under the owner the host set, \"\" before it sets one" <|
                 \_ ->
                     runAs
-                        [ ( "", "Thread.start(function(): Thread.wait_for(1.0) end)" )
-                        , ( "level", "Thread.start(function(): Thread.wait_for(1.0) end)" )
+                        [ ( "", "Thread.start(fn(): Thread.wait_for(1.0) end)" )
+                        , ( "level", "Thread.start(fn(): Thread.wait_for(1.0) end)" )
                         ]
                         |> Result.map (Tuple.second >> owners)
                         |> Expect.equal (Ok [ "", "level" ])
@@ -688,10 +688,10 @@ return log"""
                     case
                         runAs
                             [ ( "level"
-                              , """Thread.start(function():
-    Thread.start(function(): Thread.wait_for(5.0) end)
+                              , """Thread.start(fn():
+    Thread.start(fn(): Thread.wait_for(5.0) end)
     Thread.wait_for(1.0)
-    Thread.start(function(): Thread.wait_for(5.0) end)
+    Thread.start(fn(): Thread.wait_for(5.0) end)
     Thread.wait_for(5.0)
 end)"""
                               )
@@ -711,14 +711,14 @@ end)"""
             , test "stopThreads stops an owner's threads, their descendants included, and keeps the other owners'" <|
                 \_ ->
                     runAs
-                        [ ( "level", "Thread.start(function():\n    Thread.start(function(): Thread.wait_for(1.0) end)\n    Thread.wait_for(1.0)\nend)" )
-                        , ( "music", "Thread.start(function(): Thread.wait_for(1.0) end)" )
+                        [ ( "level", "Thread.start(fn():\n    Thread.start(fn(): Thread.wait_for(1.0) end)\n    Thread.wait_for(1.0)\nend)" )
+                        , ( "music", "Thread.start(fn(): Thread.wait_for(1.0) end)" )
                         ]
                         |> Result.map (Tuple.second >> I.stopThreads "level" >> owners)
                         |> Expect.equal (Ok [ "music" ])
             , test "hasThreads tells whether an owner still has threads waiting" <|
                 \_ ->
-                    case runAs [ ( "level", "Thread.start(function(): Thread.wait_for(1.0) end)" ) ] of
+                    case runAs [ ( "level", "Thread.start(fn(): Thread.wait_for(1.0) end)" ) ] of
                         Ok ( _, state0 ) ->
                             let
                                 ( state1, _ ) =
@@ -731,7 +731,7 @@ end)"""
                             Expect.fail ("expected success, got: " ++ Debug.toString err)
             , test "startThread runs the function as a thread of the given owner, up to its first wait, and restores the host's owner" <|
                 \_ ->
-                    case runAs [ ( "level", "let log = { value = \"\" }\nreturn function():\n    log.value = \"started\"\n    Thread.start(function(): Thread.wait_for(5.0) end)\n    Thread.wait_for(1.0)\nend" ) ] of
+                    case runAs [ ( "level", "let log = { value = \"\" }\nreturn fn():\n    log.value = \"started\"\n    Thread.start(fn(): Thread.wait_for(5.0) end)\n    Thread.wait_for(1.0)\nend" ) ] of
                         Ok ( fn, state0 ) ->
                             I.startThread "cutscene" fn [] state0
                                 |> Result.map (\( _, state1 ) -> ( owners state1, state1.currentOwner ))
@@ -741,7 +741,7 @@ end)"""
                             Expect.fail ("expected success, got: " ++ Debug.toString err)
             , test "startThread with a body that never waits leaves no thread behind" <|
                 \_ ->
-                    case runWithState "return function(): return 1 end" of
+                    case runWithState "return fn(): return 1 end" of
                         Ok ( fn, state0 ) ->
                             I.startThread "cutscene" fn [] state0
                                 |> Result.map (Tuple.second >> I.threadCount)
@@ -751,7 +751,7 @@ end)"""
                             Expect.fail ("expected success, got: " ++ Debug.toString err)
             , test "startThread reports an error raised before the first wait" <|
                 \_ ->
-                    case runWithState "return function(): return missing end" of
+                    case runWithState "return fn(): return missing end" of
                         Ok ( fn, state0 ) ->
                             I.startThread "cutscene" fn [] state0
                                 |> Result.mapError dropRuntimePosition
@@ -768,7 +768,7 @@ end)"""
                         ( env, state0 ) =
                             I.initialWorld () (Dict.singleton "leave" leave)
                     in
-                    case I.runIncremental env state0 "Thread.start(function(): Thread.wait_for(1.0) end)\nleave()\nThread.start(function(): Thread.wait_for(1.0) end)\nreturn nil" of
+                    case I.runIncremental env state0 "Thread.start(fn(): Thread.wait_for(1.0) end)\nleave()\nThread.start(fn(): Thread.wait_for(1.0) end)\nreturn nil" of
                         Ok ( _, state ) ->
                             state.threads |> Dict.keys |> Expect.equal [ 1 ]
 
@@ -787,11 +787,11 @@ end)"""
                         I.runIncremental env
                             state0
                             """let log = { value = "" }
-Thread.start(function():
+Thread.start(fn():
     Thread.wait_for(5.0)
     log.value = log.value ++ "old room"
 end)
-Thread.start(function():
+Thread.start(fn():
     Thread.wait_for(1.0)
     leave()
     log.value = log.value ++ "a"
@@ -826,7 +826,7 @@ return log"""
                         ( env, state0 ) =
                             I.initialWorld () (Dict.singleton "leave" leave)
                     in
-                    case I.runIncremental env state0 "let log = { value = \"\" }\nreturn { log = log, body = function():\n    leave()\n    log.value = \"a\"\n    Thread.wait_for(1.0)\n    log.value = \"b\"\nend }" of
+                    case I.runIncremental env state0 "let log = { value = \"\" }\nreturn { log = log, body = fn():\n    leave()\n    log.value = \"a\"\n    Thread.wait_for(1.0)\n    log.value = \"b\"\nend }" of
                         Ok ( script, s0 ) ->
                             case ( readTableField s0 script "log", readTableField s0 script "body" ) of
                                 ( Just log, Just body ) ->
@@ -856,7 +856,7 @@ return log"""
                         ( env, state0 ) =
                             I.initialWorld () (Dict.singleton "probe" probe)
                     in
-                    case I.runIncremental env state0 "let log = { value = nil }\nreturn { log = log, body = function(): log.value = probe() end }" of
+                    case I.runIncremental env state0 "let log = { value = nil }\nreturn { log = log, body = fn(): log.value = probe() end }" of
                         Ok ( script, s0 ) ->
                             case ( readTableField s0 script "log", readTableField s0 script "body" ) of
                                 ( Just log, Just body ) ->
@@ -886,7 +886,7 @@ return log"""
                     in
                     case
                         I.runIncremental env state0 """let log = { value = 0 }
-let add_slowly = function(items):
+let add_slowly = fn(items):
     let sum = 0
     for item in items:
         if item > 0:
@@ -898,7 +898,7 @@ let add_slowly = function(items):
 end"""
                     of
                         Ok ( _, state1 ) ->
-                            case I.runIncremental env state1 "Thread.start(function(): add_slowly([1, 2, 3]) end)\nreturn log" of
+                            case I.runIncremental env state1 "Thread.start(fn(): add_slowly([1, 2, 3]) end)\nreturn log" of
                                 Ok ( log, state2 ) ->
                                     let
                                         finished =
@@ -918,7 +918,7 @@ end"""
                 \_ ->
                     case
                         runWithState """let log = { value = 0 }
-Thread.start(function():
+Thread.start(fn():
     let i = 0
     while i < 100000:
         if i % 50000 == 0:

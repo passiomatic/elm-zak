@@ -1133,7 +1133,7 @@ nativeTable natives =
 {-| A native written in Zak: one Zak expression, usually a function,
 evaluated once when the world is created.
 
-    Zak.nativeExpression "function(x): return x * 2 end"
+    Zak.nativeExpression "fn(x): return x * 2 end"
 
 It's an expression, not a program, so `let` and other statements don't
 work at its top level. It sees the natives and the standard library, but
