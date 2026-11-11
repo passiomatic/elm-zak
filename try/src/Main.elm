@@ -439,10 +439,10 @@ end"""
 
 stringFormatExample : String
 stringFormatExample =
-    """# String.format substitutes %s/%d/%f/%% in order from an Array of args
+    """# String.format fills %s/%d/%f/%% in order, from the values after the format
 let main = fn():
     let shots = 3.9
-    return String.format("%d apples, %s left, that's %f%%!", [shots, "some", 100])
+    return String.format("%d apples, %s left, that's %f%%!", shots, "some", 100)
 end"""
 
 

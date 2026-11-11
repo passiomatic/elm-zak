@@ -411,91 +411,99 @@ suite =
                     runExpr "String.append(\"foo\")"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
             ]
-        , describe "format (%s/%d/%f/%x/%X/%% substitution, exact arity, deferred flags/width/precision)" <|
+        , describe "format (variadic %s/%d/%f/%x/%X/%% substitution, exact value count, deferred flags/width/precision)" <|
             [ test "the doc's own headline example: %d and %s mixed in one format" <|
                 \_ ->
-                    runExpr "String.format(\"One %d and two %s\", [1, \"strings\"])"
+                    runExpr "String.format(\"One %d and two %s\", 1, \"strings\")"
                         |> Expect.equal (Ok (VString "One 1 and two strings"))
             , test "%d truncates a fractional value toward zero, not rounds" <|
                 \_ ->
-                    runExpr "String.format(\"%d apples\", [3.9])"
+                    runExpr "String.format(\"%d apples\", 3.9)"
                         |> Expect.equal (Ok (VString "3 apples"))
             , test "%d truncation toward zero on a negative value" <|
                 \_ ->
-                    runExpr "String.format(\"%d\", [-5.7])"
+                    runExpr "String.format(\"%d\", -5.7)"
                         |> Expect.equal (Ok (VString "-5"))
             , test "%f shows the full value, no fixed decimal-place count yet" <|
                 \_ ->
-                    runExpr "String.format(\"%f meters\", [3.14159])"
+                    runExpr "String.format(\"%f meters\", 3.14159)"
                         |> Expect.equal (Ok (VString "3.14159 meters"))
             , test "%f on a whole number prints without a trailing .0, matching String.from's Number case" <|
                 \_ ->
-                    runExpr "String.format(\"%f\", [5])"
+                    runExpr "String.format(\"%f\", 5)"
                         |> Expect.equal (Ok (VString "5"))
             , test "%x formats a positive value as lowercase hex" <|
                 \_ ->
-                    runExpr "String.format(\"%x\", [255])"
+                    runExpr "String.format(\"%x\", 255)"
                         |> Expect.equal (Ok (VString "ff"))
             , test "%X formats a positive value as uppercase hex" <|
                 \_ ->
-                    runExpr "String.format(\"%X\", [255])"
+                    runExpr "String.format(\"%X\", 255)"
                         |> Expect.equal (Ok (VString "FF"))
             , test "%x truncates a fractional value toward zero, not rounds" <|
                 \_ ->
-                    runExpr "String.format(\"%x\", [255.9])"
+                    runExpr "String.format(\"%x\", 255.9)"
                         |> Expect.equal (Ok (VString "ff"))
             , test "%x on a negative value sign-prefixes rather than wrapping" <|
                 \_ ->
-                    runExpr "String.format(\"%x\", [-255])"
+                    runExpr "String.format(\"%x\", -255)"
                         |> Expect.equal (Ok (VString "-ff"))
-            , test "%% is a literal percent sign and consumes no argument" <|
+            , test "%% is a literal percent sign and consumes no value, so the format alone is enough" <|
                 \_ ->
-                    runExpr "String.format(\"100%%\", [])"
+                    runExpr "String.format(\"100%%\")"
                         |> Expect.equal (Ok (VString "100%"))
             , test "%s accepts any value via the same formatter String.from uses" <|
                 \_ ->
-                    runExpr "String.format(\"%s\", [true])"
+                    runExpr "String.format(\"%s\", true)"
                         |> Expect.equal (Ok (VString "true"))
             , test "too few arguments for the placeholders is a hard error" <|
                 \_ ->
-                    runExpr "String.format(\"%s and %s\", [\"a\"])"
+                    runExpr "String.format(\"%s and %s\", \"a\")"
                         |> Expect.equal (Err (RuntimeError (FormatArgMismatch { expected = 2, got = 1 })))
             , test "too many arguments for the placeholders is also a hard error" <|
                 \_ ->
-                    runExpr "String.format(\"%s\", [\"a\", \"b\"])"
+                    runExpr "String.format(\"%s\", \"a\", \"b\")"
                         |> Expect.equal (Err (RuntimeError (FormatArgMismatch { expected = 1, got = 2 })))
             , test "a non-Number argument to %d is a TypeError" <|
                 \_ ->
-                    runExpr "String.format(\"%d\", [\"x\"])"
+                    runExpr "String.format(\"%d\", \"x\")"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "Number", got = VString "x" })))
             , test "a non-Number argument to %f is a TypeError" <|
                 \_ ->
-                    runExpr "String.format(\"%f\", [\"x\"])"
+                    runExpr "String.format(\"%f\", \"x\")"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "Number", got = VString "x" })))
             , test "a non-Number argument to %x is a TypeError" <|
                 \_ ->
-                    runExpr "String.format(\"%x\", [\"x\"])"
+                    runExpr "String.format(\"%x\", \"x\")"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "Number", got = VString "x" })))
             , test "a non-Number argument to %X is a TypeError" <|
                 \_ ->
-                    runExpr "String.format(\"%X\", [\"x\"])"
+                    runExpr "String.format(\"%X\", \"x\")"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "Number", got = VString "x" })))
             , test "an unknown directive is a hard error, not silently passed through" <|
                 \_ ->
-                    runExpr "String.format(\"%q\", [])"
+                    runExpr "String.format(\"%q\")"
                         |> Expect.equal (Err (RuntimeError (UnknownFormatDirective "%q")))
             , test "wrong first argument type" <|
                 \_ ->
-                    runExpr "String.format(1, [])"
+                    runExpr "String.format(1)"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
-            , test "wrong second argument type" <|
-                \_ ->
-                    runExpr "String.format(\"hi\", 1)"
-                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VNumber 1 })))
-            , test "wrong argument count" <|
+            , test "a format with no placeholders and no values is returned as it is" <|
                 \_ ->
                     runExpr "String.format(\"hi\")"
-                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
+                        |> Expect.equal (Ok (VString "hi"))
+            , test "an array is one value, filling one placeholder, not a list of values" <|
+                \_ ->
+                    runExpr "String.format(\"%s\", [1, 2])"
+                        |> Expect.equal (Ok (VString "<array>"))
+            , test "an array is one value, so it can't fill two placeholders" <|
+                \_ ->
+                    runExpr "String.format(\"%s and %s\", [1, 2])"
+                        |> Expect.equal (Err (RuntimeError (FormatArgMismatch { expected = 2, got = 1 })))
+            , test "no arguments at all is a wrong argument count" <|
+                \_ ->
+                    runExpr "String.format()"
+                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 0 })))
             ]
         , test "a script can still shadow String itself with its own let, same as any other global" <|
             \_ ->

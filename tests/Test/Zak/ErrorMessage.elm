@@ -91,7 +91,7 @@ suite =
                 ]
         , describe "errorToString: a format error names no function, since String.format and Debug.log share one formatter" <|
             List.map testErrorMessage
-                [ ( "String.format(\"%s and %s\", [\"a\"])", "the format expected 2 values, got 1" )
+                [ ( "String.format(\"%s and %s\", \"a\")", "the format expected 2 values, got 1" )
                 , ( "Debug.log_warning(\"%s\", \"a\", \"b\")", "the format expected 1 value, got 2" )
                 , ( "Debug.log(\"%q %s\", 1)", "unknown format directive “%q”" )
                 ]

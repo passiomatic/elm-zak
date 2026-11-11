@@ -71,7 +71,7 @@ and is a format, filled from the rest by
 `Zak.Internal.Library.String.applyFormat` — `String.format`'s own rules,
 mismatched counts and unknown directives included, so
 `Debug.log_warning("%s", x)` fails exactly where
-`Debug.log_warning(String.format("%s", [x]))` would. A lone argument is
+`Debug.log_warning(String.format("%s", x))` would. A lone argument is
 never a format: `Debug.log("100% done")` logs as written, rather than
 failing on a `%` nobody meant as a directive.
 

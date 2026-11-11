@@ -48,10 +48,11 @@ String.format("I ate %{count}d apples and I feel %{status}s.", {count: 5, baz: f
 Notes: 
 * The `baz` field is ignored 
 * The positions of the table fields are not significant while resolving the format string names
+* Since 3a, the values come after the format, so the table is the one value after it, and an `%{...}` placeholder reads its fields. Mixing `%{...}` and plain placeholders in one format needs a rule of its own.
 
-# 3a. Allow String.format to accept multiple arguments
+## ✅ 3a. Allow String.format to accept multiple arguments - DONE (2026-11-11)
 
-We can implement native functions as variadic.
+We can implement native functions as variadic. `String.format` now takes its values after the format, as `Debug.log` does, and an array is one value. Every call in both repos was rewritten by a script.
 
 ```
 String.format("First %s, then %s", "this", "that")

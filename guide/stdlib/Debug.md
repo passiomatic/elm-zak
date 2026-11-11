@@ -15,7 +15,7 @@ Debug.log(nil)           # nil
 Debug.log([1, 2])        # <array>
 ```
 
-With more arguments, `value` must be a `String`: a format whose placeholders are filled from the arguments after it, in order. The placeholders and their rules are the same as [`String.format`](String.md)'s, which takes its values as one array instead. The number of values must match the placeholders exactly. An array is one value here, not a list of them: it fills a single placeholder.
+With more arguments, `value` must be a `String`: a format whose placeholders are filled from the arguments after it, in order. The placeholders and their rules are the same as [`String.format`](String.md)'s. The number of values must match the placeholders exactly. An array is one value here, not a list of them: it fills a single placeholder.
 
 ```
 Debug.log("Got %s instead of %s", "foo", "bar")   # Got foo instead of bar

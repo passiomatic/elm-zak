@@ -483,8 +483,8 @@ stringAppend state args =
             Err (WrongArgCount { expected = 2, got = List.length args })
 
 
-{-| `String.format(format, args)` — substitutes each `%s`/`%d`/`%f`/`%x`/
-`%X`/`%%` in `format`, in order, with values from `args` (an `Array`).
+{-| `String.format(format, value, ...)` — substitutes each `%s`/`%d`/
+`%f`/`%x`/`%X`/`%%` in `format`, in order, with the values after it.
 A deliberately small printf-style subset: no flags/width/precision,
 nothing beyond these five directives.
 
@@ -493,25 +493,22 @@ format via `Hex.toString` (`rtfeldman/elm-hex`). Negative values are not
 printed as a two's-complement bit pattern, as a fixed-width `%x` would:
 Zak's `Number` has no fixed integer width anywhere else in the language,
 so there's no principled width to wrap a negative value around — `%x`/`%X`
-sign-prefix instead (`String.format("%x", [-255]) == "-ff"`), exactly
+sign-prefix instead (`String.format("%x", -255) == "-ff"`), exactly
 matching `Hex.toString`'s own behavior, not inventing a new rule.
 
-`args` is never optional — always exactly two arguments, even when
-`format` has no placeholders at all (`String.format("100%%", [])`, not
-`String.format("100%%")`) — this native's own arity is exact, matching
-every other `NativeFunction` in the language (Zak's real default-argument
-mechanism, `fn(a, b=1): ... end`, only applies to `fn(...)`
-closures, not natives — though an embedder's own native may still opt
-into the same _calling convention_, via Elm-side arity handling rather
-than Zak-level defaults).
+**Variadic**, like `Debug.log`: the values are the arguments after
+`format`, not one `Array` of them, so an `Array` is a single value,
+filling a single placeholder (`%s` shows it as `<array>`). `format` alone
+is fine: `String.format("100%%")` is `"100%"`. Unlike `Debug.log`, a lone
+`format` is still formatted, not shown as it is.
 
-Its own length must equal the number of `%s`/`%d`/`%f` placeholders in
-`format` **exactly** — checked once, up front, against `countPlaceholders`
-below, before any actual substitution happens, so a mismatch always
-reports the true placeholder count and the true argument count, not
-wherever the walk over `format` happened to run out first. Both too few
-and too many are `FormatArgMismatch`, never silently tolerated, like
-every other arity/bounds mismatch in the language.
+The number of values must equal the number of `%s`/`%d`/`%f`/`%x`/`%X`
+placeholders in `format` **exactly** — checked once, up front, against
+`countPlaceholders` below, before any actual substitution happens, so a
+mismatch always reports the true placeholder count and the true value
+count, not wherever the walk over `format` happened to run out first.
+Both too few and too many are `FormatArgMismatch`, never silently
+tolerated, like every other arity/bounds mismatch in the language.
 
 `%s` accepts any value at all (the same `displayString` `String.from`
 itself uses); `%d`/`%f` are hard `TypeError`s on anything but a `Number`.
@@ -525,18 +522,15 @@ what precision support would add, once it's ever needed).
 stringFormat : State game -> List Value -> Result RuntimeError ( Value, State game )
 stringFormat state args =
     case args of
-        [ VString format, VArray arrayId ] ->
-            applyFormat format (Array.toList (arrayContents state arrayId))
+        (VString format) :: values ->
+            applyFormat format values
                 |> Result.map (\formatted -> ( VString formatted, state ))
 
-        [ VString _, other ] ->
-            Err (TypeError { expected = "Array", got = other })
+        [] ->
+            Err (WrongArgCount { expected = 1, got = 0 })
 
-        [ other, _ ] ->
+        other :: _ ->
             Err (TypeError { expected = "String", got = other })
-
-        _ ->
-            Err (WrongArgCount { expected = 2, got = List.length args })
 
 
 {-| `format` with its placeholders filled from `values`, in order — the

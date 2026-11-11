@@ -134,9 +134,9 @@ String.join([1, 2, 3], "-")                         # error: 1 is not a String
 String.append("foo", "bar")   # "foobar", same as "foo" ++ "bar"
 ```
 
-## String.format(format, args)
+## String.format(format, ...)
 
-Substitutes each `%s`/`%d`/`%f`/`%x`/`%X`/`%%` in `format`, in order, with values from `args` (an `Array`). `args`' length must equal the number of placeholders exactly — both too few and too many are an error.
+Substitutes each `%s`/`%d`/`%f`/`%x`/`%X`/`%%` in `format`, in order, with the values after it. The number of values must equal the number of placeholders exactly — both too few and too many are an error. An array is one value, not a list of them: it fills a single placeholder.
 
 | Directive | Behavior |
 |---|---|
@@ -147,12 +147,12 @@ Substitutes each `%s`/`%d`/`%f`/`%x`/`%X`/`%%` in `format`, in order, with value
 | `%%` | A literal `%` in the output. Consumes no argument. |
 
 ```
-String.format("One %d and two %s", [1, "strings"])   # "One 1 and two strings"
-String.format("%d apples", [3.9])                     # "3 apples" (truncated toward zero)
-String.format("%f meters", [3.14159])                 # "3.14159 meters"
-String.format("%x / %X", [255, 255])                  # "ff / FF"
-String.format("%x", [-255])                           # "-ff" (sign-prefixed, not two's-complement)
-String.format("100%%", [])                            # "100%"
+String.format("One %d and two %s", 1, "strings")   # "One 1 and two strings"
+String.format("%d apples", 3.9)                    # "3 apples" (truncated toward zero)
+String.format("%f meters", 3.14159)                # "3.14159 meters"
+String.format("%x / %X", 255, 255)                 # "ff / FF"
+String.format("%x", -255)                          # "-ff" (sign-prefixed, not two's-complement)
+String.format("100%%")                             # "100%" (no values needed)
 ```
 
-To log a formatted message, [`Debug.log`](Debug.md) and its siblings take a format and its values directly.
+To log a formatted message, [`Debug.log`](Debug.md) and its siblings take a format and its values the same way.
