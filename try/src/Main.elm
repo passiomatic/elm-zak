@@ -250,7 +250,7 @@ view model =
             , textarea
                 [ value model.source
                 , onInput ChangedSource
-                , placeholder "let main = function():\n    let x = 1\n    return Math.abs(-x)\nend"
+                , placeholder "let main = fn():\n    let x = 1\n    return Math.abs(-x)\nend"
                 , style "flex" "1"
                 , style "font-family" "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
                 , style "font-size" "14px"
@@ -356,7 +356,6 @@ examples =
     , ( "Actor table", actorTableExample )
     , ( "Background thread", threadingExample )
     , ( "String.format", stringFormatExample )
-    , ( "Logging", loggingExample )
     ]
 
 
@@ -364,7 +363,7 @@ helloWorldExample : String
 helloWorldExample =
     """# The classic hello world — every script needs a main(), and its
 # returned value is shown below
-let main = function():
+let main = fn():
     return "Hello, world!"
 end
 """
@@ -373,14 +372,14 @@ end
 fibonacciExample : String
 fibonacciExample =
     """# Recursive fibonacci — fib calls itself; main() returns the final call's value
-let fib = function(n):
+let fib = fn(n):
     if n < 2:
         return n
     end
     return fib(n - 1) + fib(n - 2)
 end
 
-let main = function():
+let main = fn():
     return fib(10)
 end"""
 
@@ -388,11 +387,11 @@ end"""
 doubleArrayExample : String
 doubleArrayExample =
     """# Doubles every element of an array via Array.map
-let double = function(x):
+let double = fn(x):
     return x * 2
 end
 
-let main = function():
+let main = fn():
     let numbers = [1, 2, 3, 4, 5]
     return Array.map(numbers, double)
 end"""
@@ -401,7 +400,7 @@ end"""
 actorTableExample : String
 actorTableExample =
     """# A game actor table, created then updated
-let main = function():
+let main = fn():
     let actor = {
         name = "Taylor",
         health = 100,
@@ -422,10 +421,10 @@ threadingExample =
 # keeps going right away, without waiting. Click Run, then watch "threads
 # still running…" below count down as the scheduler resumes it, once per
 # second.
-let main = function():
+let main = fn():
     let log = { value = "" }
 
-    Thread.start(function():
+    Thread.start(fn():
         log.value = log.value ++ "A"
         Thread.wait_for(1.0)
         log.value = log.value ++ "B"
@@ -441,30 +440,10 @@ end"""
 stringFormatExample : String
 stringFormatExample =
     """# String.format substitutes %s/%d/%f/%% in order from an Array of args
-let main = function():
+let main = fn():
     let shots = 3.9
     return String.format("%d apples, %s left, that's %f%%!", [shots, "some", 100])
 end"""
-
-
-loggingExample : String
-loggingExample =
-    """# Debug.log/log_debug/log_info/log_warning/log_error all reach the real
-# browser console (open DevTools to see these) -- each maps to
-# console.log/debug/info/warn/error respectively, so the console's own
-# filtering and coloring apply automatically, no UI of our own needed for
-# that. Note: most browsers hide console.debug behind a "Verbose" filter
-# by default.
-let main = function():
-    Debug.log("a plain message")
-    Debug.log_debug("only visible with the console's Verbose filter enabled")
-    Debug.log_info("an informational message")
-    Debug.log_warning("something worth a second look")
-    Debug.log_error("something actually wrong")
-
-    return "check the browser console"
-end
-"""
 
 
 
