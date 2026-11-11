@@ -1,5 +1,7 @@
 .PHONY: clean reactor guide
 
+all: reactor
+
 clean:
 	rm -rf build/
 
