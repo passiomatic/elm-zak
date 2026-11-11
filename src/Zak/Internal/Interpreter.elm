@@ -867,7 +867,6 @@ builtinNatives =
                     , ( "contains", NativeFunction arrayContains )
                     , ( "clone", NativeFunction arrayClone )
                     , ( "slice", NativeFunction arraySlice )
-                    , ( "each", NativeFunction arrayEach )
                     , ( "map", NativeFunction arrayMap )
                     , ( "filter", NativeFunction arrayFilter )
                     , ( "foldl", NativeFunction arrayFoldl )
@@ -2714,50 +2713,6 @@ arrayClone state args =
             Err (WrongArgCount { expected = 1, got = List.length args })
 
 
-{-| `Array.each(array, fn)` — calls `fn(value)` once per element, in
-order, discarding whatever it returns; never mutates `array`. For a side
-effect per element, not a transform — see `Array.map` for that. An empty
-`array` is a no-op: `fn` is never called, falling straight out of
-`eachValue`'s own base case below.
--}
-arrayEach : State game -> List Value -> Result RuntimeError ( Value, State game )
-arrayEach state args =
-    case args of
-        [ VArray id, fn ] ->
-            eachValue state fn (Array.toList (arrayContents state id))
-                |> Result.map (\state1 -> ( VNil, state1 ))
-
-        [ other, _ ] ->
-            Err (TypeError { expected = "Array", got = other })
-
-        _ ->
-            Err (WrongArgCount { expected = 2, got = List.length args })
-
-
-{-| `mapValues` (below) with the mapped results discarded rather than
-collected — same shape, kept separate since `mapValues` returns
-`List Value`, not `State`.
-
-Like every walk over a collection here, the next step is a direct
-self-call in a `case` branch, which Elm turns into a loop, so a long
-collection doesn't grow the stack (see `execWhile`).
-
--}
-eachValue : State game -> Value -> List Value -> Result RuntimeError (State game)
-eachValue state fn values =
-    case values of
-        [] ->
-            Ok state
-
-        first :: rest ->
-            case callForValue state fn [ first ] of
-                Ok ( _, state1 ) ->
-                    eachValue state1 fn rest
-
-                Err error ->
-                    Err error
-
-
 {-| Calls `fn` from a native that needs its value right away: `fn`
 waiting isn't supported there (see `Zak.Internal.Runtime.requireDone`'s
 own doc), so a script that tries gets a clear `SuspendedNotAllowed` error
@@ -2796,6 +2751,11 @@ arrayMap state args =
 
 
 {-| `revMapped` holds the results so far, last first.
+
+Like every walk over a collection here, the next step is a direct
+self-call in a `case` branch, which Elm turns into a loop, so a long
+collection doesn't grow the stack (see `execWhile`).
+
 -}
 mapValues : State game -> Value -> List Value -> List Value -> Result RuntimeError ( List Value, State game )
 mapValues state fn revMapped values =
@@ -3120,8 +3080,8 @@ tableClone state args =
 {-| `Table.each(table, fn)` — calls `fn(name, value)` once per field, in
 `Dict.toList`'s natural (key-sorted, not insertion) order, discarding
 whatever `fn` returns; never mutates `table`. An empty `table` is a
-no-op, same as `Array.each` on an empty array. Field order is a known,
-deliberately deferred gap here. The fields are read once, up front, so
+no-op. Field order is a known, deliberately deferred gap here. The
+fields are read once, up front, so
 `fn` can `Table.remove` fields safely: a field removed partway through
 is still visited, with its old value.
 -}

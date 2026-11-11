@@ -133,18 +133,6 @@ Array.slice([1, 2], 0, 5)             # [1, 2] (end past the array's length clam
 Array.slice([1, 2, 3], 2, 1)          # [] (start at or past end)
 ```
 
-## Array.each(array, f)
-
-Calls `f(element)` once per element, in order, for the side effect alone — discards whatever `f` returns and never mutates `array`. An empty `array` is a no-op. For a transform, see `Array.map`.
-
-```
-Array.each([1, 2, 3], fn(x): Debug.log(x) end)   # logs 1, then 2, then 3
-
-let doubled = []
-Array.each([1, 2, 3], fn(x): Array.push(doubled, x * 2) end)
-doubled   # [2, 4, 6]
-```
-
 ## Array.map(array, f)
 
 A new array with `f(element)` in place of every element. `array` itself is unchanged.

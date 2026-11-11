@@ -499,53 +499,6 @@ suite =
                     runExpr "Array.clone([], [])"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 2 })))
             ]
-        , describe "each (side effect per element, in order — discards fn's return value)" <|
-            [ test "visits every element exactly once, in order" <|
-                \_ ->
-                    run
-                        """
-                        let visited = []
-                        Array.each([1, 2, 3], fn(value):
-                            Array.push(visited, value)
-                        end)
-                        return Array.get(visited, 0) * 100 + Array.get(visited, 1) * 10 + Array.get(visited, 2)
-                        """
-                        |> Expect.equal (Ok (VNumber 123))
-            , test "an empty array is a no-op — fn is never called" <|
-                \_ ->
-                    run
-                        """
-                        let visited = []
-                        Array.each([], fn(value):
-                            Array.push(visited, value)
-                        end)
-                        return Array.length(visited)
-                        """
-                        |> Expect.equal (Ok (VNumber 0))
-            , test "the array itself is unchanged afterward" <|
-                \_ ->
-                    run
-                        """
-                        let a = [1, 2, 3]
-                        Array.each(a, fn(value):
-                            value
-                        end)
-                        return Array.get(a, 0)
-                        """
-                        |> Expect.equal (Ok (VNumber 1))
-            , test "returns nil" <|
-                \_ ->
-                    runExpr "Array.each([1, 2, 3], fn(value): value end)"
-                        |> Expect.equal (Ok VNil)
-            , test "wrong argument type" <|
-                \_ ->
-                    runExpr "Array.each(1, fn(value): value end)"
-                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VNumber 1 })))
-            , test "wrong argument count" <|
-                \_ ->
-                    runExpr "Array.each([1, 2, 3])"
-                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
-            ]
         , describe "map (pure, whole-collection derivation)" <|
             [ test "applies fn to every element, returning a new array" <|
                 \_ ->

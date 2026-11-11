@@ -96,7 +96,7 @@ Thread.start(fn():
 end)
 ```
 
-A function passed to another function to call back — to `Array.each`, `Array.map`, `Table.each`, and so on — can never wait, since those calls can't be paused halfway.
+A function passed to another function to call back — to `Array.map`, `Table.each`, and so on — can never wait, since those calls can't be paused halfway.
 
 Waiting anywhere else, including outside every thread, is a runtime error:
 

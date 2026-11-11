@@ -409,7 +409,7 @@ Array.filter(prices, fn(p) -> p <= 25)
 
 ## 11. `for` over tables
 
-`for` only goes over arrays. A table's fields can only be visited with `Table.each`, a callback, so that loop can't wait, `break`, `continue`, or `return` from the enclosing function. Letting `for` go over a table, with both the field's name and its value, removes the need for `Table.each`. `Array.each` can go with it: `for` already does everything it does on arrays.
+`for` only goes over arrays. A table's fields can only be visited with `Table.each`, a callback, so that loop can't wait, `break`, `continue`, or `return` from the enclosing function. Letting `for` go over a table, with both the field's name and its value, removes the need for `Table.each`. `Array.each` is already gone (2026-11-11): `for` did everything it did on arrays.
 
 ```
 for key, value in object:
@@ -426,7 +426,7 @@ end
 | `define_scene` (`Shared/SystemHelpers.zak:36`) | the value only (`function(_, value)`) |
 
 - Those are the only three `Table.each` calls. None uses the name alone.
-- Nothing calls `Array.each`.
+- Nothing called `Array.each`, before it was removed.
 - One array loop needs an index: the shuffle's swap (`Delores/Note.zak:132`), which loops over `Array.range`.
 
 **Options considered:**
@@ -452,7 +452,7 @@ end
 - The parser: `For String Expr Block` gets an optional second name.
 - The interpreter: `execFor` gets a table branch next to the array one. Its loop resumes after a wait through a closure that holds where it is, so the table branch keeps its list of field names the same way.
 - The game: the three `Table.each` calls become `for` loops. `Table.merge` becomes `for key, value in other: Table.set(table, key, value) end`.
-- Then `Array.each` and `Table.each` go, with their tests and guide entries. `guide/language/Threads.md` names both among the callbacks that can't wait.
+- Then `Table.each` goes, with its tests and guide entries. `guide/language/Threads.md` names it among the callbacks that can't wait.
 - StdLib Improv's item 5, `Table.keys` and `Table.values`, goes too: its only two use cases are `Table.each` calls that this covers.
 
 **Docs.** `guide/language/Statements.md`'s `for` section, and `guide/language/Tables.md`, which today sends a reader to `Table.each` to go through a table.

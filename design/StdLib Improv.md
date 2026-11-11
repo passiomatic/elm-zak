@@ -29,7 +29,7 @@ This replaces two earlier surveys of the DeloresDev Dinky scripts:
 | `Array.push` | 9 |
 | `Array.contains` | 7 |
 | every other `Array` / `Table` function | 4 or fewer |
-| `Array.each` | 0 |
+| `Array.each` | 0 (removed on 2026-11-11) |
 
 There are 35 `for` loops.
 
@@ -148,7 +148,7 @@ end
 
 ### 5. Maybe: `Table.keys(table)` and `Table.values(table)` (likely superseded)
 
-**Likely superseded (2026-11-10)** by `for` over tables (`Future.md`, section 11): `for key, value in table` covers both uses below, and would replace `Table.each` and `Array.each` too.
+**Likely superseded (2026-11-10)** by `for` over tables (`Future.md`, section 11): `for key, value in table` covers both uses below, and would replace `Table.each` too.
 
 `Table.each` is the only way to walk a table. Two of its four uses only filter fields, or collect them into an array declared outside the loop:
 
@@ -181,7 +181,7 @@ These patterns come from elm-adventure's own conventions, so they belong in its 
 
 ## Callbacks can't wait
 
-A function passed to a native can't wait: it fails with `SuspendedNotAllowed`. 12 of the 35 `for` loops wait, through `Thread.wait_*` or a cutscene, so `Array.each` can't replace them. That's a point against the ToDo item "Drop `for .. in`".
+A function passed to a native can't wait: it fails with `SuspendedNotAllowed`. 12 of the 35 `for` loops wait, through `Thread.wait_*` or a cutscene, so a callback can't replace them. That's a point against the ToDo item "Drop `for .. in`". It went the other way: `for` stays, and `Array.each` was removed on 2026-11-11.
 
 The same limit applies to `any` and `find`, but a predicate has no reason to wait.
 

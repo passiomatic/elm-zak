@@ -1316,11 +1316,6 @@ return last"""
                 , ( "let x = 0\n" ++ String.repeat 20000 "x = x + 1\n" ++ "return x"
                   , Just (VNumber 20000)
                   )
-                , ( """let t = { n = 0 }
-Array.each(Array.range(1, 100000), fn(x): t.n = t.n + 1 end)
-return t.n"""
-                  , Just (VNumber 100000)
-                  )
                 , ( """let doubled = Array.map(Array.range(1, 100000), fn(x): return x * 2 end)
 return doubled[99999]"""
                   , Just (VNumber 200000)
