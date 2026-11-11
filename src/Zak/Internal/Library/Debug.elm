@@ -117,58 +117,72 @@ logNative level state args =
             Err (TypeError { expected = "String", got = other })
 
 
-{-| `Debug.assert(expr, message)` — a `true` `expr` does nothing at all
-and returns `nil`; a `false` one halts the script with a runtime error
-carrying `message`. `message` is optional: `Debug.assert(false)` alone
-fails with `"assertion failed"`, so a bare failed assertion still gets a
-real, specific message, just a default one, not silence or a generic
-"wrong argument count."
+{-| `Debug.assert(condition, message, ...)` — a `true` `condition` does
+nothing at all and returns `nil`; a `false` one halts the script with a
+runtime error carrying the message. The message is optional:
+`Debug.assert(false)` alone fails with `"assertion failed"`, so a bare
+failed assertion still gets a real, specific message, just a default
+one, not silence or a generic "wrong argument count."
 
-**The first Zak native with a variable argument count** (`logNative`,
-above, has since become fully variadic). Until then every native
-enforced exactly one arity via `WrongArgCount` — this was the first
-genuine 1-or-2 case, so the `[]`/`_` branches below
-report whichever bound was actually violated (`expected = 1` for too few,
-`expected = 2` for too many), the same convention `Zak.Internal.Interpreter`'s
-`callFunction` already established for a Zak-_defined_ function with
-default parameters (`fn(a, b=1): ... end`, `min`/`max` arity
-instead of one exact count) — this is that same rule, just needed by a
-_native_ for the first time instead of a `VFunction`.
+**Variadic**, by `logNative`'s rule (above): a lone message is used as
+written, so `Debug.assert(false, "100% sure")` doesn't trip on its `%`;
+with values after it, the message is a format, filled by
+`Zak.Internal.Library.String.applyFormat`. Unlike `Debug.log`, a lone
+message must still be a `String`: an assert's message is text, not a
+value to display.
 
-`expr` must be a real `VBool`, not a truthy value — matching how
+The message is worked out **before** `condition` is looked at, so a bad
+format (a count mismatch, an unknown directive) fails even when the
+assert passes. Otherwise the typo would only surface on the one run the
+assert fails, and replace the very failure it was meant to describe.
+Nothing is lost by it: Zak evaluates every argument before the call
+anyway, so `String.format(...)` passed as a message always ran too.
+
+`condition` must be a real `VBool`, not a truthy value — matching how
 `if`/`while`/`and`/`or` already require a real `Bool` elsewhere in the
 language. Whether _those_ should instead accept any value via
 truthy/falsy rules is a separate, still-open, unrelated design question
 — `Debug.assert` simply follows whatever `if`/`while` already do today,
-not a new decision of its own.
+not a new decision of its own. It's checked first, so
+`Debug.assert(1, "msg")` names the `Bool` it wanted, not the message.
 
 -}
 assertNative : State game -> List Value -> Result RuntimeError ( Value, State game )
 assertNative state args =
     case args of
-        [ VBool True ] ->
-            Ok ( VNil, state )
-
-        [ VBool True, VString _ ] ->
-            Ok ( VNil, state )
-
-        [ VBool False ] ->
-            Err (AssertionFailed "assertion failed")
-
-        [ VBool False, VString message ] ->
-            Err (AssertionFailed message)
-
-        [ VBool _, other ] ->
-            Err (TypeError { expected = "String", got = other })
-
-        [ other ] ->
-            Err (TypeError { expected = "Bool", got = other })
-
-        [ other, _ ] ->
-            Err (TypeError { expected = "Bool", got = other })
-
         [] ->
             Err (WrongArgCount { expected = 1, got = 0 })
 
-        _ ->
-            Err (WrongArgCount { expected = 2, got = List.length args })
+        (VBool condition) :: messageArgs ->
+            assertMessage messageArgs
+                |> Result.andThen
+                    (\message ->
+                        if condition then
+                            Ok ( VNil, state )
+
+                        else
+                            Err (AssertionFailed message)
+                    )
+
+        other :: _ ->
+            Err (TypeError { expected = "Bool", got = other })
+
+
+{-| The message a failed `Debug.assert` carries, from the arguments after
+its condition: the default with none, a lone `String` as written, a
+format filled from the rest otherwise (see `assertNative`).
+-}
+assertMessage : List Value -> Result RuntimeError String
+assertMessage messageArgs =
+    case messageArgs of
+        [] ->
+            Ok "assertion failed"
+
+        [ VString message ] ->
+            Ok message
+
+        (VString format) :: values ->
+            Zak.Internal.Library.String.applyFormat format values
+
+        other :: _ ->
+            Err (TypeError { expected = "String", got = other })

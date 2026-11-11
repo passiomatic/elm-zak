@@ -251,20 +251,20 @@ suite =
                         Err error ->
                             Expect.fail ("expected success, got: " ++ Debug.toString error)
             ]
-        , describe "assert (expr, message — message optional)" <|
-            [ test "a true expr with a message does nothing, returns nil" <|
+        , describe "assert (condition, message, ... — message optional, a format when values follow)" <|
+            [ test "a true condition with a message does nothing, returns nil" <|
                 \_ -> runExpr "Debug.assert(true, \"should not fire\")" |> Expect.equal (Ok VNil)
-            , test "a true expr with no message also does nothing, returns nil" <|
+            , test "a true condition with no message also does nothing, returns nil" <|
                 \_ -> runExpr "Debug.assert(true)" |> Expect.equal (Ok VNil)
-            , test "a false expr with a message fails with that exact message" <|
+            , test "a false condition with a message fails with that exact message" <|
                 \_ ->
                     runExpr "Debug.assert(false, \"one is not two\")"
                         |> Expect.equal (Err (RuntimeError (AssertionFailed "one is not two")))
-            , test "a false expr with no message fails with the default message \"assertion failed\"" <|
+            , test "a false condition with no message fails with the default message \"assertion failed\"" <|
                 \_ ->
                     runExpr "Debug.assert(false)"
                         |> Expect.equal (Err (RuntimeError (AssertionFailed "assertion failed")))
-            , test "wrong type for expr — must be a real Bool, no truthy coercion" <|
+            , test "wrong type for condition — must be a real Bool, no truthy coercion" <|
                 \_ ->
                     runExpr "Debug.assert(1, \"msg\")"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "Bool", got = VNumber 1 })))
@@ -276,9 +276,35 @@ suite =
                 \_ ->
                     runExpr "Debug.assert()"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 1, got = 0 })))
-            , test "too many arguments — three" <|
+            , test "a false condition with values fails with the message formatted from them" <|
+                \_ ->
+                    runExpr "Debug.assert(false, \"got %s instead of %d\", \"foo\", 2)"
+                        |> Expect.equal (Err (RuntimeError (AssertionFailed "got foo instead of 2")))
+            , test "a true condition with values does nothing, returns nil" <|
+                \_ -> runExpr "Debug.assert(true, \"got %s\", \"foo\")" |> Expect.equal (Ok VNil)
+            , test "a lone message is used as written, its % not a directive" <|
+                \_ ->
+                    runExpr "Debug.assert(false, \"100% sure\")"
+                        |> Expect.equal (Err (RuntimeError (AssertionFailed "100% sure")))
+            , test "a bad format fails even when the assert passes: too few values" <|
+                \_ ->
+                    runExpr "Debug.assert(true, \"%s and %s\", \"a\")"
+                        |> Expect.equal (Err (RuntimeError (FormatArgMismatch { expected = 2, got = 1 })))
+            , test "a bad format fails even when the assert passes: a value with no placeholder" <|
                 \_ ->
                     runExpr "Debug.assert(true, \"a\", \"b\")"
-                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 3 })))
+                        |> Expect.equal (Err (RuntimeError (FormatArgMismatch { expected = 0, got = 1 })))
+            , test "a bad format fails even when the assert passes: an unknown directive" <|
+                \_ ->
+                    runExpr "Debug.assert(true, \"%q %s\", 1)"
+                        |> Expect.equal (Err (RuntimeError (UnknownFormatDirective "%q")))
+            , test "a non-String format with values is a TypeError" <|
+                \_ ->
+                    runExpr "Debug.assert(false, 1, 2)"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
+            , test "a wrong condition type is reported before a bad format" <|
+                \_ ->
+                    runExpr "Debug.assert(1, \"%s and %s\", \"a\")"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Bool", got = VNumber 1 })))
             ]
         ]

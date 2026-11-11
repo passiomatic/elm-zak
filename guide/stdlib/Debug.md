@@ -62,14 +62,18 @@ Same as `log`, at the error level.
 Debug.log_error("something actually wrong")
 ```
 
-## Debug.assert(expr, message)
+## Debug.assert(condition, message, ...)
 
-Checks that `expr` is `true`. If it's `false`, halts the script with a runtime error carrying `message`. `expr` must be a real `Bool`; `message`, when given, must be a `String`.
+Checks that `condition` is `true`. If it's `false`, halts the script with a runtime error carrying `message`. `condition` must be a real `Bool`, and `message`, when given, a `String`.
 
-`message` is optional — omitting it halts with the default message `"assertion failed"`.
+`message` is optional — omitting it halts with the default message `"assertion failed"`. With more arguments, `message` is a format filled from them, as for `Debug.log` above. A lone `message` is used as written.
+
+The format is checked every time, even when `condition` is `true`, so a mistake in it shows up the first time the line runs, not only on the day the assert fails.
 
 ```
 Debug.assert(1 + 1 == 2, "arithmetic is broken")   # passes silently
 Debug.assert(false, "this halts the script")       # error: "this halts the script"
 Debug.assert(false)                                # error: "assertion failed"
+Debug.assert(lives > 0, "lives is %d", lives)      # error, if lives is -1: "lives is -1"
+Debug.assert(true, "%s and %s", "a")               # error: too few values, though it passes
 ```
