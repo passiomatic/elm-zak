@@ -1,17 +1,6 @@
 # Future ideas
 
-## ✅ 1. Let underscore identifier be special - DONE
-
-Currently this is raises an error:
-
-```
-let _ = 123
-let _ = 345
-
-    -> “_” is already defined in this scope
-```
-
-We should allow the `_` be a throwaway value. This could pair nicely if we allow structural unpacking (see below).
+An idea is removed once implemented. The others keep their numbers, which other docs refer to.
 
 ## 2. Structural unpacking
 
@@ -34,7 +23,7 @@ let { x, y } = {x=1, y=2}
 
 Notes:
 * [Quirrel][q] allows this by using the `[a, b]` or `{x, y}` to specify the source data structure, which makes sense too since it communicates the intent better.
-* Using `_` from point 1.
+* Using the throwaway `_`.
 * In a `for` too: `for [story, line] in bad_story` unpacks each element of an array of pairs. Going over a table's fields, with no brackets, is section 11.
 
 ## 3. Expand String.format to use name look ups
@@ -48,16 +37,7 @@ String.format("I ate %{count}d apples and I feel %{status}s.", {count: 5, baz: f
 Notes: 
 * The `baz` field is ignored 
 * The positions of the table fields are not significant while resolving the format string names
-* Since 3a, the values come after the format, so the table is the one value after it, and an `%{...}` placeholder reads its fields. Mixing `%{...}` and plain placeholders in one format needs a rule of its own.
-
-## ✅ 3a. Allow String.format to accept multiple arguments - DONE (2026-11-11)
-
-We can implement native functions as variadic. `String.format` now takes its values after the format, as `Debug.log` does, and an array is one value. Every call in both repos was rewritten by a script.
-
-```
-String.format("First %s, then %s", "this", "that")
-```
-
+* Since `String.format` became variadic (2026-11-11), the values come after the format, so the table is the one value after it, and an `%{...}` placeholder reads its fields. Mixing `%{...}` and plain placeholders in one format needs a rule of its own.
 
 ## ❌ 4. Multiple variables declarations on the same line - REJECTED
 
@@ -158,67 +138,6 @@ name = function(self): return if self.sploded then "radioactive crater" else "Ed
 - Most of the verbosity comes from the function wrapper, not the `if`. Dinky's `name = @expr` shorthand made a property one line. Even with a conditional expression, Zak still needs `function(self): return … end`. That's a separate idea: see section 9.
 
 
-## ✅ 7. Private `_` names in included files - DONE
-
-**Done (2026-11-03),** as described under "How privacy works" below. `include` gives each file a frame of its own (`State.fileFrames`), `bindingEnv` decides where a top-level `let` / `const` binds, and reading or assigning another file's `_` name is a `PrivateName`. The host sees it as an `UndefinedName`, with a message naming the file. The guide covers it in `guide/language/Execution.md`, "Private names". Still open: host access to private names, which the save walk needs (below).
-
-Keep a file's top-level `_underscored` names private to it, so `include` doesn't make them visible to the including script:
-
-```
-# In Helpers.zak
-let _my_internal_function = function(): ...
-let public_function = function(): ...
-
-# In Boot.zak
-include("Helpers.zak")
-
-public_function(...)          # OK
-_my_internal_function(...)    # Error: _my_internal_function is private to Helpers.zak
-```
-
-**How `include` worked before.** It ran the file's statements directly in the shared world frame (`state.globalFrameId`), so every top-level `let` of every included file landed in the same frame and was visible everywhere.
-
-**How privacy works.** Running each file in its own frame and then copying the public names into the world frame doesn't work: it leaves two copies of every public variable, and the file's own functions would update their copy while other files read the other one. Instead, decide where each binding goes when the `let` runs:
-
-- Each included file runs in its own frame, whose parent is the world frame.
-- A top-level `let` / `const` whose name starts with `_` binds in the file frame. Any other name binds directly in the world frame, so there's only one copy.
-- Functions defined in the file capture the file frame, so lookups go file frame → world frame: they see both their private names and all globals. Other files only see the world frame.
-- The error should say why: "private to Helpers.zak", not just "undefined".
-- Only top-level names: a `let` inside a function or block, a table field (`_id`, `_state`), and the throwaway `_` stay as they are.
-- The state keeps each included file's frame, with its path (`fileFrames`). The error message uses it, and so will the save walk (below).
-- Code the host runs directly (the root script, or a `Zak.run` snippet such as a compiled yack) stays in the world frame: only included files get one.
-- A side benefit: two files can each have their own `_ladder`, with no `AlreadyDefined`.
-
-That's one new frame per include, a check in `let` / `const`, and the error message. The interpreter change is small and contained.
-
-**The game is ready (as of 2026-11-03).** `_` used to mean "engine-facing" too, inherited from Dinky, where `_enterRoom`, `_clickedAt` and similar are system callbacks. On 2026-10-15 elm-adventure had 42 top-level `_` names, many deliberately shared: Elm looked up the `_on_*` callbacks, `_verbs_for`, `_current_scene` and others by name. Since then:
-
-- The engine hooks have plain names (`Input.on_click`, `Input.verb_menu`, `Game.on_yack_started`, ...). Elm reads no `_` global any more, only the `_id`, `_key` and `_scene_id` table fields, which privacy doesn't touch.
-- The 9 helpers other files used lost their `_` (2026-11-03): `check_verbs`, `can`, `can_function`, `default_verb` and `replace_object_item` (VerbHelpers), `face_toward` (ActorHelpers), `base_door`, `base_drawer` and `set_door_state` (DoorHelpers). The VerbHelpers ones are internals shared between the Shared files, which file-level privacy can't express, so they're public now.
-
-The other 37 `_` names are only used in their own file.
-
-**Save games.** elm-adventure's `design/Save Games.md` plans the Zak side of a save as a walk of the world frame (`Zak.globals`). It isn't built yet. Private names would drop out of that walk, and some hold game state:
-
-- reassigned at runtime, so only the name reaches the value: `_active_stories` and `_completed_stories` (Note), `_music_sid`, `_ambient_sid`, `_ambient_sound`, `_room_music_sid` and `_playing_pool` (SoundHelpers);
-- changed in place: `_once_checks`, `_inventory`, `_photos_taken` and `_active_photos_taken`, lost too unless a public global also reaches them.
-
-So the public API needs a way to list and set each file's private names, saved at a path like `Note.zak/_active_stories`. The alternative, "private names aren't saved", would push that state into public tables, a surprising rule.
-
-**Docs.** `guide/language/Lexical.md` points to the new "Private names" section in `guide/language/Execution.md`, which doesn't name `include` (the guide doesn't cover it). `nativeInclude`, `globals` and `setGlobal` in `Zak.elm` say what a host can and can't reach.
-
-**The name stays `include`.** Public names still land in the shared world, with no table to reach them through.
-
-**Prior art:**
-
-- **Dart:** an `_name` is private to its library, enforced by the language. The closest match to this idea.
-- **Python:** `from m import *` skips `_name`s, but `m._name` still reaches them. Only a convention.
-- **Go:** an initial capital letter means exported, lowercase means unexported. A naming rule, like this idea.
-- **Lua:** a top-level `local` is private to its file, and globals are shared. A keyword, not a naming rule.
-
-**Settled:** `_` means "private" (Dart-style). The clash with engine hooks, which made a Lua-style keyword worth considering, is gone (above). What's left is the save API.
-
-
 ## 8. Enums
 
 elm-adventure's `Helpers.zak` has 37 string constants (`const FRONT = "Front"`, `const OPEN = "open"`, ...). They exist so a typo in the *name* (`OPNE`) is an undefined-name error. Could an `enum` concept do better?
@@ -309,7 +228,7 @@ Array.map(prices, \(p) -> if p > 100 then "Expensive" else "Quite cheap")    # w
 1. **Elm: `\(p) -> p <= 25`.** The shortest. But `\` is a symbol to learn, the objection section 6 made against `?`, and in code full of strings it reads like an escape. It only appears inside strings today, so the lexer has no clash.
 2. **The keyword, then an arrow: `function(p) -> p <= 25`.** No new word, and it's visibly a function. 7 characters longer than option 1, but most of the saving comes from dropping `return`, `end` and the line breaks, which both do.
 3. **A bare arrow: `(p) -> p <= 25`.** It looks like a parenthesized expression until the arrow, so the parser has to backtrack, and an error inside it is harder to report.
-4. **`fn`, replacing `function` everywhere (section 10): `fn(p) -> p <= 25`.** Option 2 with the shorter keyword. Only one character longer than option 1, and still a word, not a symbol.
+4. **`fn`, replacing `function` everywhere (done on 2026-11-11): `fn(p) -> p <= 25`.** Option 2 with the shorter keyword. Only one character longer than option 1, and still a word, not a symbol.
 
 The typical case with each:
 
@@ -320,12 +239,12 @@ can_open = (self, noun2 = nil) -> not self.open,
 can_open = fn(self, noun2 = nil) -> not self.open,
 ```
 
-**Proposal: option 4, `fn(params) -> expr`.** Section 10's rename to `fn` is done (2026-11-11).
+**Proposal: option 4, `fn(params) -> expr`.** The rename to `fn` is done (2026-11-11).
 
 - It extends section 6's rule: **`:` opens a block, closed by `end`. The value forms, `then` and `->`, never use `:` and never need `end`.**
 - No new concept to teach: a function's body is either a block or a single expression.
 - The parser decides right after the parameter list's `)`: `:` starts a block, `->` an expression. No backtracking, no ambiguity.
-- The arrow costs one new token, `->`, and no reserved word (`fn` is section 10's). Today `->` can only appear in a syntax error (`a -> b`), so no valid program changes meaning.
+- The arrow costs one new token, `->`, and no reserved word (`fn` already is one). Today `->` can only appear in a syntax error (`a -> b`), so no valid program changes meaning.
 - With `fn`, option 1's one advantage, brevity, is down to a single character.
 
 **How it would work:**
@@ -349,63 +268,6 @@ can_open = fn(self, noun2 = nil) -> not self.open,
 - **Python:** `lambda p: p <= 25`. A keyword, and a single expression only, like this proposal.
 - **Java:** `(p) -> p <= 25`, option 3's form. JavaScript, Dart and C# write it with `=>`.
 - **Lua:** `function(p) return p <= 25 end` is the only form, as in Zak today.
-
-
-## ✅ 10. `fn` instead of `function` - DONE
-
-**Done (2026-11-11),** as described below, in both repos. `Zak.Internal.Parser.functionLiteral` reads `fn`, and `function` stays a reserved word: `Parser.rejectFunctionKeyword` reports "“function” is now “fn”" on the word itself. The guide's stdlib signatures name an `fn` parameter `f`. The VS Code grammar highlights `fn` (0.2.1). The counts below are as of 2026-11-04; the design docs keep `function` where they show old code.
-
-Replace the `function` keyword with `fn`, in both forms: the block, `fn(params): … end`, and section 9's expression, `fn(params) -> expr`.
-
-```
-let point = fn(x, y):
-    return { x = x, y = y }
-end
-
-can_open = fn(self, noun2 = nil) -> not self.open,
-Array.filter(prices, fn(p) -> p <= 25)
-```
-
-**Why:**
-
-- 6 characters fewer on each of the 626 function literals in the game (as of 2026-11-04), most visibly on the verb guards in objects' tables.
-- It's still a word you can say, not a symbol, as section 6 prefers. Zak's keywords are already short: `let`, `const`.
-- It reads like the math notation `f(x)`.
-- It makes section 9's expression form as short as Elm's `\`, with no symbol to learn.
-
-**What stays.** The value is still a function: `type(f)` is `"function"`, `is_function` keeps its name, `String.from` shows `<function>`, and the guide calls it a function. Only the keyword changes.
-
-**Costs:**
-
-- `fn` becomes reserved. It's the natural name for a function parameter, and both repos use it as one: twice in the game (`start_routine = function(self, fn)`, `SheriffsOffice.zak:191`; `let fn = Table.get_default(noun1, verb)`, `SystemHelpers.zak:402`) and 17 times in the guide's stdlib signatures (`Array.map(array, fn)`, `Table.each(table, fn)`). They need another name, such as `f` or `callback`. Elm code that uses `fn` isn't affected.
-- `function` explains itself to a newcomer. `fn` has to be learned, once.
-- Zak code to convert, counted as `function(` (as of 2026-11-04):
-
-  | Where | Count |
-  |---|---|
-  | elm-adventure scripts (`Delores/`, `Shared/`) | 626 |
-  | elm-adventure tests (Zak in Elm strings) | 301 |
-  | elm-adventure guide and design docs | 68 |
-  | elm-adventure `src` | 3, 2 of them code the yack compiler generates (`Engine/Yack/Compiler.elm`) |
-  | elm-zak tests | 227 |
-  | elm-zak guide | 58 |
-  | elm-zak design docs | 28 |
-  | elm-zak `src` | 13, in doc comments and examples |
-
-**How:**
-
-- One spelling, no alias. Switch everything at once and convert the code with a script, as planned for `String.format` (section 3a).
-- The script rewrites Zak code only: `.zak` and `.yack` files, the Zak snippets in the tests, and the code the yack compiler generates. Markdown and doc comments get a manual pass, since `function(...)` also appears in prose.
-- In the interpreter, the keyword is in `Zak.Internal.Parser` (`L.keyword "function"`) and the reserved words in `Zak.Internal.Lexer`.
-- `function` stays reserved for a while, with a targeted syntax error, "`function` is now `fn`", so an older script or a Dinky port gets a clear message, not a confusing parse error.
-- The rename comes first, on its own, in both repos. Then section 9's arrow form, then section 6's conditional. Each step stays small, and the rename changes no behavior.
-
-**Prior art:**
-
-- **Rust, Zig, Gleam:** `fn` for every function.
-- **Clojure:** `fn` for an anonymous function.
-- **Elixir:** `fn p -> p <= 25 end`, an anonymous function with `fn` and `->`, closed by `end`.
-- **Lua, JavaScript:** the full `function`, as Zak today.
 
 
 ## 11. `for` over tables
@@ -432,7 +294,7 @@ end
 
 **Options considered:**
 
-1. **Two names in the `for`: `for key, value in table:`.** Needs no other feature. `for _, value in table` covers the value-only case, with the throwaway `_` (section 1).
+1. **Two names in the `for`: `for key, value in table:`.** Needs no other feature. `for _, value in table` covers the value-only case, with the throwaway `_`.
 2. **Unpacking (section 2): `for [key, value] in Table.pairs(table):`.** More general, but it needs section 2 and a `Table.pairs` that builds a `[key, value]` array for every field. Heavy for the common case.
 3. **No new syntax: `for key in Table.keys(table):`,** then `Table.get(table, key)` in the body. `Table.keys` and `Table.values` are a stdlib idea already (`design/StdLib Improv.md`, item 5). It adds a lookup to every pass, and the name and the value are never side by side.
 
@@ -464,3 +326,62 @@ end
 - **Python:** `for k in d` gives the keys, `for k, v in d.items()` both.
 - **Go:** `for k, v := range m`, and `for k := range m` for the keys alone.
 - **Squirrel:** `foreach (k, v in t)`, and `foreach (v in t)` for the values alone.
+
+## 12. Variadic Zak functions
+
+The natives already take any number of arguments: `Debug.log*(value, ...)`, `Debug.assert(condition, message, ...)`, `String.format(format, ...)`, and elm-adventure's `Actor.say_line(actor, line, ...)`. A function written in Zak can't: its parameters, defaults included, set a fixed maximum. This is the same idea, for Zak functions.
+
+**No hurry (2026-11-11).** Nothing in elm-adventure needs it today. The only candidate is the `print` helper (`shared/Helpers.zak`), which forwards one message to `Debug.log` and has no callers; `error`, the other one, was replaced by direct asserts. The forwarding case that does exist, `Actor.say_line(Delores, headline_text.lines)` (`delores/Scenes/AStreet.zak:88`), is handled by the native accepting its lines as one array. Implement it when a helper or a wrapper needs it.
+
+**Proposal: two halves, one `...`.**
+
+1. **A rest parameter: `fn(format, ...values)`.**
+
+    ```
+    let log_scene = fn(scene, format, ...values):
+        ...
+    end
+    ```
+
+    - `values` is a new array of the extra arguments, `[]` when there are none, a fresh one on every call.
+    - Last, and only one.
+    - It can follow defaults, `fn(a, b = 1, ...rest)`: the arguments fill the named parameters first, in order, and `rest` gets what's left after all of them.
+    - No default of its own: `...values = [1]` is a syntax error, since it's always an array anyway.
+    - `..._` accepts extra arguments and drops them, from the throwaway rule.
+    - The function needs at least its required parameters, and has no maximum.
+    - It's the notation the guide already uses for the natives: `Debug.log(value, ...)` could read `Debug.log(value, ...values)`.
+
+2. **Spreading an array into a call: `f(a, ...array)`.**
+
+    Without it, the rest parameter is half a feature: a wrapper can collect its extra arguments, but not hand them on to a variadic native.
+
+    ```
+    let warn = fn(format, ...values):
+        Debug.log_warning("[game] " ++ format, ...values)
+    end
+    ```
+
+    - `...expr` must be an `Array`, or it's a `TypeError`. Its elements become separate arguments.
+    - **The last argument only.** That covers forwarding, and mirrors the rest parameter. It can be loosened later if a use shows up.
+    - It works the same for a Zak function and a native: the arguments are a flat list before the call.
+    - Rejected: a native `Function.apply(f, array)`. No new syntax, but it reads poorly, and the `...` token is needed for the rest parameter anyway.
+
+**Why both:** one symbol, one meaning, both ways: collecting the arguments in a parameter list, spreading them in a call. Structural unpacking (section 2) could take it too, later: `let [first, ...rest] = items`.
+
+**How it would work:**
+
+- The lexer: a new `...` symbol. It doesn't clash with `.` field access, since it's only read in a parameter list or an argument list.
+- The AST: `FunctionLiteral (List ( String, Maybe Expr )) Block` gets an optional rest name, and so does the `Closure` it makes. A call argument can be marked as spread.
+- `callFunctionCell`: with a rest name, no maximum arity, and the extra arguments go into a new array (`allocArrayCell`), bound like any other parameter.
+- Evaluating a call's arguments: a spread one is replaced by the array's elements.
+- `WrongArgCount` reads "expected 2 arguments, got 1", one count. For a function with defaults it already means "at least 2", and a rest parameter makes that more common. Worth a look while there: "expected at least 2 arguments" for a function that has no maximum.
+- The guide: `guide/language/Functions.md` gets a section after "Default parameter values", on taking any number of arguments and on spreading. The stdlib signatures could switch from `...` to `...values`.
+
+**Open: the natives that accept a lone array.** Once spreading exists, `Actor.say_line(actor, lines)` could be `Actor.say_line(actor, ...lines)`, and the array form could go: one rule instead of a special case. Probably, but to think about when this is implemented. It's a change to the game, not to Zak.
+
+**Prior art:**
+
+- **JavaScript:** `function f(a, ...rest)` and `f(...array)`, the same token both ways.
+- **Python:** `def f(a, *args)` and `f(*items)`.
+- **Lua:** `function f(a, ...)`, the extra arguments read through `...` itself, or `{...}` for a table of them.
+- **Squirrel:** `function f(a, ...)`, the extra arguments in the implicit `vargv` array.
