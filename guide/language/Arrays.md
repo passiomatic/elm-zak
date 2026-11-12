@@ -35,10 +35,10 @@ inventory[-1]    # error: index -1 is out of bounds — the array has 3 elements
 inventory[0.5]   # error: 0.5 is not a whole number
 ```
 
-Negative indexes are always out of bounds: there's no counting from the end. To read an index that might be out of bounds without an error, use `Array.get_default`:
+Negative indexes are always out of bounds: there's no counting from the end. To read an index that might be out of bounds without an error, use `Array.get`:
 
 ```
-let first = Array.get_default(inventory, 0)   # nil if inventory is empty
+let first = Array.get(inventory, 0)   # nil if inventory is empty
 ```
 
 `[ ]` only works on arrays — not on tables or strings.

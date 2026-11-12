@@ -126,7 +126,7 @@ strictness `Array`'s own index arguments already have — but an _unknown_
 id (already finished, or never valid) isn't an error: it means "that
 thread isn't running," so this resolves immediately (`Suspended` with a
 wait condition that's already satisfied on the very next tick, rather
-than a hard failure) — matching the spirit of `Array.get_default`'s
+than a hard failure) — matching the spirit of `Array.get`'s
 "soften a missing lookup, not a wrong type" split.
 
 Known characteristic (bounded, not a bug that hangs anything):

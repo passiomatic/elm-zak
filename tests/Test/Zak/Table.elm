@@ -22,28 +22,8 @@ runExpr =
 
 suite : Test
 suite =
-    describe "Zak.Table (get, get_default, set, remove, contains, clone, each)"
-        [ describe "get (table first, matching Array's own argument order)" <|
-            [ test "reads an existing field" <|
-                \_ -> runExpr "Table.get({ x = 1 }, \"x\")" |> Expect.equal (Ok (VNumber 1))
-            , test "missing field is a hard error, same as dot access" <|
-                \_ ->
-                    runExpr "Table.get({ x = 1 }, \"y\")"
-                        |> Expect.equal (Err (RuntimeError (UndefinedField "y")))
-            , test "wrong first argument type" <|
-                \_ ->
-                    runExpr "Table.get(1, \"x\")"
-                        |> Expect.equal (Err (RuntimeError (NotATable (VNumber 1) "x")))
-            , test "wrong second argument type" <|
-                \_ ->
-                    runExpr "Table.get({ x = 1 }, 1)"
-                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
-            , test "wrong argument count" <|
-                \_ ->
-                    runExpr "Table.get({ x = 1 })"
-                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
-            ]
-        , describe "set (mutating, in place — creates the field if it doesn't already exist)" <|
+    describe "Zak.Table (get, set, remove, contains, clone, each)"
+        [ describe "set (mutating, in place — creates the field if it doesn't already exist)" <|
             [ test "mutates in place, visible through an alias — the whole point of Table having heap identity" <|
                 \_ ->
                     run
@@ -85,37 +65,41 @@ suite =
                     runExpr "Table.set({ x = 1 }, \"x\")"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 3, got = 2 })))
             ]
-        , describe "get_default (like get, but a missing field returns the default instead of erroring)" <|
+        , describe "get (the safe read: a missing field gives the default, nil if left out; table.name is the strict one)" <|
             [ test "reads an existing field, ignoring the default" <|
-                \_ -> runExpr "Table.get_default({ x = 1 }, \"x\", 0)" |> Expect.equal (Ok (VNumber 1))
+                \_ -> runExpr "Table.get({ x = 1 }, \"x\", 0)" |> Expect.equal (Ok (VNumber 1))
             , test "missing field returns the default instead of erroring" <|
-                \_ -> runExpr "Table.get_default({ x = 1 }, \"y\", 0)" |> Expect.equal (Ok (VNumber 0))
+                \_ -> runExpr "Table.get({ x = 1 }, \"y\", 0)" |> Expect.equal (Ok (VNumber 0))
             , test "default can be any type, independent of the field's own type" <|
-                \_ -> runExpr "Table.get_default({ x = 1 }, \"y\", \"none\")" |> Expect.equal (Ok (VString "none"))
+                \_ -> runExpr "Table.get({ x = 1 }, \"y\", \"none\")" |> Expect.equal (Ok (VString "none"))
             , test "wrong first argument type" <|
                 \_ ->
-                    runExpr "Table.get_default(1, \"x\", 0)"
+                    runExpr "Table.get(1, \"x\", 0)"
                         |> Expect.equal (Err (RuntimeError (NotATable (VNumber 1) "x")))
             , test "wrong second argument type is still a hard error — only a missing field is softened" <|
                 \_ ->
-                    runExpr "Table.get_default({ x = 1 }, 1, 0)"
+                    runExpr "Table.get({ x = 1 }, 1, 0)"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "String", got = VNumber 1 })))
             , test "an omitted default is nil" <|
-                \_ -> runExpr "Table.get_default({ x = 1 }, \"y\")" |> Expect.equal (Ok VNil)
+                \_ -> runExpr "Table.get({ x = 1 }, \"y\")" |> Expect.equal (Ok VNil)
             , test "an omitted default still reads an existing field" <|
-                \_ -> runExpr "Table.get_default({ x = 1 }, \"x\")" |> Expect.equal (Ok (VNumber 1))
+                \_ -> runExpr "Table.get({ x = 1 }, \"x\")" |> Expect.equal (Ok (VNumber 1))
             , test "an omitted default keeps the argument checks" <|
                 \_ ->
-                    runExpr "Table.get_default(1, \"x\")"
+                    runExpr "Table.get(1, \"x\")"
                         |> Expect.equal (Err (RuntimeError (NotATable (VNumber 1) "x")))
             , test "too few arguments" <|
                 \_ ->
-                    runExpr "Table.get_default({ x = 1 })"
+                    runExpr "Table.get({ x = 1 })"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
             , test "too many arguments" <|
                 \_ ->
-                    runExpr "Table.get_default({ x = 1 }, \"x\", 0, 0)"
+                    runExpr "Table.get({ x = 1 }, \"x\", 0, 0)"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 3, got = 4 })))
+            , test "there's no Table.get_default any more" <|
+                \_ ->
+                    runExpr "Table.get_default({ x = 1 }, \"y\", 0)"
+                        |> Expect.equal (Err (RuntimeError (UndefinedField "get_default")))
             ]
         , describe "remove (mutating, in place — true if the field was there, false if not, same as Array.remove)" <|
             [ test "returns true when the field was there" <|

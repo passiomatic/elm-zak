@@ -1,27 +1,20 @@
 # Table
 
-Named-field collections. A table is a reference, not a plain value, the same as an array. Dot syntax (`table.field`, `table.field = value`) already covers reading and writing a field for most cases — `get` and `set` below are a callable spelling of the same two operations, needed when the field name itself is a runtime value rather than a literal identifier. Removing a field has no syntax: `Table.remove` is the only way.
+Named-field collections. A table is a reference, not a plain value, the same as an array. Dot syntax (`table.field`, `table.field = value`) already covers reading and writing a field for most cases. `get` below reads a field that may be missing, giving a default instead of an error. `set` is a callable spelling of assignment, needed when the field name itself is a runtime value rather than a literal identifier; `get` takes one too. Removing a field has no syntax: `Table.remove` is the only way.
 
 `table` is always the first argument of every function below, the same as with [Array](Array.md).
 
-## Table.get(table, name)
+## Table.get(table, name, default=nil)
 
-Value of the field named `name` (a `String`) on `table`. Errors if the field doesn't exist, same as reading `table.name` would.
+Value of the field named `name` (a `String`) on `table`, or `default` if there's no such field. `default` is optional: leave it out and it's `nil`. A `name` that isn't a `String` is still an error: only a missing field is softened.
 
-```
-let r = { x = 1 }
-Table.get(r, "x")   # 1
-```
-
-## Table.get_default(table, name, default=nil)
-
-Like `Table.get`, but returns `default` instead of erroring if `name` isn't present. `default` is optional: leave it out and it's `nil`.
+To read a field that must be there, with an error if it isn't, use `table.name` instead.
 
 ```
 let r = { x = 1 }
-Table.get_default(r, "x", 0)   # 1
-Table.get_default(r, "z", 0)   # 0 (no "z" field, so the default)
-Table.get_default(r, "z")      # nil (no default given)
+Table.get(r, "x")      # 1
+Table.get(r, "z", 0)   # 0 (no "z" field, so the default)
+Table.get(r, "z")      # nil (no default given)
 ```
 
 ## Table.set(table, name, value)
@@ -67,7 +60,7 @@ r   # { x = 1 }, unaffected
 let inner = { y = 1 }
 let t = { nested = inner }
 let u = Table.clone(t)
-Table.set(Table.get(u, "nested"), "y", 99)
+Table.set(u.nested, "y", 99)
 t   # { nested = { y = 99 } } — the nested table was shared, not copied
 ```
 

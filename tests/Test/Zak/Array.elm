@@ -23,7 +23,7 @@ runExpr =
 
 suite : Test
 suite =
-    describe "Zak.Array (length, is_empty, get, get_default, set, push, append, pop, remove, contains, clone, slice, each, map, filter, foldl, foldr)"
+    describe "Zak.Array (length, is_empty, get, set, push, append, pop, remove, contains, clone, slice, each, map, filter, foldl, foldr)"
         [ describe "length" <|
             [ test "of an empty array" <|
                 \_ -> runExpr "Array.length([])" |> Expect.equal (Ok (VNumber 0))
@@ -48,7 +48,7 @@ suite =
                     runExpr "Array.is_empty(1)"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VNumber 1 })))
             ]
-        , describe "get (array first, matching every other Array function — index/predicate/fn operands after)" <|
+        , describe "get (the safe read: an out-of-range index gives the default, nil if left out; array[index] is the strict one)" <|
             [ test "first, middle, and last element" <|
                 \_ ->
                     Expect.all
@@ -57,70 +57,48 @@ suite =
                         , \_ -> runExpr "Array.get([10, 20, 30], 2)" |> Expect.equal (Ok (VNumber 30))
                         ]
                         ()
-            , test "negative index is out of bounds — no Python-style \"from the end\"" <|
-                \_ ->
-                    runExpr "Array.get([10, 20, 30], -1)"
-                        |> Expect.equal (Err (RuntimeError (IndexOutOfBounds { index = -1, length = 3 })))
-            , test "index == length is still out of bounds" <|
-                \_ ->
-                    runExpr "Array.get([10, 20, 30], 3)"
-                        |> Expect.equal (Err (RuntimeError (IndexOutOfBounds { index = 3, length = 3 })))
+            , test "a whole-number float is fine, indistinguishable from an integer literal" <|
+                \_ -> runExpr "Array.get([10, 20, 30], 2.0)" |> Expect.equal (Ok (VNumber 30))
+            , test "in-range index, ignoring the default" <|
+                \_ -> runExpr "Array.get([10, 20, 30], 1, 0)" |> Expect.equal (Ok (VNumber 20))
+            , test "negative index returns the default instead of erroring" <|
+                \_ -> runExpr "Array.get([10, 20, 30], -1, 0)" |> Expect.equal (Ok (VNumber 0))
+            , test "index == length returns the default instead of erroring" <|
+                \_ -> runExpr "Array.get([10, 20, 30], 3, 0)" |> Expect.equal (Ok (VNumber 0))
+            , test "default can be any type, independent of the array's own element type" <|
+                \_ -> runExpr "Array.get([10, 20, 30], 9, \"none\")" |> Expect.equal (Ok (VString "none"))
             , test "wrong first argument type" <|
+                \_ ->
+                    runExpr "Array.get(1, 0, 99)"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VNumber 1 })))
+            , test "wrong second argument type" <|
+                \_ ->
+                    runExpr "Array.get([1], \"x\", 0)"
+                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Number", got = VString "x" })))
+            , test "an omitted default is nil" <|
+                \_ -> runExpr "Array.get([10, 20, 30], 9)" |> Expect.equal (Ok VNil)
+            , test "an omitted default still reads an in-range index" <|
+                \_ -> runExpr "Array.get([10, 20, 30], 1)" |> Expect.equal (Ok (VNumber 20))
+            , test "an omitted default keeps the argument checks" <|
                 \_ ->
                     runExpr "Array.get(1, 0)"
                         |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VNumber 1 })))
-            , test "wrong second argument type" <|
-                \_ ->
-                    runExpr "Array.get([1], \"x\")"
-                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Number", got = VString "x" })))
-            , test "wrong argument count" <|
+            , test "too few arguments" <|
                 \_ ->
                     runExpr "Array.get([1])"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
-            , test "a whole-number float is fine, indistinguishable from an integer literal" <|
-                \_ -> runExpr "Array.get([10, 20, 30], 2.0)" |> Expect.equal (Ok (VNumber 30))
-            , test "a fractional index is a hard error, not silently rounded" <|
-                \_ ->
-                    runExpr "Array.get([10, 20, 30], 2.5)"
-                        |> Expect.equal (Err (RuntimeError (NotAnInteger 2.5)))
-            ]
-        , describe "get_default (like get, but an out-of-range index returns the default instead of erroring)" <|
-            [ test "in-range index, ignoring the default" <|
-                \_ -> runExpr "Array.get_default([10, 20, 30], 1, 0)" |> Expect.equal (Ok (VNumber 20))
-            , test "negative index returns the default instead of erroring" <|
-                \_ -> runExpr "Array.get_default([10, 20, 30], -1, 0)" |> Expect.equal (Ok (VNumber 0))
-            , test "index == length returns the default instead of erroring" <|
-                \_ -> runExpr "Array.get_default([10, 20, 30], 3, 0)" |> Expect.equal (Ok (VNumber 0))
-            , test "default can be any type, independent of the array's own element type" <|
-                \_ -> runExpr "Array.get_default([10, 20, 30], 9, \"none\")" |> Expect.equal (Ok (VString "none"))
-            , test "wrong first argument type" <|
-                \_ ->
-                    runExpr "Array.get_default(1, 0, 99)"
-                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VNumber 1 })))
-            , test "wrong second argument type" <|
-                \_ ->
-                    runExpr "Array.get_default([1], \"x\", 0)"
-                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Number", got = VString "x" })))
-            , test "an omitted default is nil" <|
-                \_ -> runExpr "Array.get_default([10, 20, 30], 9)" |> Expect.equal (Ok VNil)
-            , test "an omitted default still reads an in-range index" <|
-                \_ -> runExpr "Array.get_default([10, 20, 30], 1)" |> Expect.equal (Ok (VNumber 20))
-            , test "an omitted default keeps the argument checks" <|
-                \_ ->
-                    runExpr "Array.get_default(1, 0)"
-                        |> Expect.equal (Err (RuntimeError (TypeError { expected = "Array", got = VNumber 1 })))
-            , test "too few arguments" <|
-                \_ ->
-                    runExpr "Array.get_default([1])"
-                        |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 2, got = 1 })))
             , test "too many arguments" <|
                 \_ ->
-                    runExpr "Array.get_default([1], 0, 0, 0)"
+                    runExpr "Array.get([1], 0, 0, 0)"
                         |> Expect.equal (Err (RuntimeError (WrongArgCount { expected = 3, got = 4 })))
             , test "a fractional index is still a hard error — only an out-of-range index is softened" <|
                 \_ ->
-                    runExpr "Array.get_default([10, 20, 30], 2.5, 0)"
+                    runExpr "Array.get([10, 20, 30], 2.5, 0)"
                         |> Expect.equal (Err (RuntimeError (NotAnInteger 2.5)))
+            , test "there's no Array.get_default any more" <|
+                \_ ->
+                    runExpr "Array.get_default([10, 20, 30], 9, 0)"
+                        |> Expect.equal (Err (RuntimeError (UndefinedField "get_default")))
             ]
         , describe "set (mutating, in place — no pure sibling)" <|
             [ test "mutates in place, visible through an alias — the whole point of Array having heap identity" <|

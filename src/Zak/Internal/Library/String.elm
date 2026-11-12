@@ -225,7 +225,8 @@ stringLower state args =
 {-| `String.replace(string, needle, replacement)` — the subject first,
 matching `String.append`/`String.format`'s own argument order. Not the
 target-last order this used to have —
-that was borrowed from `Array.get_default`/`Table.get_default`, back
+that was borrowed from `Array.get_default`/`Table.get_default` (now the safe
+`Array.get`/`Table.get`), back
 when `Array`/`Table` themselves put their own target last; now that
 they've moved to target-first (see "Arrays"/"Tables" in the language
 reference for the fuller history), keeping `replace` target-last would

@@ -27,22 +27,16 @@ Array.is_empty([1, 2, 3])   # false
 Array.is_empty([])          # true
 ```
 
-## Array.get(array, index)
+## Array.get(array, index, default=nil)
 
-Element at `index` (0-based). Errors if `index` is out of range or not a whole number.
+Element at `index` (0-based), or `default` if `index` is out of range, a negative one included. `default` is optional: leave it out and it's `nil`. An `index` that isn't a whole number is still an error: only a missing element is softened.
 
-```
-Array.get([1, 2, 3], 1)   # 2
-```
-
-## Array.get_default(array, index, default=nil)
-
-Like `Array.get`, but returns `default` instead of erroring if `index` is out of range. `default` is optional: leave it out and it's `nil`. An `index` that isn't a whole number is still a hard error — only an out-of-range index is softened.
+To read an element that must be there, with an error if it isn't, index the array instead: `array[index]`.
 
 ```
-Array.get_default([1, 2, 3], 1, 0)   # 2
-Array.get_default([1, 2, 3], 9, 0)   # 0 (index 9 is out of range, so the default)
-Array.get_default([1, 2, 3], 9)      # nil (no default given)
+Array.get([1, 2, 3], 1)      # 2
+Array.get([1, 2, 3], 9, 0)   # 0 (index 9 is out of range, so the default)
+Array.get([1, 2, 3], 9)      # nil (no default given)
 ```
 
 ## Array.set(array, index, value)
@@ -116,7 +110,7 @@ a   # [1, 2, 3], unaffected
 let inner = [1]
 let c = [inner]
 let d = Array.clone(c)
-Array.set(Array.get(d, 0), 0, 99)
+Array.set(d[0], 0, 99)
 c   # [[99]] — the nested array was shared, not copied
 ```
 

@@ -35,15 +35,15 @@ player.mana          # error: there is no field named “mana”
 player.name.length   # error: player.name is a String, not a table
 ```
 
-To read a field that might be missing, check for it first with `in`, or read it with a fallback value using `Table.get_default`:
+To read a field that might be missing, check for it first with `in`, or read it with a fallback value using `Table.get`:
 
 ```
 if "mana" in player:
     player.mana = player.mana - 5
 end
 
-let mana = Table.get_default(player, "mana", 0)
-let title = Table.get_default(player, "title")   # nil if there's no title
+let mana = Table.get(player, "mana", 0)
+let title = Table.get(player, "title")   # nil if there's no title
 ```
 
 ## Writing fields
@@ -77,10 +77,12 @@ After that, reading `player.target` is an error again, as for a field that was n
 
 ```
 let stat = "health"
-Table.get(player, stat)          # same as player.health
+Table.get(player, stat)          # player.health, or nil if there's none
 Table.set(player, stat, 100)     # same as player.health = 100
 Table.contains(player, stat)     # same as "health" in player
 ```
+
+`Table.get` is the safe read, so a name known only at runtime has no reading that errors when the field is missing. If the field must be there, check it first with `in`.
 
 `[ ]` never works on tables: it only indexes arrays.
 

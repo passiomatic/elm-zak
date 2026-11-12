@@ -39,6 +39,8 @@ There are 35 `for` loops.
 
 **Done on 2026-11-03.** `default` is now optional, `nil` when omitted, on both `Table.get_default` and `Array.get_default`. The names stay.
 
+**Then merged into `get` (2026-11-12).** `get_default` dated from before Zak had default parameters. With `default` optional, it's the safe read, so it took the name `get`, and the strict `get` went: `array[index]` and `table.name` are the strict reads. A field name built at runtime only has the safe read now.
+
 30 of the 50 `Table.get_default` calls pass `nil` as the default. They read a field that may not be there, because reading a missing field with `.` is an error:
 
 ```

@@ -22,10 +22,9 @@ runtime value model `Zak.Internal.Runtime` defines. There are two tiers of
 unconditional built-ins, for two different reasons:
 
 `Array`/`Table` are unconditional in _every_ entry point below, including
-`runExpr` — a real technical necessity, not a preference: `.field`/`.field
-= value`/`[index]`/`[index] = value` need to share their actual
-implementation with `Table.get`/`Table.set`/`Array.get`/`Array.set` (see
-`getTableField`/`setTableField`/`getArrayIndex`/`setArrayIndex` below),
+`runExpr` — a real technical necessity, not a preference: `.field =
+value`/`[index] = value` need to share their actual implementation with
+`Table.set`/`Array.set` (see `setTableField`/`setArrayIndex` below),
 and that sharing only works if both live in the same module as this
 evaluator — see `builtinNatives` below.
 
@@ -832,7 +831,7 @@ necessity, not a design choice: see this module's own top-of-file doc for
 why.
 
 `Array` is a small set sourced from Elm's own `Array` module (not Elm's
-`List`) — `length`, `is_empty`, `get`, `get_default`, `set`, `push`,
+`List`) — `length`, `is_empty`, `get`, `set`, `push`,
 `append`, `pop`, `remove`, `contains`, `clone`, `slice`, `each`, `map`,
 `filter`, `foldl`, `foldr`, `range`.
 Every function that mutates (`set`, `push`, `append`, `pop`, `remove`)
@@ -843,10 +842,10 @@ never needed an element's index from a callback, and the one loop that
 needs indexes walks `Array.range(0, Array.length(array) - 1)` with
 `for`, which already gives it. `Table` covers what dot syntax structurally
 can't (a field name that's a runtime value rather than a literal
-identifier, `get`/`set`) plus a way to test/soften the hard error a
-missing field raises (`contains`/`get_default`) — kept in lockstep with
-`Array`'s own `contains`/`get_default`/`clone` rather than only fixing one
-side.
+identifier, `set`) plus a way to test/soften the hard error a missing
+field raises (`contains`/`get`) — kept in lockstep with `Array`'s own
+`contains`/`get`/`clone` rather than only fixing one side. On both, `get`
+is the safe read; the strict one is `array[index]` or `table.name`.
 
 -}
 builtinNatives : Dict String (NativeValue game)
@@ -858,7 +857,6 @@ builtinNatives =
                     [ ( "length", NativeFunction arrayLength )
                     , ( "is_empty", NativeFunction arrayIsEmpty )
                     , ( "get", NativeFunction arrayGet )
-                    , ( "get_default", NativeFunction arrayGetDefault )
                     , ( "set", NativeFunction arraySet )
                     , ( "push", NativeFunction arrayPush )
                     , ( "append", NativeFunction arrayAppend )
@@ -879,7 +877,6 @@ builtinNatives =
           , NativeNamespace
                 (Dict.fromList
                     [ ( "get", NativeFunction tableGet )
-                    , ( "get_default", NativeFunction tableGetDefault )
                     , ( "set", NativeFunction tableSet )
                     , ( "remove", NativeFunction tableRemove )
                     , ( "contains", NativeFunction tableContains )
@@ -1486,12 +1483,9 @@ setPath env state target segments value =
             Err (TypeError { expected = "Array or Table", got = target })
 
 
-{-| Shared by the `[index]` assignment-target step above, the `Index`
-expression case below, _and_ the `Array.get`/`Array.set` natives further
-down — not just the same bounds-check and error, the literal same
-function: `[index]`/`[index] = value` and `Array.get`/`Array.set` are two
-spellings of the exact same operation (see this module's own doc for why
-that sharing lives here rather than in a separate module).
+{-| The strict read, `array[index]`: shared by the `[index]`
+assignment-target step above and the `Index` expression case below.
+`Array.get` is the safe read, so it doesn't come through here.
 -}
 getArrayIndex : State game -> Value -> Value -> Result RuntimeError Value
 getArrayIndex state target indexValue =
@@ -1544,11 +1538,9 @@ setArrayIndex state target indexValue value =
             Err (TypeError { expected = "Array", got = target })
 
 
-{-| Shared by the `.field`/assignment-target step above, the `FieldAccess`
-expression case below, _and_ the `Table.get`/`Table.set` natives further
-down — same relationship `getArrayIndex`/`setArrayIndex` have with
-`Array.get`/`Array.set`: not just the same error, the literal same
-function.
+{-| The strict read, `table.name`: shared by the `.field`/assignment-target
+step above and the `FieldAccess` expression case below. `Table.get` is
+the safe read, so it doesn't come through here.
 -}
 getTableField : State game -> Value -> String -> Result RuntimeError Value
 getTableField state target field =
@@ -1960,7 +1952,7 @@ evalBinary op left right =
 whichever container `y` actually is; reuses their exact logic via
 `arrayHasValue`/`tableHasField` below, not a separate reimplementation
 ("not just the same error, the literal same function," the same relationship
-`getArrayIndex`/`getTableField` already have with `Array.get`/`Table.get`).
+`setArrayIndex`/`setTableField` already have with `Array.set`/`Table.set`).
 A right-hand side that's neither an `Array` nor a `Table` is a hard
 `TypeError` rather than silently `false`; every other operator/native in
 Zak already refuses that kind of silent tolerance.
@@ -2334,10 +2326,10 @@ warnIfShadowsConst env name state =
 
 -- ARRAY NATIVES
 --
--- Backs the "Array" entry in builtinNatives above. get/set delegate to
--- getArrayIndex/setArrayIndex (shared with [index]/[index] = value); the
--- rest have no dedicated syntax of their own, so they're only ever reached
--- this way.
+-- Backs the "Array" entry in builtinNatives above. set delegates to
+-- setArrayIndex (shared with [index] = value); get is the safe read, and
+-- the rest have no dedicated syntax of their own, so they're only ever
+-- reached this way.
 
 
 arrayLength : State game -> List Value -> Result RuntimeError ( Value, State game )
@@ -2366,34 +2358,21 @@ arrayIsEmpty state args =
             Err (WrongArgCount { expected = 1, got = List.length args })
 
 
-{-| `Array.get(array, index)` — a callable spelling of `array[index]`,
-delegating to the same `getArrayIndex` that backs it.
+{-| `Array.get(array, index, default)` — the safe read: `array[index]`,
+or `default` where `array[index]` would raise `IndexOutOfBounds` or
+`NegativeIndex` (Elm's `Array.get` gives `Nothing` for both). `default`
+is optional, `nil` when omitted. Only a miss is softened: a non-integer
+`index` (`wholeNumber`) or a non-`Array` `array` is still a hard error,
+the same split `Table.get` draws between a missing _field_ (softened)
+and a wrong-typed target (still an error). The strict read is
+`array[index]` alone: there's no function for it, as `Table` has none
+for `table.name`.
 -}
 arrayGet : State game -> List Value -> Result RuntimeError ( Value, State game )
 arrayGet state args =
     case args of
         [ arrayValue, indexValue ] ->
-            getArrayIndex state arrayValue indexValue
-                |> Result.map (\value -> ( value, state ))
-
-        _ ->
-            Err (WrongArgCount { expected = 2, got = List.length args })
-
-
-{-| `Array.get_default(array, index, default)` — like `Array.get`, but
-returns `default` instead of raising `IndexOutOfBounds` when `index` is
-out of range. `default` is optional, `nil` when omitted. Only the bounds
-check is softened: a non-integer `index` (`wholeNumber`) or a
-non-`Array` `array` is still a hard error, the same split
-`Table.get_default` draws between a missing _field_ (softened) and a
-wrong-typed target (still an error). The `Array` counterpart to
-`Table.get_default`, kept symmetric with it.
--}
-arrayGetDefault : State game -> List Value -> Result RuntimeError ( Value, State game )
-arrayGetDefault state args =
-    case args of
-        [ arrayValue, indexValue ] ->
-            arrayGetDefault state [ arrayValue, indexValue, VNil ]
+            arrayGet state [ arrayValue, indexValue, VNil ]
 
         [ VArray id, VNumber indexFloat, default ] ->
             wholeNumber indexFloat
@@ -2600,7 +2579,7 @@ arrayContains state args =
 
 {-| Shared by `Array.contains` and the `in` operator (`evalIn`) — "not just
 the same error, the literal same function," the same relationship
-`getArrayIndex`/`getTableField` already have with `Array.get`/`Table.get`.
+`setArrayIndex`/`setTableField` already have with `Array.set`/`Table.set`.
 -}
 arrayHasValue : State game -> Int -> Value -> Bool
 arrayHasValue state id value =
@@ -2910,27 +2889,9 @@ arrayRange state args =
 
 -- RECORD NATIVES
 --
--- Backs the "Table" entry in builtinNatives above. get/set delegate to
--- getTableField/setTableField (shared with .field/.field = value) —
--- these exist purely to cover a computed field name, which dot syntax
--- can't express at all.
-
-
-{-| `Table.get(table, name)` — a callable spelling of `table.name`,
-delegating to the same `getTableField` that backs it.
--}
-tableGet : State game -> List Value -> Result RuntimeError ( Value, State game )
-tableGet state args =
-    case args of
-        [ tableValue, VString name ] ->
-            getTableField state tableValue name
-                |> Result.map (\value -> ( value, state ))
-
-        [ _, other ] ->
-            Err (TypeError { expected = "String", got = other })
-
-        _ ->
-            Err (WrongArgCount { expected = 2, got = List.length args })
+-- Backs the "Table" entry in builtinNatives above. set delegates to
+-- setTableField (shared with .field = value), to cover a computed field
+-- name, which dot syntax can't express at all; get is the safe read.
 
 
 {-| `Table.set(table, name, value)` — a callable spelling of
@@ -2951,20 +2912,21 @@ tableSet state args =
             Err (WrongArgCount { expected = 3, got = List.length args })
 
 
-{-| `Table.get_default(table, name, default)` — like `Table.get`, but
-returns `default` instead of raising `UndefinedField` when `name` isn't
-present on `table`. `default` is optional, `nil` when omitted. A callable
+{-| `Table.get(table, name, default)` — the safe read: `table.name`, or
+`default` where `table.name` would raise `UndefinedField`. `default` is
+optional, `nil` when omitted. The strict read is `table.name` alone, so
+a field name built at runtime has only this one. A callable
 alternative to null-safe field access and null-coalescing operators (Zak
 has neither), reached via a built-in function rather than new operator
 syntax, per Zak's own design goal of preferring the former.
 Still raises `NotATable` if `table` isn't a `VTable` at all — only a
 missing _field_ gets the default, not a wrong-typed target.
 -}
-tableGetDefault : State game -> List Value -> Result RuntimeError ( Value, State game )
-tableGetDefault state args =
+tableGet : State game -> List Value -> Result RuntimeError ( Value, State game )
+tableGet state args =
     case args of
         [ tableValue, nameValue ] ->
-            tableGetDefault state [ tableValue, nameValue, VNil ]
+            tableGet state [ tableValue, nameValue, VNil ]
 
         [ VTable id, VString name, default ] ->
             let
